@@ -280,7 +280,7 @@ export default function ProjectsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
+        <span className={styles.logo}><Logo size={22} /> Hyperfeed PixArt</span>
         <div className={styles.headerRight}>
           <ManageInHomeLink session={sessionApi.session} org={teamId} className={styles.homeLink} />
           <InstallAppIconButton />

@@ -1,5 +1,5 @@
 /**
- * Mero PixArt — the hero: a tiny editor you can actually use, not a loop to
+ * Hyperfeed PixArt — the hero: a tiny editor you can actually use, not a loop to
  * watch.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.

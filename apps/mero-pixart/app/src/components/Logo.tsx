@@ -4,7 +4,7 @@ interface Props {
 }
 
 /**
- * MeroPixArt mark — a stack of pixel tiles (layers/image motif). `color` tints
+ * Hyperfeed PixArt mark — a stack of pixel tiles (layers/image motif). `color` tints
  * the outline + solid tile; the accent tile always uses the lime brand colour so
  * the mark reads on both dark and light surfaces.
  */
@@ -16,7 +16,7 @@ export default function Logo({ size = 28, color = "var(--text)" }: Props) {
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="Mero PixArt"
+      aria-label="Hyperfeed PixArt"
     >
       {/* base tile */}
       <rect x="4" y="4" width="14" height="14" rx="2.5" fill={color} opacity="0.16" />

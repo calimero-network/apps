@@ -27,19 +27,19 @@ import { leaveTeam, PRODUCT_NAME, removeTeamMember } from "./teams";
 /**
  * A team's organization-wide changes: an org role and deleting the team.
  *
- * On the app's served origin the session is bound to Mero Pixart's frontend,
+ * On the app's served origin the session is bound to Hyperfeed Pixart's frontend,
  * and the node refuses both. They go to the node's consent page instead,
  * where the person approves them with their passkey; what was being done is
  * kept in this tab (`sessionStorage`) and `ConsentReturn` says how it went
  * when the page sends them back. An unbound session (a dev node) makes the
  * call itself, as before.
  *
- * Removing someone and leaving are Mero Pixart's own wherever the team has
+ * Removing someone and leaving are Hyperfeed Pixart's own wherever the team has
  * the app's team: a row off it, which a bound session may take. A team
  * without one goes through connect, which sends those to the consent page.
  */
 
-/** What Mero Pixart sent the person to the consent page for. */
+/** What Hyperfeed Pixart sent the person to the consent page for. */
 export type OrgIntent =
   | { kind: "setMemberRole"; org: string; account: string; role: "admin" | "member" }
   | { kind: "deleteOrg"; org: string };
@@ -160,14 +160,14 @@ export async function deleteTeam(client: OrgClient, org: string, passkey: () => 
   await client.orgs.delete({ org }, { confirm: passkeyConfirm(passkey()) });
 }
 
-/** Mero Pixart's own team in `org`, or `null` (a team made before app teams). */
+/** Hyperfeed Pixart's own team in `org`, or `null` (a team made before app teams). */
 async function appTeamOf(client: OrgClient, org: string, source: AppSource | null): Promise<string | null> {
   const view = (await client.orgs.get({ org })) as AppOrgView;
   return appTeamIdIn(view, sourcePackage(source));
 }
 
 /**
- * Takes `account` out of Mero Pixart in the team: off its app team where the
+ * Takes `account` out of Hyperfeed Pixart in the team: off its app team where the
  * team has one (they stay in the organization), else connect's path.
  */
 export async function removeFromTeam(
@@ -185,7 +185,7 @@ export async function removeFromTeam(
 }
 
 /**
- * The signed-in account leaves Mero Pixart in the team: off its app team
+ * The signed-in account leaves Hyperfeed Pixart in the team: off its app team
  * where the team has one (`lastApp` set when it was their last app there),
  * else connect's path.
  */

@@ -1,5 +1,5 @@
 /**
- * Mero Pixart's own app team (core#4890), against the shared in-memory
+ * Hyperfeed Pixart's own app team (core#4890), against the shared in-memory
  * cluster (`@calimero-apps/connect/testing`), the way mero-chat's
  * `chatAppTeam.test.ts` pins Chat's: a new team gets an open app team and
  * projects go on it; invites name it; the member list is its people; Remove
@@ -32,7 +32,7 @@ async function team(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-describe("a new team gets Mero Pixart's own app team", () => {
+describe("a new team gets Hyperfeed Pixart's own app team", () => {
   it("open (made with `shared: false`), and a project goes on it", async () => {
     const { cluster, org } = await team();
     expect(cluster.modeOf(org)).toBe("standalone");
@@ -65,7 +65,7 @@ describe("invites and people", () => {
     expect((await readOrg(cluster.client, org, SOURCE)).people).toEqual(["acct-me", "acct-bob", "acct-cy"]);
   });
 
-  it("apps kept apart: Mero Pixart only, and only its people", async () => {
+  it("apps kept apart: Hyperfeed Pixart only, and only its people", async () => {
     const { cluster, org } = await team(people);
     cluster.keepAppsApart(org, { [cluster.teamOf(org, PKG)!]: ["acct-me", "acct-bob"] });
     const read = await readOrg(cluster.client, org, SOURCE);
@@ -82,7 +82,7 @@ describe("invites and people", () => {
 });
 
 describe("Remove and Leave", () => {
-  it("apps kept apart: Remove takes the person out of Mero Pixart, never the org", async () => {
+  it("apps kept apart: Remove takes the person out of Hyperfeed Pixart, never the org", async () => {
     const { cluster, org } = await team({ "acct-bob": "member" });
     cluster.keepAppsApart(org);
     expect(await removeTeamMember(cluster.client, org, SOURCE, "acct-bob", passkey)).toBe("app");
@@ -98,7 +98,7 @@ describe("Remove and Leave", () => {
     expect(await removeTeamMember(cluster.client, legacy, SOURCE, "acct-bob", passkey)).toBe("org");
   });
 
-  it("apps kept apart: Leave is Mero Pixart only; lastApp, then the org on request", async () => {
+  it("apps kept apart: Leave is Hyperfeed Pixart only; lastApp, then the org on request", async () => {
     const { cluster, org } = await team({ "acct-ana": "owner" });
     cluster.keepAppsApart(org);
     cluster.org(org).members["acct-me"] = "member";
@@ -115,7 +115,7 @@ describe("Remove and Leave", () => {
   });
 });
 
-describe("adding Mero Pixart to an organization whose apps have teams", () => {
+describe("adding Hyperfeed Pixart to an organization whose apps have teams", () => {
   it("an admin: open in an open org, closed in one that keeps its apps apart", async () => {
     const cluster = orgCluster();
     const open = cluster.addOrg({ mode: "standalone", role: "admin" });
@@ -129,7 +129,7 @@ describe("adding Mero Pixart to an organization whose apps have teams", () => {
   it("a member is told only owners and admins can add it, and nothing is made", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg({ mode: "standalone", role: "member" });
-    await expect(add(cluster, org)).rejects.toThrow(/owners and admins can add Mero Pixart/);
+    await expect(add(cluster, org)).rejects.toThrow(/owners and admins can add Hyperfeed Pixart/);
     expect(cluster.callsOf("createApp")).toEqual([]);
   });
 });

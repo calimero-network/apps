@@ -40,7 +40,7 @@ describe("TeamInviteDialog", () => {
     teams.mockResolvedValue({ teams: ["team-1"], appOnly: true });
     render(<TeamInviteDialog teamId="org" open onClose={() => {}} />);
     expect((await screen.findByTestId("invite-extra")).textContent).toBe(
-      "1|team|Invites to Mero Pixart only: this organization's other apps are managed in Calimero Home.",
+      "1|team|Invites to Hyperfeed Pixart only: this organization's other apps are managed in Calimero Home.",
     );
   });
 

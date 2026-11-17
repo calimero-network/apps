@@ -145,7 +145,7 @@ export default function SettingsModal({ type, id, name, namespaceId, onClose }: 
 
   // ── Team roles (team settings) ──────────────────────────────────────────────
 
-  // Who has Mero Pixart in the team (its app team, else the org), with their org role.
+  // Who has Hyperfeed Pixart in the team (its app team, else the org), with their org role.
   const members = team.people
     .map((identity) => ({ identity, role: team.roles.get(identity) ?? "member" }))
     .sort((a, b) =>

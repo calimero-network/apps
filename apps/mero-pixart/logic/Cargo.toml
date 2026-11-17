@@ -34,7 +34,7 @@ serde_json = "1"
 # `cargo mero bundle` reads for a v1 app.
 [package.metadata.calimero]
 package = "com.calimero.mero-pixart"
-name = "MeroPixArt"
+name = "Hyperfeed PixArt"
 description = "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments."
 author = "Calimero"
 # The slug IS the package id: deep links resolve by `Application.package`.

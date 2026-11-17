@@ -138,7 +138,7 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     renderApp(fakeClient());
 
     expect(await screen.findByTestId("invitation-page", {}, SLOW)).toBeTruthy();
-    expect(screen.getByText(/You've been invited to join the team in Mero PixArt/)).toBeTruthy();
+    expect(screen.getByText(/You've been invited to join the team in Hyperfeed PixArt/)).toBeTruthy();
     expect(screen.getByTestId("signin-passkey")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.querySelector(".cal-lp-root")).toBeNull();
@@ -162,7 +162,7 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     await waitFor(() => expect(client.signIn).toHaveBeenCalledTimes(1), SLOW);
     // No second click to reach the prompt, and nothing redeemed before it.
     expect(client.redeemInvite).not.toHaveBeenCalled();
-    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Mero Pixart|undefined|team");
+    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Hyperfeed Pixart|undefined|team");
     fireEvent.click(screen.getByTestId("accept-done"));
     // The team has no name for you: asked once, here, then on to the team.
     fireEvent.change(await screen.findByTestId("username-input", {}, SLOW), { target: { value: "Sandi" } });
@@ -196,7 +196,7 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     hold("tok-xyz", "org-1");
     renderApp(client);
 
-    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Mero Pixart|org-1|team");
+    expect((await screen.findByTestId("accept-token", {}, SLOW)).textContent).toBe("tok-xyz|Hyperfeed Pixart|org-1|team");
     expect(client.redeemInvite).not.toHaveBeenCalled();
   });
 
@@ -224,7 +224,7 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
 
     fireEvent.click(await screen.findByTestId("accept-spent", {}, SLOW));
     expect(invites.token()).toBeNull();
-    expect(screen.getByTestId("accept-token").textContent).toBe("tok-xyz|Mero Pixart|org-1|team");
+    expect(screen.getByTestId("accept-token").textContent).toBe("tok-xyz|Hyperfeed Pixart|org-1|team");
     fireEvent.click(screen.getByTestId("accept-close"));
     await waitFor(() => expect(screen.queryByTestId("accept-dialog")).toBeNull(), SLOW);
   });

@@ -44,14 +44,14 @@ import { APP } from "./session";
  * `@calimero-apps/connect`'s org-app module: a new team's is open (everyone in
  * the org has the app), projects use team access on it, invites name it, and
  * the member list is its people. Once an admin keeps the org's apps apart in
- * Calimero Home (`shared`), an invite gives Mero Pixart only, and Remove and
- * Leave take someone out of Mero Pixart, not out of the org (leaving the last
+ * Calimero Home (`shared`), an invite gives Hyperfeed Pixart only, and Remove and
+ * Leave take someone out of Hyperfeed Pixart, not out of the org (leaving the last
  * app offers the org too). An org without one (made before app teams, a node
  * without them, a raw dev bundle) is legacy, as before.
  */
 
 /** The app's name where an owner or admin is told who may add it, and in invite notes. */
-export const PRODUCT_NAME = "Mero Pixart";
+export const PRODUCT_NAME = "Hyperfeed Pixart";
 
 /** A team this account is in. */
 export interface Team {
@@ -74,7 +74,7 @@ export interface ProjectEntry {
 
 /**
  * The teams: the orgs this account is in that hold projects or were made for
- * this app. An org made for another app (a Mero Blocks world) is not listed:
+ * this app. An org made for another app (a Hyperfeed Blocks world) is not listed:
  * it is offered under "Connect to an existing organization" ({@link
  * otherOrgs} in `@calimero-apps/connect`) and joins the list once it holds
  * one.
@@ -122,7 +122,7 @@ export async function finishTeam(
 
 /**
  * Leaves the team (`leaveApp`, a passkey step-up). In an org that keeps its
- * apps apart that is Mero Pixart only, with `lastApp` set when it was the
+ * apps apart that is Hyperfeed Pixart only, with `lastApp` set when it was the
  * caller's last app there (offer {@link leaveTeamOrg}); elsewhere the org.
  */
 export function leaveTeam(
@@ -148,7 +148,7 @@ export function leaveTeamOrg(
 
 /**
  * Removes `account` from the team (`removeFromApp`, a passkey step-up): in an
- * org that keeps its apps apart, out of Mero Pixart only, never out of the
+ * org that keeps its apps apart, out of Hyperfeed Pixart only, never out of the
  * org; elsewhere out of the org, as before.
  */
 export function removeTeamMember(
@@ -217,9 +217,9 @@ export interface OrgMembers {
   roles: Map<string, string>;
   /** account -> its display name in the org, where one is set. */
   names: Map<string, string>;
-  /** Who has Mero Pixart in the org, in org order: its app team, else the org (no guest once it has app teams). */
+  /** Who has Hyperfeed Pixart in the org, in org order: its app team, else the org (no guest once it has app teams). */
   people: string[];
-  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Mero Pixart's only. */
+  /** The org keeps its apps apart and this one has its team: invites, Remove and Leave are Hyperfeed Pixart's only. */
   appOnly: boolean;
 }
 

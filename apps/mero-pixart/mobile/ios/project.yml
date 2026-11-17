@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero PixArt app.
+# XcodeGen spec for the native iOS Hyperfeed PixArt app.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroPixart.xcodeproj (not committed)
@@ -37,7 +37,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero PixArt
+        CFBundleDisplayName: Hyperfeed PixArt
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]

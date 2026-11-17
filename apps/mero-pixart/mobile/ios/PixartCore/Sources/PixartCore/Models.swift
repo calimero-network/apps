@@ -11,7 +11,7 @@ public enum LoadState: Equatable, Sendable {
 
 // MARK: - Teams
 
-/// A team: a Calimero organization running Mero PixArt.
+/// A team: a Calimero organization running Hyperfeed PixArt.
 public struct Team: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String

@@ -106,7 +106,7 @@ fun TeamsScreen(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text("Mero PixArt", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Hyperfeed PixArt", fontWeight = FontWeight.SemiBold) },
                 actions = {
                     IconButton(onClick = { showAccount = true }) { Icon(Icons.Outlined.AccountCircle, contentDescription = "Account") }
                 },
@@ -136,7 +136,7 @@ fun TeamsScreen(
                             EmptyState(
                                 Icons.Outlined.Groups,
                                 "No teams yet",
-                                "Create a team in Mero PixArt on the web or desktop, or open an invitation link on this phone. It shows up here.",
+                                "Create a team in Hyperfeed PixArt on the web or desktop, or open an invitation link on this phone. It shows up here.",
                             )
                         }
                     else -> {
@@ -225,7 +225,7 @@ private fun AccountSheet(
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Sign out of Mero PixArt?") },
+            title = { Text("Sign out of Hyperfeed PixArt?") },
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
@@ -276,7 +276,7 @@ fun ProjectsScreen(
                             scope.launch {
                                 inviting = true
                                 runCatching { model.inviteLink(teamName) }
-                                    .onSuccess { shareLink(context, it, "Join $teamName on Mero PixArt", "Invite to team") }
+                                    .onSuccess { shareLink(context, it, "Join $teamName on Hyperfeed PixArt", "Invite to team") }
                                     .onFailure { inviteError = PixartFormat.errorText(it) }
                                 inviting = false
                             }
@@ -322,7 +322,7 @@ fun ProjectsScreen(
                             EmptyState(
                                 Icons.Outlined.PhotoLibrary,
                                 "No projects in this team",
-                                "Projects are created in Mero PixArt on the web or desktop. Pull to refresh once one exists.",
+                                "Projects are created in Hyperfeed PixArt on the web or desktop. Pull to refresh once one exists.",
                             )
                         }
                     else -> {

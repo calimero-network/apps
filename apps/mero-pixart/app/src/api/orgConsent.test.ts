@@ -2,7 +2,7 @@
  * A team's organization-wide changes: on a session bound to the app's
  * frontend they go to the node's consent page (and nothing is called
  * directly); unbound, the app calls the routes itself. Removing and leaving
- * take a row off Mero Pixart's own team wherever the org has one.
+ * take a row off Hyperfeed Pixart's own team wherever the org has one.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PasskeyProvider } from "@calimero-network/mero-js";
@@ -39,7 +39,7 @@ async function team(people: Record<string, string> = {}) {
   return { cluster, org };
 }
 
-/** The cluster's client as a session bound to Mero Pixart's frontend sees it. */
+/** The cluster's client as a session bound to Hyperfeed Pixart's frontend sees it. */
 function bound(client: ReturnType<typeof orgCluster>["client"]) {
   const openConsentPage = vi.fn(async (_request: unknown, options?: { confirm?: (s: { code: string }) => unknown }) => {
     await options?.confirm?.({ code: "K7Q2" });
@@ -110,7 +110,7 @@ describe("org roles and deleting a team", () => {
   });
 });
 
-describe("remove and leave on Mero Pixart's own team", () => {
+describe("remove and leave on Hyperfeed Pixart's own team", () => {
   it("removing takes them off the app team and leaves them in the organization", async () => {
     const { cluster, org } = await team({ bob: "member" });
     await createProject(cluster.client, SOURCE, org, { name: "Doc", description: "", width: 1, height: 1 }, passkey);

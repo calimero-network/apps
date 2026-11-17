@@ -1,6 +1,6 @@
-# Mero PixArt: native mobile apps
+# Hyperfeed PixArt: native mobile apps
 
-Native iOS and Android viewers for Mero PixArt, next to the web editor (`../app`) and the contract
+Native iOS and Android viewers for Hyperfeed PixArt, next to the web editor (`../app`) and the contract
 (`../logic`, package `com.calimero.mero-pixart`). They have the same screens, copy, icons (SF Symbols
 and the matching Material icons) and behaviour.
 
@@ -50,7 +50,7 @@ The editor (tools, brushes, masks, curves, transforms) stays on the web and desk
 
 - **Sign in** with a Calimero account (`MeroAppSession`): a passkey on the 1.0 cluster (see
   above). The session is kept in the Keychain / Keystore and restored at launch.
-- **Teams**: the account's organizations running Mero PixArt, and what needs your approval. Pull to refresh.
+- **Teams**: the account's organizations running Hyperfeed PixArt, and what needs your approval. Pull to refresh.
 - **Projects**: a team's projects as a two-column gallery, each card a real thumbnail of the artwork
   (composited on the phone, at most 360 px), with its size and layer count. Long-press (Android) or
   touch and hold (iOS) to share the project's link. Pull to refresh. **Invite** (person-plus icon)

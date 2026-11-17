@@ -153,7 +153,7 @@ export default function TeamsPage() {
   }
 
   /**
-   * Anyone else leaves it (a passkey step-up): Mero Pixart's own team where
+   * Anyone else leaves it (a passkey step-up): Hyperfeed Pixart's own team where
    * the org has one; when it was the last app there, the organization itself
    * is offered too (the node's consent page on the app's own origin).
    */
@@ -189,7 +189,7 @@ export default function TeamsPage() {
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}><Logo size={24} /> Mero PixArt</span>
+        <span className={styles.logo}><Logo size={24} /> Hyperfeed PixArt</span>
         <div className={styles.headerRight}>
           <InstallAppIconButton />
           <button className="mp-btn mp-btn--ghost" onClick={() => void handleLogout()}>Logout</button>
@@ -216,7 +216,7 @@ export default function TeamsPage() {
           onCreated={teamCreated}
           labels={CREATE_LABELS}
         />
-        <ConnectExistingOrg appName="Mero PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
+        <ConnectExistingOrg appName="Hyperfeed PixArt" load={loadOtherOrgs} onConnect={connectOrg} />
 
         {loading ? (
           <p className={styles.empty}>Loading…</p>
