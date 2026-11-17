@@ -236,7 +236,7 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  /* Shrinks before the CTA does: on a 360px phone `Mero Issue Tracker` wrapped
+  /* Shrinks before the CTA does: on a 360px phone `Hyperfeed Issue Tracker` wrapped
      under its own icon and pushed the sticky header to 120px tall. */
   min-width: 0;
   flex: 0 1 auto;
