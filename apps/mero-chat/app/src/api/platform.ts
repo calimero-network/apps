@@ -314,7 +314,7 @@ export async function myOrgs(): Promise<Array<{ orgId: string; name: string; rol
 
 /**
  * The workspaces: the orgs this account is in that hold a chat instance. An
- * org made for another app (a Mero Blocks world) is not one, and is offered
+ * org made for another app (a Hyperfeed Blocks world) is not one, and is offered
  * only through "Connect to an existing organization" ({@link otherChatOrgs}).
  */
 export function chatOrgs(): Promise<Array<{ orgId: string; name: string; role: string }>> {

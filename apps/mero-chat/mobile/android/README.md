@@ -1,6 +1,6 @@
-# Mero Chat for Android
+# Hyperfeed Chat for Android
 
-A native Jetpack Compose (Material 3) client for Mero Chat, the `com.calimero.chat` app in
+A native Jetpack Compose (Material 3) client for Hyperfeed Chat, the `com.calimero.chat` app in
 [`../../logic`](../../logic). It runs the same contract as the web frontend in
 [`../../app`](../../app), so people on Android and on the web share the same workspaces, channels
 and messages. It is built on the Calimero Kotlin SDK (`mero-core` + `mero-compose`).
@@ -20,7 +20,7 @@ the SDK's sealed channel (kotlin-sdk `4.0.0`). Contract calls use the component 
 | Create a channel | An open channel is an app instance of chat in the org itself, as the web makes them. A private one gets its own team that admits by invitation | `createContext`, `createSubgroup` |
 | Invite | An org invite token (a passkey step-up: the Activity's `PlatformPasskey` is the session's `passkey` while it lives) | `createInvitation` |
 | Join | Redeem the token (`POST /invites/{token}/redeem`) | `joinNamespace` |
-| Approvals | Releases and Mero Chat upgrades that wait for the account show under Approvals. Review shows the request's confirmation code first, then opens the node's consent page in a Custom Tab, which returns to `mero-chat://consent` | `pendingApprovals`, `MeroAppSession.requestConsent` |
+| Approvals | Releases and Hyperfeed Chat upgrades that wait for the account show under Approvals. Review shows the request's confirmation code first, then opens the node's consent page in a Custom Tab, which returns to `mero-chat://consent` | `pendingApprovals`, `MeroAppSession.requestConsent` |
 | Live updates | The app instance's event stream for the open channel, with polling as the fallback | `MeroAppBackend.events` |
 
 ## Features

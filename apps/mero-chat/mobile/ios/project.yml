@@ -1,4 +1,4 @@
-# XcodeGen spec for the native iOS Mero Chat app and its unit tests.
+# XcodeGen spec for the native iOS Hyperfeed Chat app and its unit tests.
 #
 #   brew install xcodegen
 #   xcodegen generate          # writes MeroChat.xcodeproj (not committed)
@@ -31,7 +31,7 @@ targets:
     info:
       path: Sources/Generated-Info.plist
       properties:
-        CFBundleDisplayName: Mero Chat
+        CFBundleDisplayName: Hyperfeed Chat
         # Figtree, the web app's face (SIL Open Font License, Resources/Fonts/OFL.txt).
         UIAppFonts: [Figtree-Variable.ttf]
         UILaunchScreen: {}
@@ -51,7 +51,7 @@ targets:
         MeroChatCallbackScheme: mero-chat
         MeroChatCallbackHost: ""
         MeroChatCallbackPath: /consent
-        # A Calimero Cloud cluster to sign in on. Empty: Mero Chat's own
+        # A Calimero Cloud cluster to sign in on. Empty: Hyperfeed Chat's own
         # address, which routes to its cluster.
         MeroChatCluster: ""
         # The Calimero Cloud cluster to sign in to: a node URL from the
@@ -59,14 +59,14 @@ targets:
         CalimeroClusterURL: ""
         # The development node (`merod local`) the sign-in screen prefills.
         DefaultNodeURL: "http://localhost:2501"
-        # The Mero Chat version new channels run. Empty: the latest.
+        # The Hyperfeed Chat version new channels run. Empty: the latest.
         MeroPackageVersion: ""
         NSLocalNetworkUsageDescription: "Connect to a Calimero development node on your local network."
         # Plain http only to a node on the local network (merod local --dev);
         # everything else stays https under ATS.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-    # Calimero Cloud sign-in runs on Mero Chat's served page in the system
+    # Calimero Cloud sign-in runs on Hyperfeed Chat's served page in the system
     # sign-in sheet, which returns to `mero-chat://signed-in`: no associated
     # domains. A development node uses a software passkey.
     entitlements:

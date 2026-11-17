@@ -77,7 +77,7 @@ fun SignInScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(Modifier.height(24.dp))
-            Text("Mero Chat", style = MaterialTheme.typography.headlineLarge)
+            Text("Hyperfeed Chat", style = MaterialTheme.typography.headlineLarge)
             Text(
                 "Channels, threads and direct messages on your own Calimero cluster.",
                 style = MaterialTheme.typography.bodyLarge,

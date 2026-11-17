@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 export interface ConsentHandoffProps {
   /** The confirmation code the node's consent page will show (`started.code`). */
   code: string;
-  /** The app sending the person, as they know it: "Mero Chat". */
+  /** The app sending the person, as they know it: "Hyperfeed Chat". */
   appName?: string;
   /** What is being approved, in plain words: "Create the workspace “Acme”". */
   action?: string;

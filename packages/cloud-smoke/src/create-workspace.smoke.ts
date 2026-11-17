@@ -77,7 +77,7 @@ const APPS: App[] = [
     opened: (p) => p.getByRole("navigation", { name: "Main navigation" }),
     settled: async (p) => {
       await expect(p.getByText("general", { exact: true }).first(), "#general was not made").toBeVisible({ timeout: 60_000 });
-      await expect(p.getByAltText("Mero Chat Application Logo")).toBeVisible();
+      await expect(p.getByAltText("Hyperfeed Chat Application Logo")).toBeVisible();
       await p.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
     },
   },
@@ -185,7 +185,7 @@ const APPS: App[] = [
   },
 ];
 
-/** An app no cluster serves yet: its build is served at Mero CRM's origin, with `VITE_CALIMERO_PACKAGE` set to CRM's package. */
+/** An app no cluster serves yet: its build is served at Hyperfeed CRM's origin, with `VITE_CALIMERO_PACKAGE` set to CRM's package. */
 const atCrm = (name: string, standIn: string, rest: Omit<App, "name" | "package" | "dist" | "standIn">): App => ({
   name,
   package: "com.calimero.mero-crm",

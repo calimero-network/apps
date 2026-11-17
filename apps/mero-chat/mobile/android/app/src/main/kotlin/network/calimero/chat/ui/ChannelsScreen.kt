@@ -111,7 +111,7 @@ fun ChannelsScreen(
             workspaceName = invite.workspaceName,
             link = invite.link,
             onShare = {
-                onShare("Join ${invite.workspaceName} on Mero Chat", invite.link)
+                onShare("Join ${invite.workspaceName} on Hyperfeed Chat", invite.link)
                 workspaces.dismissInvite()
             },
             onDismiss = workspaces::dismissInvite,

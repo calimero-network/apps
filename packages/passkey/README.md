@@ -88,11 +88,11 @@ account, nothing to install, no permissions to grant.
   `pending` is true only while that read runs, and only for a package with no version; a raw bundle or a named version is never pending.
   Hold the create actions while `pending`, not the whole signed-in screen, and say `CHECKING_RELEASE` ("Checking the newest release…") where one waits.
 - `reviewRelease(source)` is the `ReviewRelease` to give `<WorkspaceReview>` for a resolved source: the package and version it names, or `null` for a raw bundle or an unversioned package, where there is nothing signed to review and the app creates straight from its form.
-- `<ConnectExistingOrg appName="Mero Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
+- `<ConnectExistingOrg appName="Hyperfeed Chat" load={() => otherOrgs(client, source)} onConnect={(org) => ...} />`
   is the secondary "Connect to an existing organization" choice
   (`otherOrgs` and `orgsWithApp` in `@calimero-apps/connect`): a button
   (`connect-existing-org`) that, only when pressed, lists the account's other
-  organizations with what each holds ("overworld", "Mero Blocks: overworld"),
+  organizations with what each holds ("overworld", "Hyperfeed Blocks: overworld"),
   one button each (`connect-org-<orgId>`). Nothing is preselected; `onConnect`
   creates the app's instance there. An app's default list stays the
   organizations that already hold it, and creating a new one stays primary.

@@ -1,8 +1,8 @@
-# Native iOS Mero Chat (apps/mero-chat/mobile/ios): generate the Xcode project
+# Native iOS Hyperfeed Chat (apps/mero-chat/mobile/ios): generate the Xcode project
 # from project.yml, build the app and its logic tests for the iOS Simulator,
 # and run the tests. The swift-sdk is resolved from GitHub at the revision
 # project.yml pins.
-name: Mero Chat iOS
+name: Hyperfeed Chat iOS
 
 on:
   pull_request:

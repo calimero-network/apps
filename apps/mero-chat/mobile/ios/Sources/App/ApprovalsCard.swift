@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// What waits for the person's approval (an update of Mero Chat, a node
+/// What waits for the person's approval (an update of Hyperfeed Chat, a node
 /// release): "Review" first shows the request's confirmation code, then opens
 /// the node's consent page in the system browser, which shows the same code.
 /// Nothing shows when there is nothing to approve.

@@ -22,13 +22,13 @@ enum AppConfig {
         return .scheme(callbackScheme, path: "consent")
     }
 
-    /// A Calimero Cloud cluster to sign in on (`MeroChatCluster`); unset: Mero Chat's own address.
+    /// A Calimero Cloud cluster to sign in on (`MeroChatCluster`); unset: Hyperfeed Chat's own address.
     static var cluster: String? { string("MeroChatCluster") }
 
-    /// Where Mero Chat's sign-in page sends the session back (`mero-chat://signed-in#…`).
+    /// Where Hyperfeed Chat's sign-in page sends the session back (`mero-chat://signed-in#…`).
     static var signInCallback: CloudCallback { .scheme(callbackScheme, path: "signed-in") }
 
-    /// Where Mero Chat's page sends a passkey approval back (`mero-chat://approved#…`).
+    /// Where Hyperfeed Chat's page sends a passkey approval back (`mero-chat://approved#…`).
     static var approveCallback: CloudCallback { .scheme(callbackScheme, path: "approved") }
 
     /// The Calimero Cloud cluster: a node URL from the console. Signing in

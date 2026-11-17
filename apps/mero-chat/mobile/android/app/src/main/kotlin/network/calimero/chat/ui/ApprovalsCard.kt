@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 import network.calimero.chat.app.ApprovalsModel
 
 /**
- * What waits for the person's approval (an update of Mero Chat, a node release). "Review" first
+ * What waits for the person's approval (an update of Hyperfeed Chat, a node release). "Review" first
  * shows the request's confirmation code, then opens the node's consent page in a Custom Tab, which
  * shows the same code. Nothing shows when there is nothing to approve. (Swift `ApprovalsCard`.)
  */

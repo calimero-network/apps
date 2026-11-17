@@ -173,7 +173,7 @@ node, so the app check is made per instance, after `createApp`.
 
 ## Organizations
 
-An account is in organizations made for other apps (a Mero Blocks world, a
+An account is in organizations made for other apps (a Hyperfeed Blocks world, a
 chat workspace). An app lists, resumes and enters only its own (`orgs.ts`):
 
 ```ts
@@ -196,10 +196,10 @@ await client.createApp(name, source, { org: others[0].orgId }); // only on the p
   keeps the others with `canCreate: false`). Each carries `holds` (the
   instances it holds that the account reaches) and `label`, what it holds in
   words. On a node with app teams (core#4890) the label is the org's apps by
-  name from `listAppTeams` ("Mero Blocks, Mero Chat (not yours)"), so an org
+  name from `listAppTeams` ("Hyperfeed Blocks, Hyperfeed Chat (not yours)"), so an org
   whose apps are closed to the account no longer reads "No apps yet"; `apps`
   and `mode` carry the teams. A node without the route (404), or a legacy org
-  with no app teams, keeps the instance label: "Mero Blocks: overworld". In
+  with no app teams, keeps the instance label: "Hyperfeed Blocks: overworld". In
   an org that has app teams, only its owners and admins may add an app that
   has no team there (core#4890), so `canCreate` is `false` for anyone else.
   `<ConnectExistingOrg>` in
@@ -287,7 +287,7 @@ admin keeps their apps apart in Calimero Home: a team made here passes
 import { appInvite, appPeople, createAppOrg, leaveApp, orgInstanceOptions, removeFromApp } from "@calimero-apps/connect";
 
 const { orgId } = await createAppOrg(client, "Acme", source, passkey, { capabilities: MEMBER_DEFAULTS });
-await client.createApp("Main", source, await orgInstanceOptions(client, orgId, source, passkey, "Mero CRM"));
+await client.createApp("Main", source, await orgInstanceOptions(client, orgId, source, passkey, "Hyperfeed CRM"));
 const { token, appOnly } = await appInvite(client, orgId, source, passkey); // appOnly: show appOnlyInviteNote()
 const people = appPeople(await client.getOrg(orgId), PACKAGE);
 await removeFromApp(client, orgId, source, account, passkey); // "app" in a shared org, else "org"

@@ -1,6 +1,6 @@
 # Mobile: which apps to port, and how far
 
-Only Mero Chat has native clients today (`apps/mero-chat/mobile`, SwiftUI on
+Only Hyperfeed Chat has native clients today (`apps/mero-chat/mobile`, SwiftUI on
 [swift-sdk](https://github.com/calimero-network/swift-sdk) and Compose on
 [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk)). Every other app is
 web only. This file sorts the rest by what a phone can reasonably do with them,
@@ -70,15 +70,15 @@ very little use; people want to **look**, **comment** and **share** from a phone
 
 These block several apps at once, so they come before the app work:
 
-1. **Blobs over the relay.** Both SDKs have blob upload and download through the relay (swift-sdk #79, kotlin-sdk #57); Mero Chat's attachments and avatars and all of Tier 3 can build on it.
+1. **Blobs over the relay.** Both SDKs have blob upload and download through the relay (swift-sdk #79, kotlin-sdk #57); Hyperfeed Chat's attachments and avatars and all of Tier 3 can build on it.
 2. **Push.** APNs/FCM delivery for relay events (chat mentions, hyperfeed approvals, standup reminders, your turn in chess and battleships). Today the apps use SSE while open and 5-second polling otherwise.
 3. **Multi-service bundles and multi-context identity** (battleships, mero-docs, mero-sign).
 4. **A WebView host kit:** one native shell (sign-in, relay session, deep links) that hosts a web app's view-only or game mode and bridges contract calls to the SDK. Tier 3 and Tier 4 mostly reuse it, so it is built once.
-5. **Universal links** on `links.calimero.network` for every app's invitations, and an https wallet callback (both are open in Mero Chat).
+5. **Universal links** on `links.calimero.network` for every app's invitations, and an https wallet callback (both are open in Hyperfeed Chat).
 
 ## How we build them: one template, not ten hand-written apps
 
-Mero Chat mobile is ~10k lines across both platforms, and very little of it is chat. The cost is
+Hyperfeed Chat mobile is ~10k lines across both platforms, and very little of it is chat. The cost is
 that everything is written twice by hand:
 
 - **The contract layer.** `ChatAPI.swift` and `ChatContract.kt` copy method names, argument keys
@@ -114,13 +114,13 @@ with a bridge so the web app's generated client calls through the native session
 
 1. SDK `ContextContract` + `MeroAppSession` and native codegen (in parallel); chat migrates onto both.
 2. The `new-mobile-app` template and shared components.
-3. Finish Mero Chat (threads, attachments, DMs, push, glass design) on the template; see below.
+3. Finish Hyperfeed Chat (threads, attachments, DMs, push, glass design) on the template; see below.
 4. SDK: push and the WebView host kit.
 5. Tier 1: mero-forum (pilot), mero-standup, mero-chess, mero-calendar (then the rest of Tier 1).
 6. mero-pass with AutoFill (the strongest reason to install a phone app).
 7. Tier 4 games on the host kit (mero-blocks first), then Tier 3 viewers.
 
-## Mero Chat on iOS: where it stands (2026-10-26)
+## Hyperfeed Chat on iOS: where it stands (2026-10-26)
 
 - **SDK:** pinned by commit; bumped to swift-sdk `6f97c85` (main: schema-27 namespace ops for core 0.11.0, registry installs the newest version the relay runtime accepts). No tagged release carries the delegated layer yet; once one does, switch `revision:` to `from:`.
 - **Tests:** 55 logic tests pass on the simulator. The live tests (`MeroChatLiveTests`) need `mobile/e2e/run-relay.sh` and skip without it.

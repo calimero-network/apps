@@ -251,7 +251,7 @@ test.describe('Hyperfeed Chat landing page', () => {
   }
 
   test('the brand never wraps under its own icon on a phone', async ({ page }) => {
-    // `Mero Issue Tracker` used to wrap under the mark and double the sticky
+    // `Hyperfeed Issue Tracker` used to wrap under the mark and double the sticky
     // header's height. The header itself is taller on a phone now - the nav
     // wraps onto its own row rather than disappearing, because it is the only
     // way to reach two of the three pages - so this measures the brand, which

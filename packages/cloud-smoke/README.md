@@ -99,5 +99,5 @@ names, review and approval on the node's consent page in a pop-up.
 Build each app with `VITE_CALIMERO_MIN_RELEASE` set, point `E2E_DIST_MERO_CRM` (and `_MERO_CHAT`, `_MERO_ISSUE_TRACKER`, `_MERO_DOCS`, `_BATTLESHIPS`, `_MERO_BLOCKS`, `_MERO_CHESS`, `_MERO_KOMBAT`, `_MERO_MODELS`, `_MERRARIA`) at the output, and run
 `CREATE_WORKSPACE_E2E=1 npx playwright test src/create-workspace.smoke.ts`.
 Screenshots of each step go to `test-results/create-workspace/` at the repo root.
-An app no cluster serves yet is served at Mero CRM's origin with `VITE_CALIMERO_PACKAGE=com.calimero.mero-crm`.
+An app no cluster serves yet is served at Hyperfeed CRM's origin with `VITE_CALIMERO_PACKAGE=com.calimero.mero-crm`.
 A game app's instance on that stand-in package cannot run the game's own init, so those apps end on the node's refusal shown in the app (the org was made through the dialog before it).

@@ -197,7 +197,7 @@
    mero-react's LoginModal ("Connect to Calimero", the landing page's popup and
    ConnectButton's dialog) and ConnectButton read `--mero-*` variables, which
    default to its dark green. Set here, every app on glass gets the dialog
-   Mero Pass designed for its landing page: a solid floating surface, ink for
+   Hyperfeed Pass designed for its landing page: a solid floating surface, ink for
    the primary action and the selected choice, glass lines. The values point at
    glass tokens, so the app's dark switch carries over by itself (the fleet
    marks dark on <html>, where these resolve).

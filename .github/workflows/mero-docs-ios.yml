@@ -1,8 +1,8 @@
-# Native iOS Mero Docs (apps/mero-docs/mobile/ios): test the DocsCore package
+# Native iOS Hyperfeed Docs (apps/mero-docs/mobile/ios): test the DocsCore package
 # (generated client, document reader, comments, view models) on macOS, then generate the Xcode
 # project from project.yml and build the app for the iOS Simulator. The swift-sdk is
 # resolved from GitHub at the revision project.yml and DocsCore/Package.swift pin.
-name: Mero Docs iOS
+name: Hyperfeed Docs iOS
 
 on:
   pull_request:

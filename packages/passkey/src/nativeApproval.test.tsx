@@ -24,14 +24,14 @@ describe("NativeApproval", () => {
     let went = "";
     render(
       <NativeApproval
-        appName="Mero Chat"
+        appName="Hyperfeed Chat"
         callback="mero-chat://approved"
         request={await request()}
         approver={{ get: async () => assertion }}
         go={(url) => (went = url)}
       />,
     );
-    expect(screen.getByText("Approve in Mero Chat")).toBeTruthy();
+    expect(screen.getByText("Approve in Hyperfeed Chat")).toBeTruthy();
     fireEvent.click(screen.getByTestId("native-approve"));
     await waitFor(() => expect(went.startsWith("mero-chat://approved#state=")).toBe(true));
     expect(went).toContain("&box=");
@@ -42,7 +42,7 @@ describe("NativeApproval", () => {
     const closed = Object.assign(new Error("closed"), { name: "NotAllowedError" });
     render(
       <NativeApproval
-        appName="Mero Chat"
+        appName="Hyperfeed Chat"
         callback="mero-chat://approved"
         request={await request()}
         approver={{ get: async () => Promise.reject(closed) }}

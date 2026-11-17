@@ -1,8 +1,8 @@
-# Native iOS Mero Kombat (apps/mero-kombat/mobile/ios): test the non-UI layer (KombatCore, a local
+# Native iOS Hyperfeed Kombat (apps/mero-kombat/mobile/ios): test the non-UI layer (KombatCore, a local
 # SwiftPM package: generated contract client, view models, game bridge, fight pad mapping) on macOS, then generate
 # the Xcode project from project.yml and build the app for the iOS Simulator. The swift-sdk is
 # resolved from GitHub at the revision project.yml and KombatCore/Package.swift pin.
-name: Mero Kombat iOS
+name: Hyperfeed Kombat iOS
 
 on:
   pull_request:

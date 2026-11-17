@@ -6,7 +6,7 @@ final class ChatErrorTextTests: XCTestCase {
         let error = AppError(
             "init failed: guest panicked: failed to deserialize arguments: unknown field `context_type`, "
                 + "expected `name` at line 1 column 15")
-        XCTAssertTrue(ChatErrorText.describe(error).contains("older Mero Chat"))
+        XCTAssertTrue(ChatErrorText.describe(error).contains("older Hyperfeed Chat"))
     }
 
     func testTheContractsOwnRefusalKeepsItsMessage() {

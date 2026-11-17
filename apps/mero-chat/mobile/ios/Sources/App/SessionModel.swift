@@ -18,7 +18,7 @@ final class SessionModel: ObservableObject {
     @Published private(set) var backend: CloudChatBackend?
     /// What waits for this person's approval (consent page in the system browser).
     private(set) lazy var approvals = ApprovalsModel(
-        packageName: ChatConstants.packageName, appName: "Mero Chat",
+        packageName: ChatConstants.packageName, appName: "Hyperfeed Chat",
         fetch: { [weak self] org in
             guard let self else { throw CancellationError() }
             return try await self.pendingApprovals(org: org)
@@ -126,7 +126,7 @@ final class SessionModel: ObservableObject {
         rebuild()
     }
 
-    /// Sign in on Calimero Cloud through Mero Chat's served page, where the
+    /// Sign in on Calimero Cloud through Hyperfeed Chat's served page, where the
     /// person signs in or creates an account with their passkey, as on the web.
     func signInWithServedPage() async {
         _ = await client.signInWithServedPage(cluster: AppConfig.cluster, callback: AppConfig.signInCallback)
@@ -224,13 +224,13 @@ final class SessionModel: ObservableObject {
     func requestConsent(
         _ request: @escaping (String) -> ConsentRequest, confirm: @escaping @MainActor (ConsentStarted) async -> Bool
     ) async -> ConsentResult? {
-        // The node sends the person back only to Mero Chat's own page, which
+        // The node sends the person back only to Hyperfeed Chat's own page, which
         // passes the answer on to `mero-chat://consent`.
         let returnTo: String?
         do {
             returnTo = try await client.servedConsentReturnTo(cluster: AppConfig.cluster)
         } catch {
-            client.errorMessage = "Couldn't reach Mero Chat's page: \(error.localizedDescription)"
+            client.errorMessage = "Couldn't reach Hyperfeed Chat's page: \(error.localizedDescription)"
             return nil
         }
         return await client.requestConsent(request, callback: AppConfig.callback, returnTo: returnTo, confirm: confirm)
@@ -267,10 +267,10 @@ final class SessionModel: ObservableObject {
             let app = CalimeroAppBackend(
                 client: cloud, account: account, packageName: ChatConstants.packageName,
                 packageVersion: client.config.packageVersion,
-                // Step-ups over Mero Chat's own apps are approved on Mero Chat's page.
+                // Step-ups over Hyperfeed Chat's own apps are approved on Hyperfeed Chat's page.
                 passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback),
                 // Creating a workspace, inviting and joining are approved on the
-                // node's consent page, which returns through Mero Chat's page.
+                // node's consent page, which returns through Hyperfeed Chat's page.
                 consent: client.servedPageConsent(cluster: AppConfig.cluster, callback: AppConfig.callback))
             backend = CloudChatBackend(
                 app: app,

@@ -280,7 +280,7 @@ export const APPS = {
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],
     explainer: [
-      'A Terraria-style mining and building sandbox, seen from the side, shared with other players and hosted by nobody. Like Mero Blocks, the world is a Calimero context: a seed, the diff of every tile anyone has changed, and player presence.',
+      'A Terraria-style mining and building sandbox, seen from the side, shared with other players and hosted by nobody. Like Hyperfeed Blocks, the world is a Calimero context: a seed, the diff of every tile anyone has changed, and player presence.',
       'The terrain generator is deterministic, so the seed plus the edits reproduce the same world everywhere and only the edits have to travel. It also runs with no node at all if you want to dig alone.',
     ],
     features: [
@@ -417,7 +417,7 @@ export const APPS = {
   },
 
   'mero-design': {
-    displayName: 'Mero Design',
+    displayName: 'Hyperfeed Design',
     // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
@@ -597,7 +597,7 @@ export const APPS = {
 
 
   'mero-crm': {
-    displayName: 'Mero CRM',
+    displayName: 'Hyperfeed CRM',
     // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
     // handed to the landing page as `onConnect`; there is no mero-react popup.
     ownConnect: true,
@@ -623,7 +623,7 @@ export const APPS = {
   },
 
   'mero-forms': {
-    displayName: 'Mero Forms',
+    displayName: 'Hyperfeed Forms',
     // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
     // handed to the landing page as `onConnect`; there is no mero-react popup.
     ownConnect: true,
@@ -644,7 +644,7 @@ export const APPS = {
           { label: 'Who can read them', them: 'Your team, and the vendor', us: 'Your team. A website key can add a response and read nothing' },
           { label: 'Checking answers', them: 'In the form page, if at all', us: 'In the contract, against every question, whoever sends it' },
           { label: 'Your website’s form', them: 'An embed or a third-party script', us: 'Your own backend, answering with a key issued from the app' },
-          { label: 'Following up', them: 'An integration, or a copy and paste', us: 'Send to Mero CRM as a contact and a deal, in one click' },
+          { label: 'Following up', them: 'An integration, or a copy and paste', us: 'Send to Hyperfeed CRM as a contact and a deal, in one click' },
         ],
       },
       closing: {
@@ -652,17 +652,17 @@ export const APPS = {
         body: 'Sign in with a passkey, start a workspace, then start from a template.',
       },
     },
-    trust: ['No form vendor', 'Answers checked by the contract', 'Hands off to Mero CRM'],
+    trust: ['No form vendor', 'Answers checked by the contract', 'Hands off to Hyperfeed CRM'],
     explainer: [
       'A form builder for a team: short answer, paragraph, email, phone, number, website, date, multiple choice and checkboxes, each required or not, with help text. Responses come in from your website or are entered by hand, and read back as a summary, a table and one response at a time, with a CSV export.',
-      'A workspace of forms is a Calimero app in your organization, and only its team reads the responses. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Mero CRM as a contact and a deal.',
+      'A workspace of forms is a Calimero app in your organization, and only its team reads the responses. A website answers through a key that is bound to one form and can do nothing else, and any response worth following up goes on to Hyperfeed CRM as a contact and a deal.',
     ],
     features: [
       { icon: 'FileCheck', title: 'Nine kinds of question', body: 'Short answer to checkboxes, required or optional, with help text, reordered and duplicated in a builder that reads like the form it makes.' },
       { icon: 'LockCheck', title: 'Every answer checked', body: 'The contract checks each answer against its question: an email is an email, a choice is one of the options. A tampered website fails loudly instead of storing junk.' },
       { icon: 'ExternalLink', title: 'A link, or your website', body: 'Share a public link anyone can answer without signing in, or give your site’s backend a form key. Either can add responses to its one form and nothing else.' },
       { icon: 'BarChart', title: 'Responses at a glance', body: 'A summary of every choice question, a searchable table, the full response in a panel, and a CSV with one column per question.' },
-      { icon: 'ArrowUpRight', title: 'Straight into Mero CRM', body: 'Map which question is the name, email and company once. Each response becomes a contact and a deal with every answer in a note.' },
+      { icon: 'ArrowUpRight', title: 'Straight into Hyperfeed CRM', body: 'Map which question is the name, email and company once. Each response becomes a contact and a deal with every answer in a note.' },
       { icon: 'Shield', title: 'Kept exactly as sent', body: 'A response stores every question as it was when it was answered, so editing the form never rewrites what people told you.' },
     ],
     faq: [
@@ -675,8 +675,8 @@ export const APPS = {
         a: 'Nothing. Each response keeps every question’s label and kind as they were when it was answered, and a question you removed still shows on the responses that answered it.',
       },
       {
-        q: 'Do I need Mero CRM?',
-        a: 'No. Forms works on its own, with a summary, a table and a CSV export. Linking a form to a Mero CRM pipeline only adds the one-click hand-off.',
+        q: 'Do I need Hyperfeed CRM?',
+        a: 'No. Forms works on its own, with a summary, a table and a CSV export. Linking a form to a Hyperfeed CRM pipeline only adds the one-click hand-off.',
       },
       {
         q: 'Can I take a response by hand?',
@@ -710,7 +710,7 @@ export const APPS = {
 
 
   'mero-pixart': {
-    displayName: 'Mero PixArt',
+    displayName: 'Hyperfeed PixArt',
     // A component app (Calimero 1.0): sign-in is the app's own passkey modal,
     // handed to the landing page as `onConnect`; there is no mero-react popup.
     ownConnect: true,
@@ -826,7 +826,7 @@ export const APPS = {
   },
 
   'mero-sheets': {
-    displayName: 'Mero Sheets',
+    displayName: 'Hyperfeed Sheets',
     // A component app (calimero-sdk, merod local, CalimeroClient): no
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     e2eDir: null,
@@ -945,7 +945,7 @@ export const APPS = {
     // Playwright, so no generated landing spec. docs/COMPONENT-APPS.md.
     // Passes its own passkey sign-in to the landing page as `onConnect`.
     ownConnect: true,
-    displayName: 'Mero Sign',
+    displayName: 'Hyperfeed Sign',
     e2eDir: null,
     // Same light/dark key as the app shell (src/theme.ts), so the landing
     // choice carries through sign-in.
@@ -973,7 +973,7 @@ export const APPS = {
     experimental: true,
     trust: ['Measured, not promised', 'Deterministic codec', 'Web only'],
     explainer: [
-      'An honest experiment rather than a finished product: how far can the Calimero network carry live video? Mero Stream exists to find the ceiling and report it, and the number it produces is the point.',
+      'An honest experiment rather than a finished product: how far can the Calimero network carry live video? Hyperfeed Stream exists to find the ceiling and report it, and the number it produces is the point.',
       'There are three paths. One runs a deliberately simple integer-only codec inside the app component itself; one stores browser-encoded H.264 in the app\u2019s log; the call carries it over the node\u2019s ephemeral presence channel and stores nothing. Comparing them is what makes the limit legible.',
     ],
     features: [
@@ -985,7 +985,7 @@ export const APPS = {
     faq: [
       {
         q: 'Is this production-ready?',
-        a: 'No, and it does not claim to be. Mero Stream is a capacity probe: it exists to measure how much live media a Calimero app can carry. Treat its numbers as findings, not guarantees.',
+        a: 'No, and it does not claim to be. Hyperfeed Stream is a capacity probe: it exists to measure how much live media a Calimero app can carry. Treat its numbers as findings, not guarantees.',
       },
       {
         q: 'Why web only?',

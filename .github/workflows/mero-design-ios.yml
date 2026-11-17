@@ -1,8 +1,8 @@
-# Native iOS Mero Design (apps/mero-design/mobile/ios): test the DesignCore package
+# Native iOS Hyperfeed Design (apps/mero-design/mobile/ios): test the DesignCore package
 # (generated client, scene builder, view models) on macOS, then generate the Xcode
 # project from project.yml and build the app for the iOS Simulator. The swift-sdk is
 # resolved from GitHub at the revision project.yml and DesignCore/Package.swift pin.
-name: Mero Design iOS
+name: Hyperfeed Design iOS
 
 on:
   pull_request:

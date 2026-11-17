@@ -1,11 +1,11 @@
-# The native Android Mero Sheets (apps/mero-sheets/mobile/android).
+# The native Android Hyperfeed Sheets (apps/mero-sheets/mobile/android).
 #
 # Mirrors the Calimero Kotlin SDK's own CI (kotlin-sdk/.github/workflows/ci.yml): ktlint + detekt,
 # JVM unit tests, Android Lint, assembleDebug. The SDK is not on a registry yet, so the app builds
 # it from source: scripts/fetch-sdk.sh checks out the commit pinned in kotlin-sdk.ref and
 # settings.gradle.kts includes it as a composite build.
 
-name: Mero Sheets Android
+name: Hyperfeed Sheets Android
 
 on:
   pull_request:

@@ -1,8 +1,8 @@
 # @calimero-network/mero-pass
 
-How a Mero Pass vault is opened, read and written, with no browser or React
+How a Hyperfeed Pass vault is opened, read and written, with no browser or React
 dependency: the crypto (`crypto.ts`) and the vault session (`vaultSession.ts`).
-The Mero Pass app uses it, and so will an agent such as mero-bot, so both open
+The Hyperfeed Pass app uses it, and so will an agent such as mero-bot, so both open
 a vault the same way and agree on who is let in.
 
 | | |

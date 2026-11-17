@@ -1,9 +1,9 @@
 import MeroKitUI
 import SwiftUI
 
-/// The landing page at phone width: a nav bar with the Mero Chat mark, the
+/// The landing page at phone width: a nav bar with the Hyperfeed Chat mark, the
 /// hero, a glimpse of a channel, what the app does, and sign-in pinned at the
-/// bottom: Calimero Cloud through Mero Chat's sign-in page (the same sign-in
+/// bottom: Calimero Cloud through Hyperfeed Chat's sign-in page (the same sign-in
 /// as on the web: a passkey, or a new one), or a development node (`merod
 /// local`) with mock attestation and a software passkey kept for it.
 struct SignInView: View {
@@ -38,7 +38,7 @@ struct SignInView: View {
     private var navBar: some View {
         HStack(spacing: 10) {
             AppMark(size: 30)
-            Text("Mero Chat")
+            Text("Hyperfeed Chat")
                 .font(Theme.font(18, .bold))
                 .tracking(-0.3)
                 .foregroundStyle(Theme.ink)

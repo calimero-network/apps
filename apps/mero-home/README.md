@@ -153,6 +153,6 @@ global setup refuses an older merod with that reason. CI runs it in
 pnpm -F mero-home test:e2e`.
 
 [`e2e/cross-app`](../../e2e/cross-app/playwright.config.ts) runs Home beside
-Mero Chat and KV Store over one org (CI: `components.yml`'s `cross-app` job):
+Hyperfeed Chat and KV Store over one org (CI: `components.yml`'s `cross-app` job):
 a workspace made in Chat shows in Home, Home adds an app, invites to both and
 takes someone out of Chat only, and Chat's member list follows.

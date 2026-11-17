@@ -1,4 +1,4 @@
-# Native iOS Mero Vote (apps/mero-vote/mobile/ios).
+# Native iOS Hyperfeed Vote (apps/mero-vote/mobile/ios).
 #
 # - Vectors: mobile/test-vectors/vectors.json is regenerated from the web client's own crypto
 #   (generate.mjs imports app/src/crypto/{protocol,verify}.ts) and must be unchanged, so the
@@ -8,7 +8,7 @@
 #   vectors and the swift-sdk's in-memory fakes.
 # - App: the Xcode project is generated from project.yml and the app is built for the iOS
 #   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
-name: Mero Vote iOS
+name: Hyperfeed Vote iOS
 
 on:
   pull_request:

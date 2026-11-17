@@ -105,7 +105,7 @@ final class WorkspacesModel: ObservableObject {
     /// Redeem an invitation link or token. Returns the joined org id.
     func join(invitation input: String) async -> String? {
         guard let invitation = ChatInvitation.parse(input) else {
-            errorText = "That isn't a Mero Chat invitation link."
+            errorText = "That isn't a Hyperfeed Chat invitation link."
             return nil
         }
         isWorking = true

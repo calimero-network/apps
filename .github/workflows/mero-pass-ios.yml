@@ -1,4 +1,4 @@
-# Native iOS Mero Pass (apps/mero-pass/mobile/ios).
+# Native iOS Hyperfeed Pass (apps/mero-pass/mobile/ios).
 #
 # - Logic: the PassCore package (vault crypto, vault session, generated contract client, view
 #   models) is tested on macOS with `swift test`: the crypto against the web's test vectors
@@ -7,7 +7,7 @@
 #   on the web that would break native vaults fails here.
 # - App: the Xcode project is generated from project.yml and the app is built for the iOS
 #   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
-name: Mero Pass iOS
+name: Hyperfeed Pass iOS
 
 on:
   pull_request:

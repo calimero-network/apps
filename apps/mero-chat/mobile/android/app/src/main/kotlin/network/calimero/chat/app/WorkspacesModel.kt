@@ -89,7 +89,7 @@ class WorkspacesModel(
     fun offerInvite(input: String): Boolean {
         val invite = ChatInvites.parse(input)
         if (invite == null) {
-            _state.update { it.copy(error = "That doesn't look like a Mero Chat invitation link.") }
+            _state.update { it.copy(error = "That doesn't look like a Hyperfeed Chat invitation link.") }
             return false
         }
         _state.update { it.copy(pendingInvite = invite, error = null) }

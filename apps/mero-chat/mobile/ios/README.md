@@ -1,6 +1,6 @@
-# Mero Chat for iOS
+# Hyperfeed Chat for iOS
 
-A native SwiftUI client for [Mero Chat](../../) on the same contract as the web
+A native SwiftUI client for [Hyperfeed Chat](../../) on the same contract as the web
 app (`com.calimero.chat`, the component ABI in
 [`logic/res/abi.json`](../../logic/res/abi.json), web port #730), built on
 [MeroKit / MeroKitUI](https://github.com/calimero-network/swift-sdk).
@@ -27,7 +27,7 @@ runs over the SDK's `CalimeroAppBackend`:
 | Join from an invitation | `joinNamespace` | `POST /invites/{token}/redeem` |
 | Live updates | `events(contextId:)` | `GET /apps/{app}/events` (sealed SSE); polling every 5 s once the stream ends |
 | Attachments and avatars | `uploadBlob` / `getBlob` | `/apps/{app}/blobs` |
-| Approvals (an update of Mero Chat, a node release) | `CalimeroClient.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:confirm:)` (`ApprovalsModel`) | `POST /consent/requests` → the confirmation code on screen → the node's consent page in the system browser → `GET /consent/{id}/result` |
+| Approvals (an update of Hyperfeed Chat, a node release) | `CalimeroClient.pendingApprovals(org:)` + `MeroClient.requestConsent(_:callback:confirm:)` (`ApprovalsModel`) | `POST /consent/requests` → the confirmation code on screen → the node's consent page in the system browser → `GET /consent/{id}/result` |
 
 `ComponentChatContract` is the one place that knows the component ABI: the
 rest of the app keeps v1's method names and shapes (`send_message`,
@@ -79,17 +79,17 @@ open too: the node names the org when the token is redeemed. Pre-1.0 links
 
 Node releases and upgrades of an app instance are approved only on the node's
 own consent page. The workspace picker lists what waits for the signed-in
-person (updates of Mero Chat, node releases their org approves); **Review**
+person (updates of Hyperfeed Chat, node releases their org approves); **Review**
 first shows the request's confirmation code, then opens the page in the system
 browser, which shows the same code and returns to `mero-chat://consent`.
 
 ## Design
 
-The app draws Mero Chat the way the web app draws it below 1024px, from the
+The app draws Hyperfeed Chat the way the web app draws it below 1024px, from the
 same tokens (`packages/glass/src/glass.css`, `app/src/index.css`), light and
 dark, in Figtree (bundled, SIL OFL, `Resources/Fonts`):
 
-- **Landing:** a nav bar with the mark and "Mero Chat", the hero, a channel preview, the features, and sign-in pinned at the bottom (cluster URL and passkey, create an account, or a development node).
+- **Landing:** a nav bar with the mark and "Hyperfeed Chat", the hero, a channel preview, the features, and sign-in pinned at the bottom (cluster URL and passkey, create an account, or a development node).
 - **Workspace entry:** the web app's entry card (select, name yourself, create, join from a link).
 - **Sidebar:** a full-screen panel with the logo, the workspace switcher,
   Browse Channels, CHANNELS (`#`, or a lock for a private channel) and DIRECT
@@ -221,7 +221,7 @@ job is gone: relays do not exist on 1.0).
 | --- | --- | --- |
 | `CalimeroClusterURL` | empty | the Calimero Cloud cluster's node URL; empty: the sign-in screen asks |
 | `DefaultNodeURL` | `http://localhost:2501` | the development node the sign-in screen prefills |
-| `MeroPackageVersion` | empty | the Mero Chat version new channels run; empty: the latest |
+| `MeroPackageVersion` | empty | the Hyperfeed Chat version new channels run; empty: the latest |
 | `MeroChatCallbackScheme` | `mero-chat` | where the consent page returns (`mero-chat://consent`) |
 | `MeroChatCallbackHost` / `MeroChatCallbackPath` | unset / `/consent` | a verified https return instead (Associated Domains, iOS 17.4+) |
 
@@ -242,7 +242,7 @@ TEST_RUNNER_MERO_SNAPSHOT_DIR=/tmp/mero-chat-snaps xcodebuild test -project Mero
 
 ## When the app instance is too old
 
-A channel created against an older Mero Chat installed on the cluster fails
+A channel created against an older Hyperfeed Chat installed on the cluster fails
 in its `init` (`unknown field \`context_type\``). The app says so
 (`ChatErrorText.outdatedChat`); the app instance has to be upgraded, which
 the owner approves on the consent page (see Approvals).

@@ -1,9 +1,9 @@
-# Native iOS Mero Calendar (apps/mero-calendar/mobile/ios): run the calendar
+# Native iOS Hyperfeed Calendar (apps/mero-calendar/mobile/ios): run the calendar
 # layer's tests (the local CalendarCore package, on macOS with `swift test`),
 # then generate the Xcode project from project.yml and build the app for iOS.
 # The swift-sdk is resolved from GitHub at the revision Core/Package.swift and
 # project.yml pin.
-name: Mero Calendar iOS
+name: Hyperfeed Calendar iOS
 
 on:
   pull_request:

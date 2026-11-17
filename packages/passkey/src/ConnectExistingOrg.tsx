@@ -13,7 +13,7 @@ export interface ConnectExistingOrgProps {
    * A rejection is shown under the list and the choice can be made again.
    */
   onConnect: (org: OtherOrg) => Promise<void> | void;
-  /** The app's name, for the copy ("Add Mero Chat to …"). */
+  /** The app's name, for the copy ("Add Hyperfeed Chat to …"). */
   appName: string;
   /** The button's words (default "Connect to an existing organization"). */
   label?: string;
@@ -32,7 +32,7 @@ type State =
  * The secondary, explicit way to put an app into an organization the account
  * already has (one made for another app): a button, "Connect to an existing
  * organization", that lists those organizations with what each holds
- * ("overworld — Mero Blocks: overworld"). Nothing is preselected and nothing
+ * ("overworld — Hyperfeed Blocks: overworld"). Nothing is preselected and nothing
  * happens until the person picks one; creating a new organization for the app
  * stays the primary action, next to it.
  *

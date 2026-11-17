@@ -49,7 +49,7 @@ const caps = (over: Partial<PackageCapabilities> = {}): PackageCapabilities => (
   mpk: "mpk-hash",
   manifestHash: "manifest-hash",
   signer: "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
-  name: "Mero CRM",
+  name: "Hyperfeed CRM",
   author: null,
   outbound: [],
   abi: abi({}),

@@ -31,7 +31,7 @@ final class ApprovalsTests: XCTestCase {
     func testItemsKeepThisAppsUpgradesAndActionableReleases() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: "org1"), org: "org1", packageName: ChatConstants.packageName,
-            appName: "Mero Chat")
+            appName: "Hyperfeed Chat")
         XCTAssertEqual(
             items.map(\.kind), [.upgrade(app: "app-1", version: "1.2.0"), .release(org: "org1", version: "2.3.110")])
         XCTAssertEqual(
@@ -45,7 +45,7 @@ final class ApprovalsTests: XCTestCase {
     func testOperatorHeldDecisionsAreNotOffered() throws {
         let items = ApprovalsModel.items(
             from: try Self.pending(org: nil, upgradesBy: "operator", releasesBy: "operator"), org: nil,
-            packageName: ChatConstants.packageName, appName: "Mero Chat")
+            packageName: ChatConstants.packageName, appName: "Hyperfeed Chat")
         XCTAssertTrue(items.isEmpty)
     }
 
@@ -54,7 +54,7 @@ final class ApprovalsTests: XCTestCase {
         let started = try JSONDecoder().decode(
             ConsentStarted.self, from: Data(#"{"requestId":"r1","url":"https://n/consent/r1","expiresAt":0,"code":"ABC-DEF"}"#.utf8))
         let model = ApprovalsModel(
-            packageName: ChatConstants.packageName, appName: "Mero Chat",
+            packageName: ChatConstants.packageName, appName: "Hyperfeed Chat",
             fetch: { org in
                 guard let org else { throw NotFound("no account report") }
                 return try Self.pending(org: org)
@@ -82,7 +82,7 @@ final class ApprovalsTests: XCTestCase {
         let started = try JSONDecoder().decode(
             ConsentStarted.self, from: Data(#"{"requestId":"r2","url":"https://n/consent/r2","expiresAt":0}"#.utf8))
         let model = ApprovalsModel(
-            packageName: ChatConstants.packageName, appName: "Mero Chat",
+            packageName: ChatConstants.packageName, appName: "Hyperfeed Chat",
             fetch: { org in try Self.pending(org: org ?? "org1") },
             consent: { _, confirm in
                 _ = await confirm(started)
@@ -100,7 +100,7 @@ final class ApprovalsTests: XCTestCase {
 
     func testARefusedRequestSaysWhy() async throws {
         let model = ApprovalsModel(
-            packageName: ChatConstants.packageName, appName: "Mero Chat",
+            packageName: ChatConstants.packageName, appName: "Hyperfeed Chat",
             fetch: { org in try Self.pending(org: org ?? "org1") },
             consent: { _, _ in nil },
             failure: { "returnTo must be the requesting app's own frontend origin" })

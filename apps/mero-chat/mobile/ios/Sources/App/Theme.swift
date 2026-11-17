@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// The web app's design tokens (`packages/glass/src/glass.css`, `app/src/index.css`),
-/// light and dark, so the phone draws Mero Chat exactly as the web does.
+/// light and dark, so the phone draws Hyperfeed Chat exactly as the web does.
 enum Theme {
     /// `--glass-tint`: the app's yellow.
     static let tint = Color(hex: 0xFFC93C)

@@ -65,8 +65,8 @@ enum ChatErrorText {
     /// it; the app instance has to be upgraded.
     static func outdatedChat(in text: String) -> String? {
         if text.contains("unknown field `context_type`") || text.contains("failed to deserialize arguments") {
-            return "This workspace runs an older Mero Chat that can't create channels from this app. "
-                + "Its app instances have to be upgraded to the current Mero Chat (see Approvals)."
+            return "This workspace runs an older Hyperfeed Chat that can't create channels from this app. "
+                + "Its app instances have to be upgraded to the current Hyperfeed Chat (see Approvals)."
         }
         return nil
     }

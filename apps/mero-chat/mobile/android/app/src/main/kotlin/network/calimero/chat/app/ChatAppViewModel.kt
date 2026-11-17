@@ -108,7 +108,7 @@ class ChatAppViewModel(
     val approvals =
         ApprovalsModel(
             packageName = ChatInvites.APP_SLUG,
-            appName = "Mero Chat",
+            appName = "Hyperfeed Chat",
             fetch = { org -> (_session.value?.client ?: throw IOException("Not signed in")).pendingApprovals(org) },
             consent = { build, confirm ->
                 val session = _session.value ?: throw IOException("Not signed in")

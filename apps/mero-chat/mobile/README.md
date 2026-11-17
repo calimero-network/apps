@@ -1,6 +1,6 @@
-# Mero Chat — native mobile apps
+# Hyperfeed Chat — native mobile apps
 
-Native iOS and Android clients for Mero Chat, next to the web frontend (`../app`) and the
+Native iOS and Android clients for Hyperfeed Chat, next to the web frontend (`../app`) and the
 contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
@@ -16,7 +16,7 @@ To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (t
 Both apps sign in to a Calimero 1.0 cluster with a passkey and talk to it over the SDKs' sealed
 channel. They call the component contract the web port (#730) ships in `../logic/res/abi.json`.
 
-- **Sign in:** **Calimero Cloud** opens Mero Chat's sign-in page in the system sheet (the web
+- **Sign in:** **Calimero Cloud** opens Hyperfeed Chat's sign-in page in the system sheet (the web
   app's own sign-in), where the person signs in or creates an account with their passkey. **Development node** takes a
   `merod local` URL and trusts its mock attestation, with a software passkey kept per node.
 - **Contract:** Android calls it through `ChatClient`, generated from the ABI by
@@ -30,7 +30,7 @@ channel. They call the component contract the web port (#730) ships in `../logic
   account ids (v1 used base58 `UserId`s).
 - **Invitations** are org invite tokens (minting is a passkey step-up). Links are the SDKs'
   `OrgInvitation` form; the web app's `?invite=inv_…` links and bare tokens open too.
-- **Approvals:** releases and Mero Chat upgrades that wait for the account. Review shows the
+- **Approvals:** releases and Hyperfeed Chat upgrades that wait for the account. Review shows the
   request's confirmation code, then opens the node's consent page in the system browser, which
   returns to `mero-chat://consent`.
 - **Live updates:** the app instance's event stream, with polling of the open channel as the
@@ -52,7 +52,7 @@ README lists them with the reason.
 
 ## Open points
 
-- **Sign-in on Calimero Cloud** runs on Mero Chat's served page in the system sign-in sheet
+- **Sign-in on Calimero Cloud** runs on Hyperfeed Chat's served page in the system sign-in sheet
   (`#native-sign-in`), which returns an app-bound session to `mero-chat://signed-in`.
   - **iOS:** `MeroClient.signInWithServedPage` (swift-sdk, pinned to a commit until released).
   - **Android:** not wired yet (kotlin-sdk, Custom Tabs).

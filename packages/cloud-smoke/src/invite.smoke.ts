@@ -1,5 +1,5 @@
 /**
- * Invites a second person to a workspace in Mero CRM on a real Calimero Cloud
+ * Invites a second person to a workspace in Hyperfeed CRM on a real Calimero Cloud
  * cluster, through the shared invite and join dialogs.
  *
  * Both sessions are bound to the app's package, so core refuses them creating or
@@ -60,7 +60,7 @@ async function servedContext(browser: import("@playwright/test").Browser, origin
   return context;
 }
 
-test.skip(process.env.INVITE_E2E !== "1", "set INVITE_E2E=1 to run against a cluster serving Mero CRM");
+test.skip(process.env.INVITE_E2E !== "1", "set INVITE_E2E=1 to run against a cluster serving Hyperfeed CRM");
 
 test("an invite made in the shared dialog is accepted in the shared dialog", async ({ browser }) => {
   mkdirSync(SHOTS, { recursive: true });

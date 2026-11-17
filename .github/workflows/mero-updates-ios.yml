@@ -1,9 +1,9 @@
-# Native iOS Mero Updates (apps/mero-updates/mobile/ios): test the core package
+# Native iOS Hyperfeed Updates (apps/mero-updates/mobile/ios): test the core package
 # (generated client, helpers, view models) on macOS, then generate the Xcode
 # project from project.yml and build the app for the iOS Simulator. The
 # swift-sdk is resolved from GitHub at the revision Core/Package.swift and
 # project.yml pin.
-name: Mero Updates iOS
+name: Hyperfeed Updates iOS
 
 on:
   pull_request:

@@ -121,7 +121,7 @@ authenticator, so every passkey ceremony and step-up is real.
   invite to one app only, list the pending invites by app and revoke one. The
   invited member signs up from the link and gets that app only.
 - **Cross-app** (`e2e/cross-app/cross-app.spec.ts`, components.yml
-  `cross-app`): Alice makes a workspace in Mero Chat and invites Bob from Home
+  `cross-app`): Alice makes a workspace in Hyperfeed Chat and invites Bob from Home
   to Chat and KV Store. Bob signs up from the link and reaches the org in both
   apps. Then Alice takes him out of Chat only, and Chat's member list follows.
 

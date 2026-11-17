@@ -1,4 +1,4 @@
-# Mero Chat
+# Hyperfeed Chat
 
 Team chat: workspaces with public and private channels, threads, reactions,
 mentions, direct messages, drafts, read positions, moderation roles, files and

@@ -102,7 +102,7 @@ beforeEach(() => {
       name: "overworld",
       role: "owner",
       holds: [{ appId: "b1", name: "overworld", package: "com.calimero.mero-blocks" }],
-      label: "Mero Blocks: overworld",
+      label: "Hyperfeed Blocks: overworld",
       canCreate: true,
     },
   ]);
@@ -204,7 +204,7 @@ describe("NamespaceEntryPopup", () => {
     expect(h.createGroup).not.toHaveBeenCalled();
   });
 
-  // An account in an org made for another app (a Mero Blocks world) has no
+  // An account in an org made for another app (a Hyperfeed Blocks world) has no
   // chat workspace: creating one is the primary action, and that org is only
   // offered behind "Connect to an existing organization".
   describe("an org made for another app", () => {
@@ -225,7 +225,7 @@ describe("NamespaceEntryPopup", () => {
       fireEvent.click(await screen.findByTestId("connect-existing-org"));
       const choice = await screen.findByTestId("connect-org-ow");
       expect(choice).toHaveTextContent("overworld");
-      expect(choice).toHaveTextContent("Mero Blocks: overworld");
+      expect(choice).toHaveTextContent("Hyperfeed Blocks: overworld");
       fireEvent.click(choice);
       await waitFor(() => expect(h.createChannel).toHaveBeenCalledWith("ow", "general", true));
       expect(await screen.findByText("Join overworld")).toBeInTheDocument();

@@ -1,7 +1,7 @@
 {
   "name": "@calimero-network/mero-pass",
   "version": "0.1.0",
-  "description": "Mero Pass vault crypto and session logic for browsers and Node: open, read and write an end-to-end encrypted Mero Pass vault, as the app or as an agent (mero-bot).",
+  "description": "Hyperfeed Pass vault crypto and session logic for browsers and Node: open, read and write an end-to-end encrypted Hyperfeed Pass vault, as the app or as an agent (mero-bot).",
   "type": "module",
   "// exports": [
     "In the workspace the app and tests read the TypeScript source, so nothing",

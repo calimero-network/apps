@@ -1,4 +1,4 @@
-# The native Android Mero Blocks app (apps/mero-blocks/mobile/android), and the game page both
+# The native Android Hyperfeed Blocks app (apps/mero-blocks/mobile/android), and the game page both
 # native apps bundle (apps/mero-blocks/mobile/game).
 #
 # Android mirrors the Calimero Kotlin SDK's own CI (kotlin-sdk/.github/workflows/ci.yml): ktlint +
@@ -10,7 +10,7 @@
 # The game job rebuilds the page from the web app's engine (apps/mero-blocks/app/src) and fails
 # when the committed bundle is stale, so an engine change on the web side shows up here.
 
-name: Mero Blocks Android
+name: Hyperfeed Blocks Android
 
 on:
   pull_request:

@@ -23,7 +23,7 @@ const card = (over: Partial<PackageCapabilities> = {}): PackageCapabilities => (
   mpk: "mpk-hash",
   manifestHash: "manifest-hash",
   signer: "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
-  name: "Mero CRM",
+  name: "Hyperfeed CRM",
   author: null,
   outbound: ["https://api.stripe.com/v1/"],
   abi: {
@@ -116,7 +116,7 @@ describe("WorkspaceReview", () => {
     await ready();
     for (const name of ["The app", "What it can do", "Where it runs", "Your data"]) expect(section(name)).toBeTruthy();
     const app = section("The app");
-    expect(within(app).getByText("Mero CRM v1.4.0")).toBeTruthy();
+    expect(within(app).getByText("Hyperfeed CRM v1.4.0")).toBeTruthy();
     expect(within(app).getByText("did:key:z6Mk…2doK")).toBeTruthy();
     expect(within(app).getByText("bundle 7f3a…c91e, from the signed release")).toBeTruthy();
   });

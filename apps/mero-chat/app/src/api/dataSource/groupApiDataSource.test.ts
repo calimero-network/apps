@@ -229,7 +229,7 @@ describe("a channel is a chat instance in the org", () => {
 });
 
 describe("an org made for another app is not a workspace", () => {
-  /** The account of the bug: in `overworld`, which holds only a Mero Blocks world. */
+  /** The account of the bug: in `overworld`, which holds only a Hyperfeed Blocks world. */
   function overworld(): void {
     h.state.orgs.set("ow", {
       orgId: "ow",
@@ -260,7 +260,7 @@ describe("an org made for another app is not a workspace", () => {
   it("is offered under connect, labelled with what it holds", async () => {
     overworld();
     const others = await api.listOtherOrgs();
-    expect(others.map((o) => [o.orgId, o.name, o.label])).toEqual([["ow", "overworld", "Mero Blocks: overworld"]]);
+    expect(others.map((o) => [o.orgId, o.name, o.label])).toEqual([["ow", "overworld", "Hyperfeed Blocks: overworld"]]);
   });
 
   it("becomes a workspace once #general is created in it, and stays resumable", async () => {

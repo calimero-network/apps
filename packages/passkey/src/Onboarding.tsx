@@ -77,7 +77,7 @@ export const ACCOUNTS_ARE_PASSKEYS = "Accounts are passkeys: nothing to remember
 
 export interface SignInPanelProps {
   api: SessionApi;
-  /** The app's name, as the copy says it ("Mero CRM"). */
+  /** The app's name, as the copy says it ("Hyperfeed CRM"). */
   appName: string;
   /** What an invite joins, as a noun phrase: "the workspace", "the team". */
   joining: string;

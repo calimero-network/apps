@@ -41,7 +41,7 @@ class ApprovalsModelTest {
     }
 
     private fun model(consent: suspend ((String) -> ConsentRequest, suspend (ConsentStarted) -> Boolean) -> ConsentResult?) =
-        ApprovalsModel(ChatInvites.APP_SLUG, "Mero Chat", fetch = { org -> if (org == "denied") error("not an owner") else pending(org) }, consent = consent)
+        ApprovalsModel(ChatInvites.APP_SLUG, "Hyperfeed Chat", fetch = { org -> if (org == "denied") error("not an owner") else pending(org) }, consent = consent)
 
     @Test
     fun `approving shows the code, then opens the consent page`() =

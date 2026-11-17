@@ -347,7 +347,7 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Calendar holds two kinds of event with different audiences in the same screen, and booking links for people with no account.',
+          'Hyperfeed Calendar holds two kinds of event with different audiences in the same screen, and booking links for people with no account.',
         ],
         concepts: [
           { term: 'Team', def: 'A Calimero organization. The people in it are the people who can be invited to events.' },
@@ -537,7 +537,7 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Docs is built folder by folder, and that structure is the product. Your workspace holds the folder tree, and each folder holds its own documents separately.',
+          'Hyperfeed Docs is built folder by folder, and that structure is the product. Your workspace holds the folder tree, and each folder holds its own documents separately.',
           'That is what makes selective sharing real: a folder\u2019s documents are an app instance only that folder\u2019s members can reach, so giving somebody one folder gives them that folder and nothing else.',
         ],
         concepts: [
@@ -808,11 +808,11 @@ export const DOCS = {
       },
       {
         id: 'sharing',
-        heading: 'Your website, and Mero CRM',
+        heading: 'Your website, and Hyperfeed CRM',
         paragraphs: [
           'An admin issues a form key from the form’s Connect tab: an API key, approved with their passkey, that reaches only this workspace’s two website methods and is registered with the form. The app shows its environment variables once for the website’s backend, which calls the workspace with it.',
           'Revoking a key revokes the API key and its registration, and the website stops being able to send.',
-          'Link a form to a Mero CRM pipeline you can reach, choose the stage new deals start in and which question fills the name, email, phone and organization. Send to CRM then makes a contact (reusing one with the same email), a deal, and a note with every answer.',
+          'Link a form to a Hyperfeed CRM pipeline you can reach, choose the stage new deals start in and which question fills the name, email, phone and organization. Send to CRM then makes a contact (reusing one with the same email), a deal, and a note with every answer.',
         ],
       },
       {
@@ -831,7 +831,7 @@ export const DOCS = {
         heading: 'When something looks wrong',
         concepts: [
           { term: 'A website’s response is refused', def: 'An answer does not fit its question (an option the form does not have, a required question left blank), the form is closed, or the key was issued for another form.' },
-          { term: 'Send to CRM offers no pipeline', def: 'Your account does not reach a Mero CRM pipeline yet. Join its organization from an invite link, or paste its id in the Connect tab.' },
+          { term: 'Send to CRM offers no pipeline', def: 'Your account does not reach a Hyperfeed CRM pipeline yet. Join its organization from an invite link, or paste its id in the Connect tab.' },
           { term: 'A form will not delete', def: 'It has responses. Close it instead, so nothing anyone sent disappears.' },
         ],
       },
@@ -1102,7 +1102,7 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Stream is a capacity probe, not a finished product, and this page would rather say so than oversell it. It exists to find out how far live media can be pushed through a Calimero app, and to report the answer honestly.',
+          'Hyperfeed Stream is a capacity probe, not a finished product, and this page would rather say so than oversell it. It exists to find out how far live media can be pushed through a Calimero app, and to report the answer honestly.',
         ],
         concepts: [
           { term: 'Stream', def: 'An organization you own and invite people into. Everyone in it reaches every room.' },
@@ -1165,7 +1165,7 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Same model as Mero Blocks, in two dimensions: a world is a seed plus the tiles somebody changed, which is why it needs no game server and fits in a context.',
+          'Same model as Hyperfeed Blocks, in two dimensions: a world is a seed plus the tiles somebody changed, which is why it needs no game server and fits in a context.',
         ],
         concepts: [
           { term: 'Namespace', def: 'A world you own. Invite people and they dig in the same one.' },

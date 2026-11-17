@@ -241,7 +241,7 @@ struct WorkspacePicker: View {
     // MARK: Join
 
     @ViewBuilder private var joinStep: some View {
-        title("Join a workspace", sub: "Paste the invitation link someone shared from Mero Chat on the web, desktop or a phone.")
+        title("Join a workspace", sub: "Paste the invitation link someone shared from Hyperfeed Chat on the web, desktop or a phone.")
         Theme.label("Invitation link", size: 10.9, opacity: 35).padding(.bottom, 8)
         TextField("https://links.calimero.network/…", text: $text, axis: .vertical)
             .lineLimit(2...5)

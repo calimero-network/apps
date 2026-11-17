@@ -1,10 +1,10 @@
-# Native iOS Mero Stream (apps/mero-stream/mobile/ios): check the media-framing
+# Native iOS Hyperfeed Stream (apps/mero-stream/mobile/ios): check the media-framing
 # test vectors still match the web app's encoder, test the core package
 # (generated client, framing, codecs, view models) on macOS, then generate the Xcode
 # project from project.yml and build the app for the iOS Simulator. The
 # swift-sdk is resolved from GitHub at the revision Core/Package.swift and
 # project.yml pin.
-name: Mero Stream iOS
+name: Hyperfeed Stream iOS
 
 on:
   pull_request:

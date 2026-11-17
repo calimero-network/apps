@@ -591,7 +591,7 @@ function renderNotice(
   return root;
 }
 
-/** "KV Store" from a page title such as "KV Store — Calimero" or "Mero Chat | Private P2P Chat". */
+/** "KV Store" from a page title such as "KV Store — Calimero" or "Hyperfeed Chat | Private P2P Chat". */
 export function appNameFromTitle(title: string | undefined): string | null {
   const name = (title ?? "").split(/\s[—|–-]\s/)[0]?.trim();
   return name ? name : null;

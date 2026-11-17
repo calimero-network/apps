@@ -3,7 +3,7 @@ import { browserPasskey } from "@calimero-network/mero-js";
 import { approveNative, declineNative, type NativeApprovalRequest, type NativeApprover } from "./native";
 
 export interface NativeApprovalProps {
-  /** The app's name, as the person knows it: "Mero Chat". */
+  /** The app's name, as the person knows it: "Hyperfeed Chat". */
   appName: string;
   /** The app's own callback, e.g. `mero-chat://approved`. */
   callback: string;
