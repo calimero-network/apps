@@ -649,9 +649,13 @@ export function useSpreadsheet({
     if (!connectedRef.current) await refresh();
   }, [client, refresh, enqueue]);
 
+  // A large sheet goes over several calls: each removes a bounded slice and
+  // answers `false` until the sheet itself is gone.
   const deleteSheet = useCallback(async (sheetId: string) => {
     if (!client) return;
-    await enqueue(() => client.deleteSheet({ sheetId }));
+    while (!(await enqueue(() => client.deleteSheet({ sheetId })))) {
+      // the next slice
+    }
     if (!connectedRef.current) await refresh();
   }, [client, refresh, enqueue]);
 

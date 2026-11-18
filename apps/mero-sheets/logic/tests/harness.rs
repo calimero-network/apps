@@ -207,6 +207,264 @@ fn sheets_are_created_renamed_listed_and_deleted() {
     assert_eq!(view(&mut t, "owner", "exportAll", json!({})), list);
 }
 
+/// The stored entries, from `export_state`'s CBOR map of byte strings.
+fn stored(t: &TestApp) -> Vec<(Vec<u8>, Vec<u8>)> {
+    fn head(b: &[u8], i: &mut usize) -> (u8, usize) {
+        let first = b[*i];
+        *i += 1;
+        let width = match first & 0x1f {
+            n @ 0..=23 => return (first >> 5, usize::from(n)),
+            24 => 1,
+            25 => 2,
+            26 => 4,
+            27 => 8,
+            other => panic!("indefinite CBOR length {other}"),
+        };
+        let n = b[*i..*i + width]
+            .iter()
+            .fold(0usize, |acc, x| (acc << 8) | usize::from(*x));
+        *i += width;
+        (first >> 5, n)
+    }
+    fn bytes(b: &[u8], i: &mut usize) -> Vec<u8> {
+        let (major, n) = head(b, i);
+        assert_eq!(major, 2, "a byte string");
+        let out = b[*i..*i + n].to_vec();
+        *i += n;
+        out
+    }
+    let state = t.export_state();
+    let mut i = 0;
+    let (major, n) = head(&state, &mut i);
+    assert_eq!(major, 5, "a map");
+    (0..n)
+        .map(|_| {
+            let k = bytes(&state, &mut i);
+            (k, bytes(&state, &mut i))
+        })
+        .collect()
+}
+
+/// Stored entries that name `id`, besides the activity log (which keeps the
+/// history of a deleted sheet on purpose).
+fn stored_naming(t: &TestApp, id: &str) -> Vec<String> {
+    let has = |hay: &[u8]| hay.windows(id.len()).any(|w| w == id.as_bytes());
+    stored(t)
+        .into_iter()
+        .filter(|(k, v)| !has_activity(k) && (has(k) || has(v)))
+        .map(|(k, _)| String::from_utf8_lossy(&k).into_owned())
+        .collect()
+}
+
+fn has_activity(key: &[u8]) -> bool {
+    key.windows(b"activity".len()).any(|w| w == b"activity")
+}
+
+#[test]
+fn deleting_a_sheet_removes_everything_on_it() {
+    let mut t = app();
+    let gone = workbook(&mut t);
+    let kept = s(&call(
+        &mut t,
+        "owner",
+        "createSheet",
+        json!({ "name": "Kept" }),
+    ));
+    join(&mut t, "bob", "Bob");
+    for sid in [&gone, &kept] {
+        let _ = set(&mut t, "bob", sid, "0", "0", "1").unwrap();
+        let _ = call(
+            &mut t,
+            "bob",
+            "setCellFormat",
+            json!({ "sheetId": sid, "rowId": "0", "colId": "0", "format": "currency" }),
+        );
+        let comment = s(&call(
+            &mut t,
+            "bob",
+            "addComment",
+            json!({ "sheetId": sid, "rowId": "0", "colId": "0", "text": "hi", "parent": "" }),
+        ));
+        let _ = call(
+            &mut t,
+            "bob",
+            "setCommentResolved",
+            json!({ "id": comment, "resolved": true }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "editNote",
+            json!({ "sheetId": sid, "rowId": "0", "colId": "0", "ops": [{ "insert": "n" }] }),
+        );
+        let _ = call(
+            &mut t,
+            "owner",
+            "protectRange",
+            json!({
+                "sheetId": sid, "topRowId": "5", "leftColId": "5", "bottomRowId": "6", "rightColId": "6",
+                "description": "P", "editors": [],
+            }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "applyStyleOps",
+            json!({ "sheetId": sid, "ops": [{ "row_id": "0", "col_id": "0", "field": "bold", "value": "1" }] }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "addRule",
+            json!({ "rule": rule(sid, "format", "gt", &["0"], false) }),
+        );
+        let mut alert = rule(sid, "alert", "gt", &["0"], false);
+        alert["recipients"] = json!(["bob"]);
+        let _ = call(&mut t, "bob", "addRule", json!({ "rule": alert }));
+        let _ = call(
+            &mut t,
+            "bob",
+            "addChart",
+            json!({ "chart": {
+                "sheet_id": sid, "top_row_id": "0", "left_col_id": "0", "bottom_row_id": "1", "right_col_id": "0",
+                "kind": "bar", "title": "C",
+            } }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "addAttachment",
+            json!({
+                "sheetId": sid, "rowId": "0", "colId": "0", "blobId": "blob1", "name": "a.pdf",
+                "size": "1", "mime": "application/pdf",
+            }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "publishRange",
+            json!({
+                "sheetId": sid, "topRowId": "0", "leftColId": "0", "bottomRowId": "0", "rightColId": "0",
+                "targetContext": "other-app", "name": "R",
+            }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "setSizes",
+            json!({ "sheetId": sid, "sizes": [{ "axis": "row", "id": "0", "size": 40 }] }),
+        );
+        let _ = call(
+            &mut t,
+            "bob",
+            "setFrozen",
+            json!({ "sheetId": sid, "rows": 1, "cols": 1 }),
+        );
+        let pos = format!("{}5", mero_sheets_recalc::layout::implicit_pos(0));
+        let _ = call(
+            &mut t,
+            "bob",
+            "applyAxisOps",
+            json!({ "sheetId": sid, "ops": [{ "name": "InsertRow", "payload": { "id": "nab", "pos": pos } }] }),
+        );
+    }
+    assert!(!stored_naming(&t, &gone).is_empty());
+
+    // A small sheet goes in one call (`false` would mean "call again").
+    assert_ne!(
+        call(&mut t, "owner", "deleteSheet", json!({ "sheetId": gone })),
+        json!(false)
+    );
+
+    // Every whole-workbook view shows the kept sheet's and nothing of the deleted one.
+    for method in [
+        "getComments",
+        "getNotedCells",
+        "getProtections",
+        "getStyles",
+        "getPublications",
+        "getAttachments",
+        "getSheetViews",
+        "getLayouts",
+        "getAllCells",
+    ] {
+        let list = view(&mut t, "owner", method, json!({}));
+        let sheets: Vec<String> = list
+            .as_array()
+            .unwrap_or_else(|| panic!("{method}: {list}"))
+            .iter()
+            .map(|x| s(&x["sheet_id"]))
+            .collect();
+        assert!(!sheets.is_empty(), "{method} lost the kept sheet");
+        assert!(sheets.iter().all(|x| *x == kept), "{method}: {list}");
+    }
+    for method in ["getRules", "getCharts"] {
+        let list = view(&mut t, "owner", method, json!({}));
+        let field = if method == "getRules" {
+            "rule"
+        } else {
+            "chart"
+        };
+        let sheets: Vec<String> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| s(&x[field]["sheet_id"]))
+            .collect();
+        assert!(!sheets.is_empty(), "{method} lost the kept sheet");
+        assert!(sheets.iter().all(|x| *x == kept), "{method}: {list}");
+    }
+    assert_eq!(cells(&mut t, &gone), Vec::<Value>::new());
+    // Nothing else in storage names it: no cell, format, author, size or axis row left.
+    assert_eq!(stored_naming(&t, &gone), Vec::<String>::new());
+    assert!(!stored_naming(&t, &kept).is_empty());
+}
+
+#[test]
+fn a_large_sheet_is_deleted_over_several_calls_without_orphans() {
+    let mut t = app();
+    let gone = workbook(&mut t);
+    // 1,500 cells: a cell and its author each, 3,000 entries, more than one
+    // run of `deleteSheet` removes.
+    for batch in 0..15 {
+        let ops: Vec<Value> = (0..100)
+            .map(|c| {
+                json!({ "name": "Set", "payload": {
+                    "row_id": format!("{batch}"), "col_id": format!("{c}"), "raw_value": "x",
+                } })
+            })
+            .collect();
+        let _ = call(
+            &mut t,
+            "bob",
+            "applyCellOps",
+            json!({ "sheetId": gone, "ops": ops }),
+        );
+    }
+    let first = call(&mut t, "owner", "deleteSheet", json!({ "sheetId": gone }));
+    assert_eq!(first, json!(false), "a first run cannot remove it all");
+    // Not finished: the sheet is still there, so nothing is orphaned, and no
+    // SheetDeleted yet.
+    let list = view(&mut t, "owner", "listSheets", json!({}));
+    assert_eq!(list[0]["id"], json!(gone));
+    assert!(!event_names(&t, "bob").contains(&"SheetDeleted".to_owned()));
+    let mut calls = 1;
+    while call(&mut t, "owner", "deleteSheet", json!({ "sheetId": gone })) != json!(true) {
+        calls += 1;
+        assert!(calls < 10, "deleteSheet never finished");
+    }
+    assert_eq!(view(&mut t, "owner", "listSheets", json!({})), json!([]));
+    assert_eq!(stored_naming(&t, &gone), Vec::<String>::new());
+    assert!(event_names(&t, "bob").contains(&"SheetDeleted".to_owned()));
+    assert_eq!(
+        code(
+            t.as_("owner")
+                .call("deleteSheet", json!({ "sheetId": gone }))
+        ),
+        "NotFound"
+    );
+}
+
 // ── cells and formulas ──────────────────────────────────────────────────────
 
 #[test]

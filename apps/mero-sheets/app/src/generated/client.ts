@@ -855,7 +855,7 @@ export interface MeroSheetsApi {
   /** call `deletePrivateSheet`. */
   deletePrivateSheet(args: DeletePrivateSheetArgs, options?: CallOptions): Promise<null>;
   /** call `deleteSheet`. */
-  deleteSheet(args: DeleteSheetArgs, options?: CallOptions): Promise<null>;
+  deleteSheet(args: DeleteSheetArgs, options?: CallOptions): Promise<boolean>;
   /** call `dropLink`. */
   dropLink(args: DropLinkArgs, options?: CallOptions): Promise<null>;
   /** call `editComment`. */
@@ -998,7 +998,7 @@ export interface MeroSheetsRawApi {
   /** call `deletePrivateSheet`. */
   deletePrivateSheet(args: DeletePrivateSheetArgs, options?: CallOptions): Promise<CallAnswer<null>>;
   /** call `deleteSheet`. */
-  deleteSheet(args: DeleteSheetArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  deleteSheet(args: DeleteSheetArgs, options?: CallOptions): Promise<CallAnswer<boolean>>;
   /** call `dropLink`. */
   dropLink(args: DropLinkArgs, options?: CallOptions): Promise<CallAnswer<null>>;
   /** call `editComment`. */
@@ -1138,7 +1138,7 @@ export class MeroSheetsClient<T extends AppCallTransport = AppTransport> impleme
       deleteComment: (args, options = {}) => this.#call<null>('deleteComment', args, options),
       deleteNamedRange: (args, options = {}) => this.#call<null>('deleteNamedRange', args, options),
       deletePrivateSheet: (args, options = {}) => this.#call<null>('deletePrivateSheet', args, options),
-      deleteSheet: (args, options = {}) => this.#call<null>('deleteSheet', args, options),
+      deleteSheet: (args, options = {}) => this.#call<boolean>('deleteSheet', args, options),
       dropLink: (args, options = {}) => this.#call<null>('dropLink', args, options),
       editComment: (args, options = {}) => this.#call<null>('editComment', args, options),
       editNote: (args, options = {}) => this.#call<null>('editNote', args, options),
@@ -1293,8 +1293,8 @@ export class MeroSheetsClient<T extends AppCallTransport = AppTransport> impleme
   }
 
   /** call `deleteSheet`. */
-  async deleteSheet(args: DeleteSheetArgs, options: CallOptions = {}): Promise<null> {
-    return (await this.#call<null>('deleteSheet', args, options)).result;
+  async deleteSheet(args: DeleteSheetArgs, options: CallOptions = {}): Promise<boolean> {
+    return (await this.#call<boolean>('deleteSheet', args, options)).result;
   }
 
   /** call `dropLink`. */

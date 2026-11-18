@@ -2362,7 +2362,7 @@
             "$ref": "#/components/schemas/Receipt"
           },
           "result": {
-            "type": "null"
+            "type": "boolean"
           }
         },
         "required": [
@@ -7876,7 +7876,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Delete a sheet. Its cells stay stored and are never read again."
+        "x-calimero-publisher-description": "Delete a sheet and everything on it: cells, formats, authors, axes,\nsizes, styles, notes, comments, protections, rules, charts,\nattachments, links and its frozen panes.\n\nOne call removes at most 2,000 stored entries, so it stays inside a\nrun's write limits. `true`: the sheet is gone.\n`false`: part of it was removed and the sheet is still there (nothing\nis orphaned); call again until it answers `true`."
       }
     },
     "/apps/{app}/methods/dropLink": {
