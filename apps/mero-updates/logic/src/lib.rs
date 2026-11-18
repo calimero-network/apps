@@ -65,6 +65,10 @@ const MAX_ASKS: usize = 10;
 const MAX_CATEGORIES: usize = 50;
 const MAX_DRAFT: usize = 100_000;
 const MAX_PAGE: usize = 100;
+/// Comments, reactions and reads one question delete removes at most: about
+/// four writes of at most ~250 bytes each, well inside a run's 10,000 writes
+/// and 1 MiB. A larger question is refused whole rather than left half-deleted.
+const MAX_DELETE_ROWS: u64 = 1_000;
 const DEFAULT_PAGE: usize = 20;
 /// Rows per storage read; every list below reads page after page.
 const PAGE: u32 = 1000;
@@ -1323,7 +1327,9 @@ impl MeroUpdates {
     }
 
     /// Delete a post. An update is tombstoned by any teammate; a question is
-    /// removed by its author or by the team. Emits `PostDeleted`.
+    /// removed by its author or by the team, with its comments, reactions and
+    /// reads. A question with more than 1,000 of those is refused whole
+    /// (`Invalid`): delete some of its comments first. Emits `PostDeleted`.
     pub fn delete_post(&mut self, post_id: String) -> app::Result<()> {
         let me = account()?;
         let mut post = self.load_post(&post_id)?;
@@ -1338,10 +1344,56 @@ impl MeroUpdates {
             if post.author != me && !self.is_team(&me) {
                 return Err(forbidden("you cannot delete this post"));
             }
+            self.remove_question_rows(&post_id)?;
             let _ = self.questions.remove(&post_id)?;
         }
         env::emit(Event::PostDeleted { id: post_id }, Audience::All)?;
         Ok(())
+    }
+
+    /// Remove a question's comments, reactions and reads, or refuse (and
+    /// remove nothing) when they are more than one run may remove.
+    fn remove_question_rows(&mut self, post_id: &str) -> app::Result<()> {
+        let mut rows = self.comments.count("perPost", &[s(post_id)])?
+            + self.reads.count("perPost", &[s(post_id)])?;
+        for emoji in REACTIONS {
+            rows += self.reactions.count("perEmoji", &[s(post_id), s(emoji)])?;
+        }
+        if rows > MAX_DELETE_ROWS {
+            return Err(invalid(format!(
+                "this question has {rows} comments, reactions and reads; a delete removes at most {MAX_DELETE_ROWS}: delete some of its comments first"
+            )));
+        }
+        for c in all_pages(|o| self.comments.find("thread", &[s(post_id)], o))? {
+            let _ = self.comments.remove(c.id.as_str())?;
+        }
+        for r in all_pages(|o| self.reads.find("byPost", &[s(post_id)], o))? {
+            let _ = self
+                .reads
+                .remove(&(r.post_id.as_str(), r.account.as_str()))?;
+        }
+        // Reactions are keyed (post, account, emoji): the post's are the run of
+        // keys from `[post]`.
+        loop {
+            let page = self
+                .reactions
+                .scan(FindOpts::default().from(vec![s(post_id)]).limit(PAGE))?;
+            let mine: Vec<Reaction> = page
+                .items
+                .into_iter()
+                .take_while(|r| r.post_id == post_id)
+                .collect();
+            if mine.is_empty() {
+                return Ok(());
+            }
+            for r in mine {
+                let _ = self.reactions.remove(&(
+                    r.post_id.as_str(),
+                    r.account.as_str(),
+                    r.emoji.as_str(),
+                ))?;
+            }
+        }
     }
 
     fn has_read(&self, post_id: &str, account: &str) -> app::Result<bool> {
