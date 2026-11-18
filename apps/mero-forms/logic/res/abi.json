@@ -127,7 +127,7 @@
     "deleteForm": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nTeam only.",
+      "doc": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nA form with more than 1,000 public links is refused whole: delete\nsome with `deleteLink` first. Team only.",
       "kind": "call",
       "params": [
         [

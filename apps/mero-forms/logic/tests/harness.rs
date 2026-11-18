@@ -739,6 +739,110 @@ fn the_crm_link_maps_fields_the_form_has() {
     assert_eq!(form["crm"]["stageId"], json!(""));
 }
 
+/// The stored entries, from `export_state`'s CBOR map of byte strings.
+fn stored(t: &TestApp) -> Vec<(Vec<u8>, Vec<u8>)> {
+    fn head(b: &[u8], i: &mut usize) -> (u8, usize) {
+        let first = b[*i];
+        *i += 1;
+        let width = match first & 0x1f {
+            n @ 0..=23 => return (first >> 5, usize::from(n)),
+            24 => 1,
+            25 => 2,
+            26 => 4,
+            27 => 8,
+            other => panic!("indefinite CBOR length {other}"),
+        };
+        let n = b[*i..*i + width]
+            .iter()
+            .fold(0usize, |acc, x| (acc << 8) | usize::from(*x));
+        *i += width;
+        (first >> 5, n)
+    }
+    fn bytes(b: &[u8], i: &mut usize) -> Vec<u8> {
+        let (major, n) = head(b, i);
+        assert_eq!(major, 2, "a byte string");
+        let out = b[*i..*i + n].to_vec();
+        *i += n;
+        out
+    }
+    let state = t.export_state();
+    let mut i = 0;
+    let (major, n) = head(&state, &mut i);
+    assert_eq!(major, 5, "a map");
+    (0..n)
+        .map(|_| {
+            let k = bytes(&state, &mut i);
+            (k, bytes(&state, &mut i))
+        })
+        .collect()
+}
+
+/// Stored entries that name `id`, in their key or their value.
+fn stored_naming(t: &TestApp, id: &str) -> Vec<String> {
+    let has = |hay: &[u8]| hay.windows(id.len()).any(|w| w == id.as_bytes());
+    stored(t)
+        .into_iter()
+        .filter(|(k, v)| has(k) || has(v))
+        .map(|(k, _)| String::from_utf8_lossy(&k).into_owned())
+        .collect()
+}
+
+/// Public link `i` of a form: a SHA-256-shaped id and the longest grant id.
+fn link_args(form_id: &str, i: usize) -> Value {
+    json!({
+        "formId": form_id,
+        "link": format!("{i:064x}"),
+        "grantId": format!("{i:0128}"),
+        "label": "site",
+    })
+}
+
+#[test]
+fn a_deleted_form_leaves_no_link_behind() {
+    let mut t = app();
+    let form_id = contact_form(&mut t);
+    // One more link than a delete removes.
+    for i in 0..1001 {
+        call(&mut t, "owner", "createLink", link_args(&form_id, i));
+    }
+    let result = t
+        .as_("owner")
+        .call("deleteForm", json!({ "formId": form_id }));
+    // Either the form and its links stay, or both go: never links of a
+    // deleted form.
+    let deleted = result.is_ok();
+    let left = stored_naming(&t, &form_id);
+    assert!(
+        !deleted || left.is_empty(),
+        "deleteForm left {} entries of the deleted form: {left:?}",
+        left.len()
+    );
+    let (code, message) = err(result);
+    assert_eq!(code, "Refused");
+    assert_eq!(
+        message,
+        "this form has more than 1000 public links; delete some with deleteLink first"
+    );
+    assert_eq!(
+        view(&mut t, "owner", "listLinks", json!({ "formId": form_id }))
+            .as_array()
+            .map(Vec::len),
+        Some(1000)
+    );
+    // At 1,000 links (with the longest ids) it goes in one run, links, keys
+    // and all.
+    call(
+        &mut t,
+        "owner",
+        "deleteLink",
+        json!({ "link": format!("{:064x}", 1000) }),
+    );
+    call(&mut t, "owner", "deleteForm", json!({ "formId": form_id }));
+    assert_eq!(stored_naming(&t, &form_id), Vec::<String>::new());
+    let other = contact_form(&mut t);
+    call(&mut t, "owner", "createLink", link_args(&other, 999));
+}
+
 #[test]
 fn a_form_with_responses_is_closed_not_deleted() {
     let mut t = app();

@@ -69,6 +69,10 @@ use serde::{Deserialize, Serialize};
 
 /// Rows one storage read returns: a page of a collection.
 const ROWS: u32 = 1_000;
+/// Public links one `deleteForm` removes at most (one page): each is four
+/// entries (link, form link, key, stats), eight writes of at most ~600 bytes
+/// in all, so 1,000 stay inside a run's 10,000 writes and 1 MiB.
+const MAX_DELETE_LINKS: u32 = 1_000;
 
 /// The kinds of field a form can ask for.
 pub const FIELD_KINDS: [&str; 9] = [
@@ -985,7 +989,8 @@ impl MeroForms {
 
     /// Deletes a form that has no responses, with its public links. A form
     /// with responses is closed instead, so nothing anyone sent disappears.
-    /// Team only.
+    /// A form with more than 1,000 public links is refused whole: delete
+    /// some with `deleteLink` first. Team only.
     pub fn delete_form(&mut self, form_id: String) -> app::Result<()> {
         self.only_team()?;
         let _ = self.form(&form_id)?;
@@ -994,10 +999,17 @@ impl MeroForms {
                 "this form has responses; close it instead of deleting it",
             ));
         }
+        // Every link, or none: more than one page (what a run removes) is
+        // refused before anything is written, so no link outlives its form.
         let page = self.form_links.prefix(
             &[KeyPart::Str(form_id.clone())],
-            FindOpts::default().limit(ROWS),
+            FindOpts::default().limit(MAX_DELETE_LINKS),
         )?;
+        if page.next.is_some() {
+            return Err(refused(format!(
+                "this form has more than {MAX_DELETE_LINKS} public links; delete some with deleteLink first"
+            )));
+        }
         for (form, link) in page.items {
             let _ = self.form_links.remove(&(form, link.clone()))?;
             if let Some(row) = self.links.remove(&link)? {
