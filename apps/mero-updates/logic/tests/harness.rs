@@ -1001,6 +1001,12 @@ fn a_question_too_large_for_one_run_is_refused_whole() {
         json!({ "commentId": last }),
     );
     call(&mut t, "bob", "deletePost", json!({ "postId": q }));
+    let usage = t.last_usage();
+    eprintln!("deletePost of 1,000 rows: {usage:?}");
+    // A comment or a read is four writes (its row, an index entry or two and
+    // its counts), a reaction two; one length per table and nothing per row
+    // besides: no second read, no length moved row by row.
+    assert!(usage.writes <= 4 * 1_000 + 20, "{usage:?}");
     assert_eq!(people_comments(&mut t, "cy"), json!("0"));
     assert_eq!(stored_naming(&t, &q), Vec::<String>::new());
 }
