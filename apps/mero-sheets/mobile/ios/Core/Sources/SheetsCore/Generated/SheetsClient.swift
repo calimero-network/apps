@@ -1735,13 +1735,15 @@ public struct SheetsClient: Sendable {
     }
 
     /// call `deleteSheet`.
+    @discardableResult
     public func deleteSheet(
         sheetId: String,
         idempotencyKey: String? = nil
-    ) async throws {
+    ) async throws -> Bool {
         var args = Args()
         args.add("sheetId", sheetId)
-        _ = try await invokeCall("deleteSheet", args, idempotencyKey: idempotencyKey, as: JSONValue.self)
+        let result = try await invokeCall("deleteSheet", args, idempotencyKey: idempotencyKey, as: Bool.self)
+        return result
     }
 
     /// call `dropLink`.

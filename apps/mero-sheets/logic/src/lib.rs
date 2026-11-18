@@ -74,6 +74,10 @@ const NOTE_PREVIEW_CHARS: usize = 200;
 const MAX_ACTIVITY: u32 = 500;
 /// Rows read per storage page.
 const PAGE: u32 = 1000;
+/// Stored entries one `deleteSheet` call removes at most. Each removal is two
+/// writes (the entry and its map's count) of at most ~200 bytes, so a call
+/// stays well inside a run's 10,000 writes and 1 MiB.
+pub const MAX_DELETE_PER_CALL: usize = 2000;
 
 // ---------------------------------------------------------------------------
 // Stored values
@@ -955,9 +959,24 @@ impl Spreadsheet {
         })
     }
 
-    /// Delete a sheet. Its cells stay stored and are never read again.
-    pub fn delete_sheet(&mut self, sheet_id: String) -> app::Result<()> {
+    /// Delete a sheet and everything on it: cells, formats, authors, axes,
+    /// sizes, styles, notes, comments, protections, rules, charts,
+    /// attachments, links and its frozen panes.
+    ///
+    /// One call removes at most 2,000 stored entries, so it stays inside a
+    /// run's write limits. `true`: the sheet is gone.
+    /// `false`: part of it was removed and the sheet is still there (nothing
+    /// is orphaned); call again until it answers `true`.
+    pub fn delete_sheet(&mut self, sheet_id: String) -> app::Result<bool> {
         self.require_sheet_writable(&sheet_id)?;
+        let mut budget = MAX_DELETE_PER_CALL;
+        if !self.clear_sheet(&sheet_id, &mut budget)? {
+            emit(Event::CellsChanged {
+                sheet_id,
+                count: u32::try_from(MAX_DELETE_PER_CALL - budget).unwrap_or(u32::MAX),
+            })?;
+            return Ok(false);
+        }
         let Some(removed) = self.sheets.remove(&sheet_id)? else {
             return Err(not_found(sheet_id));
         };
@@ -968,7 +987,8 @@ impl Spreadsheet {
             0,
             Vec::new(),
         )?;
-        emit(Event::SheetDeleted { id: sheet_id })
+        emit(Event::SheetDeleted { id: sheet_id })?;
+        Ok(true)
     }
 
     /// The workbook's sheets in tab order, then the linked ones.
@@ -2535,6 +2555,41 @@ impl Spreadsheet {
         }
     }
 
+    /// Remove what is stored for `sheet_id` besides its `sheets` row, at
+    /// most `budget` entries; whether nothing is left.
+    fn clear_sheet(&mut self, sheet_id: &str, budget: &mut usize) -> app::Result<bool> {
+        let prefix = format!("{sheet_id}|");
+        let on = |s: &str| s == sheet_id;
+        let mut done = remove_prefixed(&mut self.cells, &prefix, budget)?
+            & remove_prefixed(&mut self.formats, &prefix, budget)?
+            & remove_prefixed(&mut self.cell_meta, &prefix, budget)?
+            & remove_prefixed(&mut self.styles, &prefix, budget)?
+            & remove_prefixed(&mut self.notes, &prefix, budget)?
+            & remove_prefixed(&mut self.axes, &prefix, budget)?
+            & remove_prefixed(&mut self.sizes, &prefix, budget)?;
+        let (ids, all_gone) = remove_where(&mut self.comments, budget, 2, |c| on(&c.sheet_id))?;
+        for id in &ids {
+            let _ = self.resolved.remove(id)?;
+        }
+        done &= all_gone;
+        let (ids, all_gone) = remove_where(&mut self.rules, budget, 2, |r| on(&r.sheet_id))?;
+        for id in &ids {
+            let _ = self.alert_state.remove(id)?;
+        }
+        done &= all_gone;
+        done &= remove_where(&mut self.protections, budget, 1, |p| on(&p.sheet_id))?.1;
+        done &= remove_where(&mut self.charts, budget, 1, |c| on(&c.sheet_id))?.1;
+        done &= remove_where(&mut self.attachments, budget, 1, |a| on(&a.sheet_id))?.1;
+        done &= remove_where(&mut self.publications, budget, 1, |p| on(&p.sheet_id))?.1;
+        if *budget == 0 {
+            return Ok(false);
+        }
+        if self.views.remove(&sheet_id.to_string())?.is_some() {
+            *budget -= 1;
+        }
+        Ok(done)
+    }
+
     fn require_sheet(&self, sheet_id: &str) -> app::Result<()> {
         if !self.sheets.contains(&sheet_id.to_string())? {
             return Err(not_found(sheet_id));
@@ -3436,6 +3491,54 @@ fn all<T>(mut read: impl FnMut(FindOpts) -> Result<Page<T>, StorageError>) -> ap
             None => return Ok(out),
         }
     }
+}
+
+/// Remove the entries of `map` whose key starts with `prefix`, at most
+/// `budget` of them; whether none is left.
+fn remove_prefixed<V: Serialize + serde::de::DeserializeOwned>(
+    map: &mut UnorderedMap<String, V>,
+    prefix: &str,
+    budget: &mut usize,
+) -> app::Result<bool> {
+    let parts = [KeyPart::Str(prefix.to_string())];
+    loop {
+        if *budget == 0 {
+            let left = map.starts_with(&parts, FindOpts::default().limit(1))?;
+            return Ok(left.items.is_empty());
+        }
+        let limit = u32::try_from(*budget).unwrap_or(PAGE).min(PAGE);
+        let page = map.starts_with(&parts, FindOpts::default().limit(limit))?;
+        if page.items.is_empty() {
+            return Ok(true);
+        }
+        for (key, _) in page.items {
+            let _ = map.remove(&key)?;
+            *budget -= 1;
+        }
+    }
+}
+
+/// Remove the entries of `map` whose value `matches`, at most `budget / cost`
+/// of them (`cost` counts the entries each one takes with it); the removed
+/// keys, and whether none is left.
+fn remove_where<V: Serialize + serde::de::DeserializeOwned>(
+    map: &mut UnorderedMap<String, V>,
+    budget: &mut usize,
+    cost: usize,
+    matches: impl Fn(&V) -> bool,
+) -> app::Result<(Vec<String>, bool)> {
+    let found: Vec<String> = all(|o| map.page(o))?
+        .into_iter()
+        .filter(|(_, v)| matches(v))
+        .map(|(k, _)| k)
+        .collect();
+    let take = found.len().min(*budget / cost);
+    for key in &found[..take] {
+        let _ = map.remove(key)?;
+    }
+    *budget -= take * cost;
+    let all_gone = take == found.len();
+    Ok((found.into_iter().take(take).collect(), all_gone))
 }
 
 fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {

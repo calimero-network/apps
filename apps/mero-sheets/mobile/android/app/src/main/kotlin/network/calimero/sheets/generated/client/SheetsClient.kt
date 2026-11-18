@@ -305,16 +305,15 @@ class SheetsClient private constructor(
     suspend fun deleteSheet(
         sheetId: String,
         idempotencyKey: String? = null,
-    ) {
+    ): Boolean =
         invokeCall(
             "deleteSheet",
             buildJsonObject {
                 put("sheetId", encode(String.serializer(), sheetId))
             },
             idempotencyKey,
-            JsonElement.serializer(),
+            Boolean.serializer(),
         )
-    }
 
     /** call `dropLink`. */
     suspend fun dropLink(
