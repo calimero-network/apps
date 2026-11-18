@@ -14,8 +14,8 @@ use serde::Serialize;
 
 use crate::{Error, Ev, Event};
 
-/// Rows read per page when a method walks a whole map.
-const PAGE: u32 = 1000;
+/// Entries [`Map::any`] reads per host call.
+const ANY_BATCH: u32 = 50;
 
 /// `UnorderedMap<String, V>`, keyed by string, read in key order.
 pub struct Map<V> {
@@ -52,23 +52,29 @@ impl<V: Serialize + DeserializeOwned> Map<V> {
         Ok(usize::try_from(self.inner.len()?).unwrap_or(usize::MAX))
     }
 
-    /// Every entry, in key order, read a page of 1,000 at a time. The maps
-    /// a feed holds are each capped by the contract's own limits (or prune
+    /// Every entry, in key order, read through one cursor. The maps a feed
+    /// holds are each capped by the contract's own limits (or prune
     /// themselves), as they were in v1, where `entries()` read them whole too.
     pub fn entries(&self) -> app::Result<std::vec::IntoIter<(String, V)>> {
-        let mut out = Vec::new();
-        let mut cursor: Option<String> = None;
-        loop {
-            let mut opts = FindOpts::default().limit(PAGE);
-            opts.cursor = cursor.take();
-            let page = self.inner.page(opts)?;
-            out.extend(page.items);
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => break,
+        Ok(self.iter().collect::<app::Result<Vec<_>>>()?.into_iter())
+    }
+
+    /// Every entry, in key order, read through one cursor a batch at a time
+    /// as the loop reaches it: `find`, `any` or a `break` stop the reads.
+    pub fn iter(&self) -> impl Iterator<Item = app::Result<(String, V)>> + '_ {
+        self.inner.iter().map(|entry| entry.map_err(Into::into))
+    }
+
+    /// Whether any entry's value matches, reading only up to the first that
+    /// does: a batch of [`ANY_BATCH`] entries at a time, so a match near the
+    /// start does not read (and decode) a whole batch of 1,000.
+    pub fn any(&self, mut matches: impl FnMut(&V) -> bool) -> app::Result<bool> {
+        for entry in self.inner.iter_with(FindOpts::default().limit(ANY_BATCH)) {
+            if matches(&entry?.1) {
+                return Ok(true);
             }
         }
-        Ok(out.into_iter())
+        Ok(false)
     }
 }
 
