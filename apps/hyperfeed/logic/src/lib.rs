@@ -2311,9 +2311,9 @@ impl Hyperfeed {
     /// Whether any row lives in `chain`: a message goes into a chain that
     /// exists, or starts its own.
     fn chain_exists(&self, chain: &str) -> app::Result<bool> {
-        Ok(self.actions.entries()?.any(|(_, a)| a.chain == chain)
-            || self.notifications.entries()?.any(|(_, n)| n.chain == chain)
-            || self.messages.entries()?.any(|(_, m)| m.chain == chain))
+        Ok(self.actions.any(|a| a.chain == chain)?
+            || self.notifications.any(|n| n.chain == chain)?
+            || self.messages.any(|m| m.chain == chain)?)
     }
 
     fn push_message_step(

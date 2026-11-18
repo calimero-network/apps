@@ -48,6 +48,30 @@ mod checkpoint {
         view(t, "checkpoint", json!({ "chain": chain }))
     }
 
+    /// Whether a chain exists stops at its first row: a checkpoint on a
+    /// chain among 300 does not read every message of the feed.
+    #[test]
+    fn a_checkpoint_reads_the_feed_only_up_to_its_chain() {
+        let mut t = app();
+        let chains: Vec<Value> = (0..300)
+            .map(|i| say(&mut t, &format!("task {i}")))
+            .collect();
+        let mut fuel = Vec::new();
+        for chain in &chains {
+            set(&mut t, chain, input("Found the bug", "Write the fix")).unwrap();
+            fuel.push(t.last_usage().fuel);
+        }
+        fuel.sort_unstable();
+        let (least, median, most) = (fuel[0], fuel[150], fuel[299]);
+        eprintln!(
+            "setCheckpoint among 300 chains: fuel least {least}, median {median}, most {most}"
+        );
+        // The chain found first in key order reads one message; the last
+        // reads them all. Reading the whole feed for each would cost the
+        // same for every chain.
+        assert!(least * 3 < most, "{least} {most}");
+    }
+
     #[test]
     fn a_checkpoint_is_kept_with_its_chain_and_the_next_one_replaces_it() {
         let mut t = app();
