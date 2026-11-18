@@ -384,7 +384,7 @@ describe("connectTarget, by package", () => {
     const fetch = answer(WHERE);
     const target = await connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch });
     expect(fetch).toHaveBeenCalledWith(
-      "https://manager.cloud.calimero.network/api/v2/directory/package/com.calimero.kv-store",
+      "https://manager.cloud.calimero.network/api/directory/package/com.calimero.kv-store",
       expect.anything(),
     );
     // Heaviest first.
