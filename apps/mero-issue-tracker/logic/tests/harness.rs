@@ -666,6 +666,40 @@ fn creator_deletes_issue_and_cascades_comments_and_labels() {
     ));
 }
 
+/// An issue's comments and labels go in one pass over each index
+/// (`Table::remove_by`): a comment is two writes (the row and its `thread`
+/// entry), with one length per table, never a second read of a row.
+#[test]
+fn delete_issue_removes_its_thread_in_two_writes_a_comment() {
+    let mut t = app();
+    let id = new_issue(&mut t); // labelled "bug"
+    let keep = other_issue(&mut t);
+    for i in 0..200 {
+        call(
+            &mut t,
+            "addComment",
+            json!({ "issueId": id, "body": format!("note {i}") }),
+        );
+    }
+    call(
+        &mut t,
+        "addComment",
+        json!({ "issueId": keep, "body": "unrelated" }),
+    );
+
+    call(&mut t, "deleteIssue", json!({ "issueId": id }));
+    let usage = t.last_usage();
+    eprintln!("deleteIssue of 200 comments and a label: {usage:?}");
+    // 200 comments at two writes, the label (row and two index entries), the
+    // issue (row, two indexes, a count), the two lengths and nothing per row
+    // besides.
+    assert!(usage.writes <= 200 * 2 + 12, "{usage:?}");
+    assert_eq!(
+        issue(&mut t, &keep)["comments"].as_array().map(Vec::len),
+        Some(1)
+    );
+}
+
 #[test]
 fn delete_missing_issue_errors() {
     let mut t = app();

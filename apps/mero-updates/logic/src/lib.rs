@@ -1364,14 +1364,10 @@ impl MeroUpdates {
                 "this question has {rows} comments, reactions and reads; a delete removes at most {MAX_DELETE_ROWS}: delete some of its comments first"
             )));
         }
-        for c in all_pages(|o| self.comments.find("thread", &[s(post_id)], o))? {
-            let _ = self.comments.remove(c.id.as_str())?;
-        }
-        for r in all_pages(|o| self.reads.find("byPost", &[s(post_id)], o))? {
-            let _ = self
-                .reads
-                .remove(&(r.post_id.as_str(), r.account.as_str()))?;
-        }
+        // One pass over each index: a row costs its own writes and nothing
+        // else (no page read first, no second read of the row).
+        let _ = self.comments.remove_by("thread", &[s(post_id)], u64::MAX)?;
+        let _ = self.reads.remove_by("byPost", &[s(post_id)], u64::MAX)?;
         // Reactions are keyed (post, account, emoji): the post's are the run of
         // keys from `[post]`.
         loop {

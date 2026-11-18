@@ -556,20 +556,19 @@ impl MeroForum {
 
     /// The post, its comments (and their votes) and its votes.
     fn remove_post(&mut self, post_id: &str) -> app::Result<()> {
-        // Collect a batch, then remove it: never mutate under a cursor.
-        loop {
-            let page = self.comments.find(
-                "thread",
-                &[KeyPart::Str(post_id.to_owned())],
-                FindOpts::default().limit(BATCH),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for comment in page.items {
-                self.remove_comment(&comment.id)?;
-            }
+        // The comments' votes, read through one cursor over the thread; then
+        // the comments in one pass over the same index, each costing its own
+        // writes and nothing else (no second read of the row).
+        let thread = [KeyPart::Str(post_id.to_owned())];
+        let comments = self
+            .comments
+            .find_iter("thread", &thread, FindOpts::default())
+            .map(|c| c.map(|c| c.id))
+            .collect::<Result<Vec<String>, _>>()?;
+        for comment_id in &comments {
+            clear_votes(&mut self.comment_votes, comment_id)?;
         }
+        let _ = self.comments.remove_by("thread", &thread, u64::MAX)?;
         clear_votes(&mut self.votes, post_id)?;
         let _ = self.posts.remove(post_id)?;
         Ok(())

@@ -249,6 +249,52 @@ fn a_deleted_post_is_gone_from_reads_and_from_the_feed() {
     );
 }
 
+/// A post's comments go in one pass over the `thread` index
+/// (`Table::remove_by`), each comment's votes with it: a comment is three
+/// writes (the row, its `thread` entry and the post's count), with one length
+/// for the table, never a second read of a row. Another post keeps its own.
+#[test]
+fn deleting_a_post_removes_its_thread_in_three_writes_a_comment() {
+    let mut t = app();
+    let keep = post(&mut t, "owner", "Keep");
+    let id = post(&mut t, "owner", "Busy");
+    let mut voted = String::new();
+    for i in 0..200 {
+        voted = comment(&mut t, "bob", &id, &format!("reply {i}"));
+    }
+    call(
+        &mut t,
+        "cy",
+        "voteComment",
+        json!({ "commentId": voted, "value": 1 }),
+    );
+    let kept = comment(&mut t, "bob", &keep, "stays");
+
+    call(&mut t, "owner", "deletePost", json!({ "postId": id }));
+    let usage = t.last_usage();
+    eprintln!("deletePost of 200 comments: {usage:?}");
+    // 200 comments at three writes, one comment vote (an entry and its
+    // map's length), the post (row, two indexes), the length and nothing
+    // per comment besides.
+    assert!(usage.writes <= 200 * 3 + 10, "{usage:?}");
+    assert!(thread(&mut t, "bob", &id).is_empty());
+    assert_eq!(
+        code(
+            t.as_("cy")
+                .call("voteComment", json!({ "commentId": voted, "value": 1 }))
+        ),
+        "NotFound"
+    );
+    assert_eq!(thread(&mut t, "bob", &keep).len(), 1);
+    assert_eq!(get_post(&mut t, "bob", &keep)["commentCount"], json!("1"));
+    call(
+        &mut t,
+        "cy",
+        "voteComment",
+        json!({ "commentId": kept, "value": 1 }),
+    );
+}
+
 // ── the feed ─────────────────────────────────────────────────────────────────
 
 #[test]

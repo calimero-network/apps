@@ -788,33 +788,11 @@ impl Crm {
         if deal.created_by != account()? {
             return Err(forbidden("only the creator may delete this deal"));
         }
-        // Collect a page, then remove it: never mutate under a cursor.
-        loop {
-            let page = self.activities.find(
-                "byDeal",
-                &[KeyPart::Str(deal_id.clone())],
-                FindOpts::default().limit(PAGE),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for a in page.items {
-                let _ = self.activities.remove(&a.id)?;
-            }
-        }
-        loop {
-            let page = self.notes.find(
-                "byDeal",
-                &[KeyPart::Str(deal_id.clone())],
-                FindOpts::default().limit(PAGE),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for n in page.items {
-                let _ = self.notes.remove(&n.id)?;
-            }
-        }
+        // One pass over each `byDeal` index: a row costs its own writes and
+        // nothing else (no page read first, no second read of the row).
+        let deal = [KeyPart::Str(deal_id.clone())];
+        let _ = self.activities.remove_by("byDeal", &deal, u64::MAX)?;
+        let _ = self.notes.remove_by("byDeal", &deal, u64::MAX)?;
         let _ = self.deals.remove(&deal_id)?;
         env::emit(Event::DealDeleted { id: deal_id }, Audience::All)?;
         Ok(())

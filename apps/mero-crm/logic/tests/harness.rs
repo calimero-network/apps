@@ -755,6 +755,60 @@ fn delete_deal_is_creator_gated_and_cascades() {
     assert_eq!(names(&t).last().map(String::as_str), Some("DealDeleted"));
 }
 
+/// A deal's notes and activities go in one pass over each index
+/// (`Table::remove_by`): two writes per row (the row and its `byDeal` entry)
+/// and one length per table, never a second read of a row. Another deal keeps
+/// its own.
+#[test]
+fn delete_deal_removes_its_rows_in_two_writes_each() {
+    let mut t = app();
+    let d = deal(&mut t, "Big", 1, "stage-lead");
+    let other = deal(&mut t, "Other", 1, "stage-lead");
+    for i in 0..150 {
+        call(
+            &mut t,
+            "addNote",
+            json!({ "dealId": d, "body": format!("n{i}") }),
+        );
+    }
+    for i in 0..50 {
+        call(
+            &mut t,
+            "addActivity",
+            activity_args(Some(&d), "task", &format!("t{i}"), 0),
+        );
+    }
+    call(
+        &mut t,
+        "addNote",
+        json!({ "dealId": other, "body": "kept" }),
+    );
+    call(
+        &mut t,
+        "addActivity",
+        activity_args(Some(&other), "task", "kept", 0),
+    );
+
+    call(&mut t, "deleteDeal", json!({ "dealId": d }));
+    let usage = t.last_usage();
+    eprintln!("deleteDeal of 200 rows: {usage:?}");
+    // 200 rows at two writes each, the two lengths, the deal (its row, three
+    // index entries, a count) and nothing per row besides.
+    assert!(usage.writes <= 200 * 2 + 10, "{usage:?}");
+
+    assert_eq!(
+        list_len(
+            &mut t,
+            "listActivities",
+            json!({ "dealId": null, "done": null })
+        ),
+        1
+    );
+    let detail = get_deal(&mut t, &other);
+    assert_eq!(detail["notes"].as_array().map(Vec::len), Some(1));
+    assert_eq!(detail["activities"].as_array().map(Vec::len), Some(1));
+}
+
 // ── v1's storage-level write rules, as calls by another account ─────────────
 
 #[test]

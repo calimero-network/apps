@@ -525,33 +525,11 @@ impl IssueTracker {
             }
             .into());
         }
-        // Collect a page, then remove it: never mutate under a cursor.
-        loop {
-            let page = self.comments.find(
-                "thread",
-                &[KeyPart::Str(issue_id.clone())],
-                FindOpts::default().limit(PAGE),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for comment in page.items {
-                let _ = self.comments.remove(&comment.id)?;
-            }
-        }
-        loop {
-            let page = self.labels.find(
-                "byIssue",
-                &[KeyPart::Str(issue_id.clone())],
-                FindOpts::default().limit(PAGE),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for tag in page.items {
-                let _ = self.labels.remove(&(tag.issue_id, tag.label))?;
-            }
-        }
+        // One pass over each index: a row costs its own writes and nothing
+        // else (no page read first, no second read of the row).
+        let issue = [KeyPart::Str(issue_id.clone())];
+        let _ = self.comments.remove_by("thread", &issue, u64::MAX)?;
+        let _ = self.labels.remove_by("byIssue", &issue, u64::MAX)?;
         let _ = self.issues.remove(&issue_id)?;
         env::emit(Event::IssueDeleted { id: issue_id }, Audience::All)?;
         Ok(())
