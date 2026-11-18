@@ -1085,7 +1085,7 @@
       "docTags": "set",
       "docs": "unorderedMap",
       "managers": "set",
-      "slots": "unorderedMap",
+      "order": "unorderedMap",
       "tags": "unorderedMap",
       "views": "unorderedMap"
     },
@@ -1097,7 +1097,7 @@
       "docTags": [],
       "docs": [],
       "managers": [],
-      "slots": [],
+      "order": [],
       "tags": [],
       "views": []
     },
