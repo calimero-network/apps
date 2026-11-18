@@ -3785,7 +3785,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nTeam only."
+        "x-calimero-publisher-description": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nA form with more than 1,000 public links is refused whole: delete\nsome with `deleteLink` first. Team only."
       }
     },
     "/apps/{app}/methods/deleteLink": {
