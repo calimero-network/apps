@@ -832,6 +832,40 @@ fn reply(t: &mut TestApp, who: &str, comment_id: &str, id: &str, at: u64) {
 }
 
 #[test]
+fn a_reply_past_the_first_thousand_can_be_deleted() {
+    let mut t = app();
+    comment(&mut t, "owner", "c1");
+    for i in 0..1000u64 {
+        reply(&mut t, "owner", "c1", &format!("r{i:04}"), i + 1);
+    }
+    reply(&mut t, "owner", "c1", "late", 5000);
+    let before = t.events_for("cy").len();
+    call(
+        &mut t,
+        "owner",
+        "deleteReply",
+        json!({ "commentId": "c1", "replyId": "late" }),
+    );
+    assert_eq!(t.events_for("cy").len(), before + 1, "no CommentUpdated");
+    // With one early reply gone the thread fits a page: "late" must not be in it.
+    call(
+        &mut t,
+        "owner",
+        "deleteReply",
+        json!({ "commentId": "c1", "replyId": "r0000" }),
+    );
+    let replies = view(&mut t, "cy", "getComments", json!({}))[0]["replies"].clone();
+    let ids: Vec<&str> = replies
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 999);
+    assert_eq!(ids.last(), Some(&"r0999"));
+}
+
+#[test]
 fn a_comment_and_its_thread() {
     let mut t = app();
     call(&mut t, "owner", "grantEditor", json!({ "member": "bob" }));

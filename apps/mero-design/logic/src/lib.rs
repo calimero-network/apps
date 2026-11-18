@@ -948,11 +948,24 @@ impl MeroDesign {
     /// reply is not there. Emits `CommentUpdated`.
     pub fn delete_reply(&mut self, comment_id: String, reply_id: String) -> app::Result<()> {
         self.require_editor()?;
-        let keys: Vec<(String, u64, String)> = self
-            .thread_keys(&comment_id)?
-            .into_iter()
-            .filter(|(_, _, r)| *r == reply_id)
-            .collect();
+        // The key holds the reply's time, which the caller does not name: read
+        // the whole thread a page at a time (reads only), not just its first page.
+        let thread = [KeyPart::Str(comment_id.clone())];
+        let mut keys = Vec::new();
+        let mut opts = FindOpts::default().limit(BATCH);
+        loop {
+            let page = self.replies.prefix(&thread, opts)?;
+            keys.extend(
+                page.items
+                    .into_iter()
+                    .map(|(k, _)| k)
+                    .filter(|(_, _, r)| *r == reply_id),
+            );
+            match page.next {
+                Some(cursor) => opts = FindOpts::default().limit(BATCH).cursor(cursor),
+                None => break,
+            }
+        }
         if keys.is_empty() {
             return Ok(());
         }
