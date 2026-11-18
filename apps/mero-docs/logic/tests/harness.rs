@@ -784,6 +784,58 @@ fn move_block_reorders_the_document() {
     );
 }
 
+/// What the block order costs. Each document's order is a `List` of block
+/// ids: an insert or a move is a few reads and three writes wherever the
+/// block is, and reading the document is one cursor over the list plus a read
+/// per block.
+#[test]
+fn the_block_order_costs_a_few_writes_wherever_the_block_is() {
+    let mut t = app();
+    let d = doc(&mut t, "owner", "Doc");
+    let first = block(&mut t, &d, None, "paragraph");
+    let mut last = first.clone();
+    for _ in 0..99 {
+        last = block(&mut t, &d, Some(&last), "paragraph");
+    }
+    let middle = view(&mut t, "owner", "listBlocks", json!({ "doc": d }))[50]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let inserted = block(&mut t, &d, Some(&middle), "paragraph");
+    let insert = t.last_usage();
+    call(
+        &mut t,
+        "owner",
+        "moveBlock",
+        json!({ "doc": d, "block": last, "after": null }),
+    );
+    let moved = t.last_usage();
+    call(
+        &mut t,
+        "owner",
+        "deleteBlock",
+        json!({ "doc": d, "block": inserted }),
+    );
+    let deleted = t.last_usage();
+    let blocks = view(&mut t, "owner", "listBlocks", json!({ "doc": d }));
+    let read = t.last_usage();
+    eprintln!("insertBlock: {insert:?}\nmoveBlock: {moved:?}\ndeleteBlock: {deleted:?}\nlistBlocks of 100: {read:?}");
+    assert_eq!(blocks.as_array().unwrap().len(), 100);
+    assert_eq!(blocks[0], json!(last));
+    assert_eq!(blocks[1], json!(first));
+    // The block row and the map's length, two order rows and the order's
+    // length, and the document's header.
+    assert!(insert.writes <= 6, "{insert:?}");
+    // The order row moves (a delete and a put), its id row re-points, and the
+    // document's header.
+    assert!(moved.writes <= 4, "{moved:?}");
+    // The block row, its order row's tombstone, the document's header.
+    assert!(deleted.writes <= 3, "{deleted:?}");
+
+    call(&mut t, "owner", "deleteDoc", json!({ "id": d }));
+    eprintln!("deleteDoc of 101 empty blocks: {:?}", t.last_usage());
+}
+
 #[test]
 fn every_body_event_names_the_document_and_the_block() {
     let mut t = app();

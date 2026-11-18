@@ -25,8 +25,12 @@
 //! The leader applies every write in one log, so state is plain data. The text
 //! stays a sequence CRDT because editors send edits typed against a view that
 //! is no longer current: a title and every block's body are each a `RichText`
-//! (Tree-Fugue characters + Peritext marks, core#4813) under its own name, and
-//! a document's block order is a `Text` with one character per block. What v1's
+//! (Tree-Fugue characters + Peritext marks, core#4813) under its own name. A
+//! document's block order is a `List` of block ids in `order`: an insert or a
+//! move names the block it goes after by id, which stays where it was meant
+//! however the order changed since, and costs a few writes wherever the block
+//! is. A deleted block keeps its item, marked deleted, so a block inserted
+//! after it still lands where it was. What v1's
 //! `RichDocument`, anchors and undo tokens did on top is rebuilt in
 //! [`rich`]: see that module.
 //!
@@ -62,13 +66,11 @@ pub const DEFAULT_DOC_SEARCH_LIMIT: u32 = 20;
 pub const MAX_DOC_SEARCH_LIMIT: u32 = 100;
 /// Rows read per page when a method walks a whole collection.
 const BATCH: u32 = 1000;
-/// The character a block takes in its document's order text.
-const SLOT: &str = "\u{25a1}";
 
 // ── stored records ───────────────────────────────────────────────────────────
 
-/// A document's header. Its title, block order and bodies are texts named
-/// after its id ([`title_of`], [`order_of`], [`body_of`]).
+/// A document's header. Its title and bodies are texts named after its id
+/// ([`title_of`], [`body_of`]); its block order is its `List` in `order`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocMeta {
     /// The account that created it.
@@ -82,6 +84,15 @@ pub struct DocMeta {
     pub archived: bool,
 }
 
+/// A block's place in its document's order.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Placed {
+    pub block: String,
+    /// Mirrors [`BlockRow::deleted`], so reading the order skips deleted
+    /// blocks without reading their rows.
+    pub deleted: bool,
+}
+
 /// One block of a document.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockRow {
@@ -90,8 +101,8 @@ pub struct BlockRow {
     /// BlockNote's own attributes (a heading's `level`, an image's blob id):
     /// a handful per block, stored opaquely.
     pub attrs: BTreeMap<String, String>,
-    /// The character this block holds in its document's order text.
-    pub slot: u64,
+    /// The block's item in its document's order `List`.
+    pub item: String,
     /// Deleted (or merged away): out of the document, its text kept so ids
     /// that name it still resolve.
     pub deleted: bool,
@@ -265,8 +276,9 @@ pub struct MeroDocs {
     doc_tags: Set<(String, String)>,
     /// (doc, block id) -> the block.
     blocks: UnorderedMap<(String, String), BlockRow>,
-    /// (doc, slot) -> the block holding that character of the order text.
-    slots: UnorderedMap<(String, u64), String>,
+    /// doc -> its blocks in order, deleted ones included (marked), so an
+    /// insert after a deleted block still lands where it was.
+    order: UnorderedMap<String, List<Placed>>,
     /// (doc, comment id) -> the comment.
     comments: UnorderedMap<(String, String), CommentRow>,
     /// comment id -> its document.
@@ -285,11 +297,6 @@ pub struct MeroDocs {
 /// The text holding a document's title.
 fn title_of(doc: &str) -> RichText {
     rich::text(format!("dt:{doc}"))
-}
-
-/// The text with one character per block, in document order.
-fn order_of(doc: &str) -> Text {
-    Text::new(format!("do:{doc}"))
 }
 
 /// The text holding one block's body.
@@ -464,34 +471,17 @@ impl MeroDocs {
         }
         let _ = self.docs.remove(&id)?;
         title_of(&id).clear()?;
-        // Every block ever written, deleted ones included.
-        loop {
-            let page = self.blocks.prefix(
-                &[KeyPart::Str(id.clone())],
-                FindOpts::default().limit(BATCH),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for ((doc, block), row) in page.items {
-                body_of(&doc, &block).clear()?;
-                let _ = self.slots.remove(&(doc.clone(), row.slot))?;
-                let _ = self.blocks.remove(&(doc, block))?;
-            }
+        // Every block ever written, deleted ones included, and the order.
+        let blocks = self
+            .blocks
+            .prefix_iter(&[KeyPart::Str(id.clone())], FindOpts::default())
+            .map(|entry| entry.map(|(key, _)| key))
+            .collect::<Result<Vec<(String, String)>, _>>()?;
+        for (doc, block) in blocks {
+            body_of(&doc, &block).clear()?;
+            let _ = self.blocks.remove(&(doc, block))?;
         }
-        loop {
-            let page = self.slots.prefix(
-                &[KeyPart::Str(id.clone())],
-                FindOpts::default().limit(BATCH),
-            )?;
-            if page.items.is_empty() {
-                break;
-            }
-            for (key, _) in page.items {
-                let _ = self.slots.remove(&key)?;
-            }
-        }
-        order_of(&id).clear()?;
+        let _ = self.order.remove(&id)?;
         loop {
             let page = self.doc_tags.prefix(
                 &[KeyPart::Str(id.clone())],
@@ -686,9 +676,7 @@ impl MeroDocs {
         self.touch(&doc)?;
         let mut row = self.block_row(&doc, &block)?;
         if !row.deleted {
-            let _gone = order_of(&doc).delete_ids(&[row.slot])?;
-            row.deleted = true;
-            let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+            self.set_deleted(&doc, &block, &mut row, true)?;
         }
         env::emit(Event::BlockDeleted { doc, block }, Audience::All)?;
         Ok(())
@@ -704,20 +692,15 @@ impl MeroDocs {
     ) -> app::Result<()> {
         self.touch(&doc)?;
         let mut row = self.block_row(&doc, &block)?;
-        let after_slot = match &after {
-            Some(a) => Some(self.block_row(&doc, a)?.slot),
-            None => None,
-        };
-        let mut order = order_of(&doc);
-        if !row.deleted {
-            let _gone = order.delete_ids(&[row.slot])?;
+        let mut order = self.order.get(&doc)?;
+        match &after {
+            Some(a) => order.move_after(&row.item, &self.block_row(&doc, a)?.item)?,
+            None => order.move_to_front(&row.item)?,
         }
-        let _ = self.slots.remove(&(doc.clone(), row.slot))?;
-        let slot = order.insert_after(after_slot, SLOT)?[0];
-        let _ = self.slots.insert(&(doc.clone(), slot), &block)?;
-        row.slot = slot;
-        row.deleted = false;
-        let _ = self.blocks.insert(&(doc.clone(), block.clone()), &row)?;
+        // A deleted block moved back into place is in the document again.
+        if row.deleted {
+            self.set_deleted(&doc, &block, &mut row, false)?;
+        }
         env::emit(Event::BlockMoved { doc, block }, Audience::All)?;
         Ok(())
     }
@@ -801,11 +784,7 @@ impl MeroDocs {
         check_len("block text", joined, MAX_BLOCK_TEXT_LEN)?;
         rich::append(&mut head, &tail)?;
         if !tail_row.deleted {
-            let _gone = order_of(&doc).delete_ids(&[tail_row.slot])?;
-            tail_row.deleted = true;
-            let _ = self
-                .blocks
-                .insert(&(doc.clone(), second.clone()), &tail_row)?;
+            self.set_deleted(&doc, &second, &mut tail_row, true)?;
         }
         env::emit(
             Event::BlockChanged {
@@ -1509,24 +1488,47 @@ impl MeroDocs {
         depth: u8,
         attrs: BTreeMap<String, String>,
     ) -> app::Result<String> {
-        let after_slot = match after {
-            Some(a) => Some(self.block_row(doc, a)?.slot),
-            None => None,
-        };
-        let slot = order_of(doc).insert_after(after_slot, SLOT)?[0];
         let block = fresh_id("blk");
-        let _ = self.slots.insert(&(doc.to_owned(), slot), &block)?;
+        let placed = Placed {
+            block: block.clone(),
+            deleted: false,
+        };
+        let mut order = self.order.get(&doc.to_owned())?;
+        let item = match after {
+            Some(a) => order.insert_after(&self.block_row(doc, a)?.item, &placed)?,
+            None => order.push_front(&placed)?,
+        };
         let _ = self.blocks.insert(
             &(doc.to_owned(), block.clone()),
             &BlockRow {
                 kind,
                 depth,
                 attrs,
-                slot,
+                item,
                 deleted: false,
             },
         )?;
         Ok(block)
+    }
+
+    /// Mark a block deleted or not, in its row and in its place in the order.
+    fn set_deleted(
+        &mut self,
+        doc: &str,
+        block: &str,
+        row: &mut BlockRow,
+        deleted: bool,
+    ) -> app::Result<()> {
+        row.deleted = deleted;
+        let placed = Placed {
+            block: block.to_owned(),
+            deleted,
+        };
+        let _ = self.order.get(&doc.to_owned())?.set(&row.item, &placed)?;
+        let _ = self
+            .blocks
+            .insert(&(doc.to_owned(), block.to_owned()), row)?;
+        Ok(())
     }
 
     fn change_block(
@@ -1546,14 +1548,13 @@ impl MeroDocs {
     /// The document's live blocks in order.
     fn ordered_blocks(&self, doc: &str) -> app::Result<Vec<(String, BlockRow)>> {
         let mut out = Vec::new();
-        for (slot, _) in order_of(doc).chars()? {
-            let Some(id) = self.slots.get(&(doc.to_owned(), slot))? else {
+        for entry in self.order.get(&doc.to_owned())?.iter() {
+            let (_, placed) = entry?;
+            if placed.deleted {
                 continue;
-            };
-            if let Some(row) = self.blocks.get(&(doc.to_owned(), id.clone()))? {
-                if !row.deleted && row.slot == slot {
-                    out.push((id, row));
-                }
+            }
+            if let Some(row) = self.blocks.get(&(doc.to_owned(), placed.block.clone()))? {
+                out.push((placed.block, row));
             }
         }
         Ok(out)

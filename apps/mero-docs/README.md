@@ -81,7 +81,7 @@ only ever fills its own.
 | v1 (`calimero-storage`) | component SDK |
 |---|---|
 | `docs: UnorderedMap<String, DocRecord>` with `title: FugueText`, `body: RichDocument<DriveMarks>`, `tags: UnorderedSet`, `LwwRegister`s, a hand-written `Mergeable` | `docs: UnorderedMap<String, DocMeta>` (creator, times, last editor, archived); `docTags: Set<(doc, tag)>`; the title a `RichText` named `dt:<doc>` |
-| `RichDocument`: a spine of block slots, each block a row with its own rich text | the block order a Fugue `Text` named `do:<doc>`, one character per block; `blocks: UnorderedMap<(doc, block), BlockRow>` (kind, depth, attributes, slot); `slots: UnorderedMap<(doc, slot), block>`; each block's text a `RichText` named `db:<doc>:<block>` |
+| `RichDocument`: a spine of block slots, each block a row with its own rich text | the block order a `List` per document, `order: UnorderedMap<doc, List<Placed>>` (block id, deleted), deleted blocks kept in place so an insert after one lands where it was; `blocks: UnorderedMap<(doc, block), BlockRow>` (kind, depth, attributes, its order item); each block's text a `RichText` named `db:<doc>:<block>` |
 | `DriveMarks` (`MarkSchema`): growing `bold`, `italic`, `underline`, `strike`, `textColor`, `backgroundColor`; non-growing `link`, `code`, `comment` | the same keys and the same growth, as the `expand` flag of each `RichText` mark (`rich::expands`) |
 | `FugueText` / `RichText` deltas, anchors, undo (`DeltaUndo`, `Undo`) | rebuilt on the SDK's `RichText` in `src/rich.rs`: `chars`, `insert_after`, `delete_ids`, `mark_ids` |
 | `headers: Moderated<UnorderedMap<String, u64>>` (creator = owner stamp, removable by the founder) | `createdBy` on `DocMeta`; `deleteDoc` checks the caller is the creator or `env::app_owner()` |
