@@ -4788,7 +4788,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team. Emits `PostDeleted`."
+        "x-calimero-publisher-description": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team, with its comments, reactions and\nreads. A question with more than 1,000 of those is refused whole\n(`Invalid`): delete some of its comments first. Emits `PostDeleted`."
       }
     },
     "/apps/{app}/methods/editCategory": {

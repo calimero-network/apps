@@ -838,6 +838,173 @@ fn the_asker_can_delete_their_question_but_not_someone_elses() {
     assert_eq!(c, "NotFound");
 }
 
+/// The stored entries, from `export_state`'s CBOR map of byte strings.
+fn stored(t: &TestApp) -> Vec<(Vec<u8>, Vec<u8>)> {
+    fn head(b: &[u8], i: &mut usize) -> (u8, usize) {
+        let first = b[*i];
+        *i += 1;
+        let width = match first & 0x1f {
+            n @ 0..=23 => return (first >> 5, usize::from(n)),
+            24 => 1,
+            25 => 2,
+            26 => 4,
+            27 => 8,
+            other => panic!("indefinite CBOR length {other}"),
+        };
+        let n = b[*i..*i + width]
+            .iter()
+            .fold(0usize, |acc, x| (acc << 8) | usize::from(*x));
+        *i += width;
+        (first >> 5, n)
+    }
+    fn bytes(b: &[u8], i: &mut usize) -> Vec<u8> {
+        let (major, n) = head(b, i);
+        assert_eq!(major, 2, "a byte string");
+        let out = b[*i..*i + n].to_vec();
+        *i += n;
+        out
+    }
+    let state = t.export_state();
+    let mut i = 0;
+    let (major, n) = head(&state, &mut i);
+    assert_eq!(major, 5, "a map");
+    (0..n)
+        .map(|_| {
+            let k = bytes(&state, &mut i);
+            (k, bytes(&state, &mut i))
+        })
+        .collect()
+}
+
+/// Stored entries that name `id`, in their key or their value. A table's
+/// counts stay stored at zero once their last record goes (the SDK's `add`
+/// never deletes): those are no data, so they are not listed.
+fn stored_naming(t: &TestApp, id: &str) -> Vec<String> {
+    let has = |hay: &[u8]| hay.windows(id.len()).any(|w| w == id.as_bytes());
+    stored(t)
+        .into_iter()
+        .filter(|(k, v)| v.as_slice() != [0] && (has(k) || has(v)))
+        .map(|(k, _)| String::from_utf8_lossy(&k).into_owned())
+        .collect()
+}
+
+fn people_comments(t: &mut TestApp, account: &str) -> Value {
+    view(t, "owner", "listPeople", json!({}))
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["account"] == json!(account))
+        .map(|p| p["comments"].clone())
+        .unwrap_or_else(|| panic!("no {account} in listPeople"))
+}
+
+#[test]
+fn a_deleted_question_takes_its_comments_reactions_and_reads_along() {
+    let mut t = app();
+    let q = call(
+        &mut t,
+        "bob",
+        "askQuestion",
+        json!({ "title": "Runway?", "body": "", "categoryId": null }),
+    );
+    let q = q.as_str().unwrap().to_owned();
+    let kept = call(
+        &mut t,
+        "bob",
+        "askQuestion",
+        json!({ "title": "Hiring?", "body": "", "categoryId": null }),
+    );
+    let kept = kept.as_str().unwrap().to_owned();
+    for id in [&q, &kept] {
+        let top = call(
+            &mut t,
+            "cy",
+            "addComment",
+            json!({ "postId": id, "parentId": null, "body": "Good one" }),
+        );
+        call(
+            &mut t,
+            "owner",
+            "addComment",
+            json!({ "postId": id, "parentId": top, "body": "18 months" }),
+        );
+        call(
+            &mut t,
+            "cy",
+            "react",
+            json!({ "postId": id, "emoji": "👀", "on": true }),
+        );
+        call(&mut t, "cy", "markRead", json!({ "postId": id }));
+    }
+    assert_eq!(people_comments(&mut t, "cy"), json!("2"));
+
+    call(&mut t, "bob", "deletePost", json!({ "postId": q }));
+
+    // Nothing of it is read back: not its thread, not cy's comment count.
+    assert_eq!(
+        view(&mut t, "cy", "listComments", json!({ "postId": q })),
+        json!([])
+    );
+    assert_eq!(people_comments(&mut t, "cy"), json!("1"));
+    assert_eq!(stored_naming(&t, &q), Vec::<String>::new());
+    // The other question keeps its own.
+    assert_eq!(
+        view(&mut t, "cy", "listComments", json!({ "postId": kept }))
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(!stored_naming(&t, &kept).is_empty());
+}
+
+#[test]
+fn a_question_too_large_for_one_run_is_refused_whole() {
+    let mut t = app();
+    let q = call(
+        &mut t,
+        "bob",
+        "askQuestion",
+        json!({ "title": "Runway?", "body": "", "categoryId": null }),
+    );
+    let q = q.as_str().unwrap().to_owned();
+    call(
+        &mut t,
+        "cy",
+        "react",
+        json!({ "postId": q, "emoji": "👀", "on": true }),
+    );
+    call(&mut t, "cy", "markRead", json!({ "postId": q }));
+    // 998 comments, a reaction and two reads (asking reads it): 1,001 rows,
+    // one more than a delete removes.
+    let mut last = Value::Null;
+    for _ in 0..998 {
+        last = call(
+            &mut t,
+            "cy",
+            "addComment",
+            json!({ "postId": q, "parentId": null, "body": "+1" }),
+        );
+    }
+    let (c, m) = fails(&mut t, "bob", "deletePost", json!({ "postId": q }));
+    assert_eq!(c, "Invalid");
+    assert_eq!(
+        m,
+        "this question has 1001 comments, reactions and reads; a delete removes at most 1000: delete some of its comments first"
+    );
+    assert_eq!(post(&mut t, "bob", &q)["card"]["title"], json!("Runway?"));
+    // One comment fewer and it goes, with everything on it.
+    call(
+        &mut t,
+        "owner",
+        "deleteComment",
+        json!({ "commentId": last }),
+    );
+    call(&mut t, "bob", "deletePost", json!({ "postId": q }));
+    assert_eq!(people_comments(&mut t, "cy"), json!("0"));
+    assert_eq!(stored_naming(&t, &q), Vec::<String>::new());
+}
+
 // ── comments ─────────────────────────────────────────────────────────────────
 
 #[test]

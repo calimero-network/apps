@@ -182,7 +182,7 @@
     "deletePost": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team. Emits `PostDeleted`.",
+      "doc": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team, with its comments, reactions and\nreads. A question with more than 1,000 of those is refused whole\n(`Invalid`): delete some of its comments first. Emits `PostDeleted`.",
       "kind": "call",
       "params": [
         [
