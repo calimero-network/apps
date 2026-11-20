@@ -377,14 +377,26 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     A.client.apps.create({ name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(open, "the open team") } }).then((r) => r.appId), (a) => a);
   const inClosed = await row(A, APPS, "createApp (the invite-only team's)", OK, () =>
     A.client.apps.create({ name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(closed, "the invite-only team") } }).then((r) => r.appId), (a) => a);
+  // Since core#5193 (1.0.0-rc.32) there are no personal organizations: an
+  // instance naming no `org` goes to its creator's only organization (here,
+  // the one B joins). A's own app asks for an organization of its own with
+  // `newOrg`, which mero-js 36 does not type yet but sends as a body field.
   const own = await row(
     A,
     APPS,
-    "createApp (A's own, no org)",
+    "createApp (A's own, in a new organization)",
     OK,
-    () => A.client.apps.create({ name: `own-${tag}`, bundle: need(bundle, "a bundle") }).then((r) => r.appId),
+    () =>
+      A.client.apps
+        .create({ name: `own-${tag}`, bundle: need(bundle, "a bundle"), newOrg: { name: `own-${tag}` } } as Parameters<typeof A.client.apps.create>[0])
+        .then((r) => r.appId),
     (a) => a,
   );
+  const ownOrg = await row(A, APPS, "getApp (A's own: its new organization)", OK, async () => {
+    const a = await A.client.apps.get({ app: need(own, "A's own app") });
+    assert(a.org && a.org !== org, `A's own app is in ${short(a.org)}`);
+    return a.org;
+  }, (o) => short(o));
   await row(A, APPS, "listApps", OK, async () => {
     const list = await listAppInfos(A.client);
     for (const id of [app, fromPkg, own]) assert(list.some((x) => x.appId === id), `${short(id)} is not listed`);
@@ -603,8 +615,10 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   );
   await row(A, ACCESS, "setAccess (accounts: the outsider)", OK, () =>
     A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "accounts", accounts: [need(C.account, "the outsider's account")] } }));
-  await row(C, ACCESS, "A's own app (an account it names)", OK, () =>
-    eventually(() => C.client.apps.view({ app: need(own, "A's own app"), method: "myAccount", args: {} }), () => true, "access by account"), (r) => r.result);
+  // An `accounts` list in an ordinary organization reaches only its members
+  // (core#5193); listing outsiders comes back with guests.
+  await row(C, ACCESS, "A's own app (an account it names, not a member)", "NOT_FOUND", () =>
+    C.client.apps.view({ app: need(own, "A's own app"), method: "myAccount", args: {} }));
   await row(A, ACCESS, "setAccess (public)", OK, () =>
     A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "public" } }),
   );
@@ -815,20 +829,16 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(A, REL, "releaseRules", OK, () => A.client.public.releasesPublic(), (r) => Object.keys(r));
   await row(A, REL, "pendingApprovals (the org)", OK, () => A.client.pendingApprovals(orgId()), (r) => Object.keys(r));
   await row(A, REL, "appsReport (the org)", OK, () => A.client.orgs.apps({ org: orgId() }), (r) => Object.keys(r));
-  // Since core#5015 (1.0.0-rc.20) every account has a personal organization
-  // from sign-up, and an account holds no approvals of its own: the old
-  // `POST /auth/releases` is gone, and the personal organization's are
-  // approved like any organization's.
-  await row(A, REL, "approveRelease (the org, then the personal org; withdrawn)", OK, async () => {
+  // An account holds no approvals of its own: every organization approves
+  // its releases, A's own app's as much as the shared one.
+  await row(A, REL, "approveRelease (the org, then A's own app's org; withdrawn)", OK, async () => {
     await A.client.orgs.releaseApproval(
       { org: orgId(), version: "2.3.200", approved: true },
       { confirm: passkeyConfirm(A.passkey) },
     );
-    const orgs = (await A.client.auth.me()).orgs as { orgId: string; personal?: boolean }[];
-    const personal = need(orgs.find((o) => o.personal)?.orgId, "A's personal organization");
     for (const approved of [true, false]) {
       await A.client.orgs.releaseApproval(
-        { org: personal, version: "2.3.200", approved },
+        { org: need(ownOrg, "A's own app's organization"), version: "2.3.200", approved },
         { confirm: passkeyConfirm(A.passkey) },
       );
     }
@@ -877,6 +887,9 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     A.client.orgs.delete({ org: orgId() }, { confirm: passkeyConfirm(A.passkey) }),
   );
   await row(A, END, "getOrg (deleted)", "NOT_FOUND", () => A.client.orgs.get({ org: orgId() }));
+  await row(A, END, "deleteOrg (A's own app's)", OK, () =>
+    A.client.orgs.delete({ org: need(ownOrg, "A's own app's organization") }, { confirm: passkeyConfirm(A.passkey) }),
+  );
   await row(A, END, "uninstallPackage", OK, async () => {
     await A.client.packages.uninstall({ package: pkg });
     const list = (await A.client.packages.list()).packages;
