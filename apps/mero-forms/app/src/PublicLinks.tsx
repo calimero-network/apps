@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { type FormView, type LinkView, toForm, toLink, toLinks } from "./formsApi";
 import { fetchCaptchaConfig } from "./lib/captcha";
+import { createPublicLink, revokePublicLink } from "./lib/coreLinks";
 import { ago } from "./lib/fields";
-import { revokeKey } from "./lib/formKey";
 import { shortAccount } from "./lib/people";
-import { LINK_METHODS, publicLinkUrl, sha256Hex } from "./lib/publicLink";
+import { coreLabel, LINK_LIFETIMES, linkExpiry, publicLinkUrl } from "./lib/publicLink";
 import { BASE } from "./route";
 import { useSignedIn } from "./sessionContext";
 import { useRead, type Workspace } from "./useWorkspace";
@@ -14,12 +14,13 @@ import { passkeyConfirm } from "@calimero-network/mero-js";
  * A form's public links: anyone with one answers the form in their browser,
  * signed in or not.
  *
- * Making a link is two things done together, as Hyperfeed Calendar's booking links
- * are: a core API key of this teammate's account, limited to this workspace
- * and to `linkForm` and `submitViaLink` (a passkey step-up), and a contract
- * record keyed by the SHA-256 of the key. The visitor's browser calls the
- * cluster with the key, so there is no node of the teammate's that has to be
- * reachable.
+ * Making a link is two things done together: one of core's public links of
+ * this workspace (a grant core keeps, made with this teammate's passkey; only
+ * someone who may change the workspace's access may), and the contract's
+ * binding of the link's key to this form. A visitor's browser calls the
+ * cluster with the link's token as an anonymous visitor, and only the two
+ * public methods, which answer the form the link is bound to. Core stops the
+ * link when it is revoked or expires, and limits each visitor's calls.
  *
  * The form decides whether its links take responses (Public), how many each
  * may send per hour, and whether each response needs a captcha. The contract
@@ -38,6 +39,7 @@ export function PublicLinks({
   const links = useRead(workspace.client, workspace.version, (c) => c.listLinks({ formId: form.id }).then(toLinks), [form.id]);
   const me = useRead(workspace.client, 0, (c) => c.myAccount(), []);
   const [label, setLabel] = useState("");
+  const [days, setDays] = useState<number>(0);
   const [cap, setCap] = useState(String(form.link_cap));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,27 +80,27 @@ export function PublicLinks({
       setMade(null);
       setCopied(false);
       const name = label.trim();
-      const key = await client.auth.apikeyCreate(
-        {
-          label: (name ? `Hyperfeed Forms link · ${name}` : "Hyperfeed Forms link").slice(0, 128),
-          apps: [appId],
-          methods: [...LINK_METHODS],
-        },
-        { confirm: passkeyConfirm(passkey()) },
+      const expiry = linkExpiry(days, Date.now());
+      const made = await createPublicLink(
+        client,
+        appId,
+        { label: coreLabel(form.title, name), expiresAt: expiry.core },
+        passkeyConfirm(passkey()),
       );
       after();
       try {
-        const link = await sha256Hex(key.key);
-        await workspace.act((c) => c.createLink({ formId: form.id, link, grantId: key.keyId, label: name }).then(toLink));
+        await workspace.act((c) =>
+          c.createLink({ formId: form.id, link: made.link, label: name, expiresAt: expiry.contract }).then(toLink),
+        );
       } catch (e) {
-        // No record, no link: take the key back rather than leave one that
-        // reaches nothing the team can see.
-        await revokeKey(client, key.keyId, passkey()).catch(() => undefined);
+        // No binding, no link: take it back rather than leave one that
+        // answers no form and counts against the workspace's links.
+        await revokePublicLink(client, appId, made.link, passkeyConfirm(passkey())).catch(() => undefined);
         throw e;
       }
       setMade({
         label: name || "Public link",
-        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { app: appId, token: key.key }),
+        url: publicLinkUrl(window.location.origin + BASE.slice(0, -1), { app: appId, token: made.token }),
       });
       setLabel("");
     });
@@ -108,15 +110,15 @@ export function PublicLinks({
       if (!window.confirm(`Delete "${link.label || "Public link"}"? Anyone who has it can no longer answer the form.`)) {
         return;
       }
-      // The record first: without it the contract refuses the link at once.
+      // The binding first: without it the contract refuses the link at once.
       const gone = await workspace.act((c) => c.deleteLink({ link: link.id }).then(toLink));
-      if (gone.created_by === me.data) {
-        await revokeKey(client, gone.grant_id, passkey()).catch(() => undefined);
+      try {
+        await revokePublicLink(client, appId, gone.id, passkeyConfirm(passkey()));
         after();
-      } else {
+      } catch (e) {
         setNotes(
-          `The link no longer works. Its API key stays on ${shortAccount(gone.created_by)}'s account, ` +
-            "where it reaches nothing, until they revoke it.",
+          "The link no longer answers this form. Core still keeps it until whoever made it, or someone who " +
+            `manages the workspace's access, revokes it (${e instanceof Error ? e.message : String(e)}).`,
         );
       }
     });
@@ -204,13 +206,20 @@ export function PublicLinks({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
         />
+        <select aria-label="link lifetime" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+          {LINK_LIFETIMES.map((l) => (
+            <option key={l.days} value={l.days}>
+              {l.label}
+            </option>
+          ))}
+        </select>
         <button type="submit" disabled={busy !== null}>
           {busy === "create" ? "Making the link…" : "Create public link"}
         </button>
       </form>
       <p className="note">
-        A link is an API key of your account that reaches this form only. Making one asks for your
-        passkey.
+        A link reaches this form only. Making or deleting one asks for your passkey, and only someone
+        who may change who reaches this workspace can make one.
       </p>
       {error && <pre className="err">{error}</pre>}
       {notes && <p className="note">{notes}</p>}
@@ -249,6 +258,10 @@ export function PublicLinks({
                   <span className="mono" title={l.created_by}>
                     {l.created_by === me.data ? "you" : shortAccount(l.created_by)}
                   </span>
+                  {l.expires_at > 0 &&
+                    (l.expires_at <= Date.now()
+                      ? " · expired"
+                      : ` · works until ${new Date(l.expires_at).toLocaleDateString()}`)}
                 </div>
               </div>
               <button

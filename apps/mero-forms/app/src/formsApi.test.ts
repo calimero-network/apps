@@ -83,13 +83,12 @@ describe("the adapter", () => {
     const after = vi.fn();
     const f = formsClient(withRoutes({ call, view: vi.fn() }), "app-1", after);
     await f.submitViaLink({
-      link: "l1",
       answers: fromAnswers([{ field_id: "email", values: ["a@b.co"] }]),
       captcha: fromCaptchaPass({ nonce: "n", expires_ms: 1700000000000, signature: "s" }),
       captchaToken: null,
     });
+    // No link and no form: the contract takes both from the visitor's link.
     expect(call).toHaveBeenCalledWith("app-1", "submitViaLink", {
-      link: "l1",
       answers: [{ fieldId: "email", values: ["a@b.co"] }],
       captcha: { nonce: "n", expiresMs: "1700000000000", signature: "s" },
       captchaToken: null,
