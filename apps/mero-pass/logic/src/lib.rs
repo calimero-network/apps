@@ -354,7 +354,9 @@ pub struct MeroPass {
 fn account() -> app::Result<String> {
     match env::caller() {
         Caller::Account(account) | Caller::ApiKey { account, .. } => Ok(account),
-        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
+        Caller::Public | Caller::System | Caller::App(_) | Caller::Visitor { .. } => {
+            Err(AppError::login_required())
+        }
     }
 }
 

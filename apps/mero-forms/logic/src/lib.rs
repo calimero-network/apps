@@ -556,7 +556,9 @@ fn who() -> app::Result<Who> {
             id: key_id,
             account,
         }),
-        Caller::Public | Caller::System | Caller::App(_) => Err(AppError::login_required()),
+        Caller::Public | Caller::System | Caller::App(_) | Caller::Visitor { .. } => {
+            Err(AppError::login_required())
+        }
     }
 }
 
