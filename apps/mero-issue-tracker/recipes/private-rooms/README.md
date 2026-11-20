@@ -18,7 +18,7 @@ organization (workspace)
 ```
 
 1. `client.orgs.teamCreate({ org, name, join })` → `{ teamId }`
-2. `createApp(client, { name, ...appTarget(source), org, grants: [{ kind: 'team', team: teamId }] })` (`@calimero-apps/connect`)
+2. `client.apps.create({ name, ...appTarget(source), org, grants: [{ kind: 'team', team: teamId }] })` (mero-js; `appTarget` from `@calimero-apps/connect`)
 3. private only: `client.orgs.teamSetMember({ org, team: teamId, account }, { confirm: passkeyConfirm(passkey) })` per member
 
 `listAppInfos(client, { package })` (`client.apps.list`) lists only the rooms the caller reaches, so the room
