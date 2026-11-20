@@ -92,6 +92,8 @@ export interface UpgradeOffer {
   app: string;
   /** The instance's own name, when the report gives one. */
   name: string | null;
+  /** The package it runs (the report's `package.package`). */
+  package?: string;
   /** The release it runs. */
   current: string;
   /**
@@ -194,7 +196,8 @@ function offerIn(entry: ReportedApp, report: AppsReport): Omit<UpgradeOffer, "ca
         ? said
         : null;
   if (heldBy === null) return null;
-  return { app: entry.app, name: entry.name ?? null, current, latest, reachable, blocked, heldBy };
+  const pkg = entry.package?.package;
+  return { app: entry.app, name: entry.name ?? null, ...(pkg ? { package: pkg } : {}), current, latest, reachable, blocked, heldBy };
 }
 
 /**
