@@ -169,11 +169,9 @@ catalog:
   # was removed; 10.1.2 (#116) signs in an app Calimero Desktop opens, which
   # mero-js 26 otherwise refuses as a login this page did not begin.
   "@calimero-network/mero-react": ^10.3.0 # fleet-bump: hold
-  # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
-  # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
-  # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
-  # (mero-chat's journey, on main too).
-  "@calimero-network/mero-ui": ^1.5.2
+  # The design system, published from core (sdks/components/mero-design) at
+  # core's version; it was @calimero-network/mero-ui up to 1.5.2.
+  "@calimero-network/mero-design": ^1.0.0-rc.32
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
   # it each pinned their own version.

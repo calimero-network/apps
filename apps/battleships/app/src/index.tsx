@@ -1,7 +1,7 @@
 import '@calimero-apps/glass/glass.css';
 import { StrictMode, type ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
-import '@calimero-network/mero-ui/styles.css';
+import '@calimero-network/mero-design/styles.css';
 import '@fontsource-variable/jetbrains-mono';
 import './index.css';
 import { ConsentPopupReturn } from '@calimero-network/mero-react';

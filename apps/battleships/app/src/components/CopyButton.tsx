@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /**
  * Copy-to-clipboard, in this app's own button styles.
  *
- * mero-ui ships a `CopyToClipboard`, but it renders with the library's dark
+ * mero-design ships a `CopyToClipboard`, but it renders with the library's dark
  * palette and its own shape, so on a light surface it sat among the app's
  * buttons looking like it came from somewhere else. The behaviour is four
  * lines; the styling is the part that has to match.

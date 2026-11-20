@@ -4,7 +4,7 @@ import { InstallAppIconButton } from '@calimero-apps/install';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
-} from '@calimero-network/mero-ui';
+} from '@calimero-network/mero-design';
 
 interface NavBarProps {
   namespaceName?: string | null;
@@ -24,7 +24,7 @@ export default function NavBar({
     <MeroNavbar
       variant="elevated"
       size="md"
-      /* mero-ui hardcodes a dark bar INLINE (`backgroundColor: "#1A1A1A"`),
+      /* mero-design hardcodes a dark bar INLINE (`backgroundColor: "#1A1A1A"`),
          and exposes no CSS variable for it — but it spreads `style` AFTER its
          own base styles, so this wins without `!important`. The values are
          the fleet's floating glass header (`glass-header` in the glass
@@ -64,7 +64,7 @@ export default function NavBar({
         {extra}
       </NavbarMenu>
       <NavbarMenu align="right">
-        {/* ⚠️ NOT wrapped in mero-ui's `NavbarItem`. That component paints a
+        {/* ⚠️ NOT wrapped in mero-design's `NavbarItem`. That component paints a
             dark slate hover by ASSIGNING `e.currentTarget.style.backgroundColor`
             in an `onMouseEnter` handler — a runtime inline style, which no
             stylesheet can override short of `!important`, and which is a colour

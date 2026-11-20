@@ -7,7 +7,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { nodeBasename } from "@calimero-apps/node-served";
 import { ConsentPopupReturn } from "@calimero-network/mero-react";
-import "@calimero-network/mero-ui/styles.css";
+import "@calimero-network/mero-design/styles.css";
 
 import App from "./App";
 import { SessionProvider } from "./api/sessionContext";

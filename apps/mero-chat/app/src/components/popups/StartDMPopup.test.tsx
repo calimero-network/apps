@@ -40,7 +40,7 @@ vi.mock("../loader/Loader", () => ({
   default: () => <div>loading</div>,
 }));
 
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   Button: ({
     children,
     onClick,

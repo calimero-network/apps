@@ -64,7 +64,7 @@ function MyComponent() {
 
 ```typescript
 import { useWebSocketEvents } from '../contexts/WebSocketContext';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 
 function ChannelNotifications() {
   const toast = useToast();

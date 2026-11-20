@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 import { tokens as t, useTheme } from '../../theme';
 import { IconLogout, KindIcon } from '../../components/icons';
 import { Button, Input, Label, Page, Panel, Row, Select, Tabs } from '../../components/ui';

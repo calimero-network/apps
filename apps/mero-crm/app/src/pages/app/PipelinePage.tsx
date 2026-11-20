@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 import { tokens as t } from '../../theme';
 import { APP_ROUTE } from '../../config';
 import AvatarGlyph from '../../components/AvatarGlyph';

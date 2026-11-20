@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { styled } from "styled-components";
 import { useSessionKey } from "../../hooks/useSessionKey";
-import { Button, Input } from "@calimero-network/mero-ui";
+import { Button, Input } from "@calimero-network/mero-design";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { GroupMember, GroupSummary } from "../../api/groupApi";
 import { clearStoredSession } from "../../utils/session";

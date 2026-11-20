@@ -1,6 +1,6 @@
 import type { FormEvent, Dispatch, SetStateAction } from "react";
 import styled from "styled-components";
-import { Button, SearchInput } from "@calimero-network/mero-ui";
+import { Button, SearchInput } from "@calimero-network/mero-design";
 
 import SearchResultMessage from "./SearchResultMessage";
 import type { SearchResult } from "../hooks/messageSearch";
@@ -91,7 +91,7 @@ const SearchForm = styled.form`
 const SearchInputWrapper = styled.div`
   flex: 1;
   min-width: 240px;
-  /* mero-ui's SearchInput paints its label and typed text white inline. */
+  /* mero-design's SearchInput paints its label and typed text white inline. */
   label,
   input {
     color: var(--glass-ink) !important;

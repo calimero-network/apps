@@ -27,7 +27,7 @@ import { deleteBlob } from "../api/blobs";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { mentionCandidates } from "../utils/mentionCandidates";
-import { RichTextEditor } from "@calimero-network/mero-ui";
+import { RichTextEditor } from "@calimero-network/mero-design";
 
 import { formatTyping, useEphemeralPresence } from "../hooks/useEphemeralPresence";
 import { useToast } from "../contexts/ToastContext";
