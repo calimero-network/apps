@@ -53,7 +53,6 @@ import {
   appPeople,
   appTarget,
   appTeamIdIn,
-  createApp,
   finishAppOrg,
   isAppOnly,
   leaveApp,
@@ -626,7 +625,7 @@ export class OrgAdmin {
     const access = team
       ? { kind: 'team' as const, team }
       : await orgWideAccess(this.client, org, this.source, this.passkey, PRODUCT_NAME);
-    const contextId = (await createApp(this.client, { name, ...appTarget(this.source), org, grants: [access] })).appId;
+    const contextId = (await this.client.apps.create({ name, ...appTarget(this.source), org, grants: [access] })).appId;
     await this.setGroupMetadata(input.groupId, {
       data: { [team ? DOCS_APP_KEY : REGISTRY_APP_KEY]: contextId },
     });

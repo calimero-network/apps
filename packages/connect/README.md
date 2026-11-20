@@ -231,10 +231,10 @@ takes `grants` (absent: `[{ kind: "org" }]`; `[]`: the owner alone), `POST
 | `public` | `[{ kind: "anyone" }]`: any **signed-in** account. Nobody signed out is admitted by a grant (that is public links, core#5195). |
 
 ```ts
-import { accountGrants, createApp, grantPeople, grantedTeam, grantsOf, setGrants } from "@calimero-apps/connect";
+import { accountGrants, grantPeople, grantedTeam, grantsOf } from "@calimero-apps/connect";
 
-await createApp(client, { name, ...appTarget(source), org, grants: [{ kind: "team", team }] });
-await setGrants(client, app, accountGrants([bob]));
+await client.apps.create({ name, ...appTarget(source), org, grants: [{ kind: "team", team }] });
+await client.apps.access({ app, grants: accountGrants([bob]) });
 const grants = grantsOf(await client.apps.get({ app }));
 grantedTeam(grants); // the instance's one team, or null
 grantPeople(owner, grants, { org: () => orgPeople, team: (t) => teamPeople(t) }); // who it names
@@ -242,9 +242,10 @@ grantPeople(owner, grants, { org: () => orgPeople, team: (t) => teamPeople(t) })
 
 `grantsOf` reads a record's `grants` (also a public link, `{ kind: "link" }`,
 read-only here); `grantedTeams`, `grantedAccounts`, `grantsOrg` and
-`grantsAnyone` read one kind each. `createApp` and `setGrants` exist because
-the catalog's mero-js (1.0.0-rc.32) still types `access` on those routes:
-`TODO(core#5194)` in `grants.ts` marks what goes once it types `grants`.
+`grantsAnyone` read one kind each. `Grant` (what is sent) and `ReadGrant`
+(what a record answers, a link included) are mero-js's own `Grant` schema, so an
+instance is made and its grants replaced with mero-js's `client.apps.create` and
+`client.apps.access` directly.
 
 ## App teams
 

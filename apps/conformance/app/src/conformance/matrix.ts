@@ -54,7 +54,7 @@ import { OK, appError, assert, check, eventually as waitFor, need, short, sleep,
 import { PACKAGE, contract } from "./contract";
 import { publisher, signedMpk, variant } from "./mpk";
 import type { Row, Who } from "./types";
-import { accountGrants, createApp, listAppInfos, setGrants } from "@calimero-apps/connect";
+import { accountGrants, listAppInfos } from "@calimero-apps/connect";
 
 /** What the matrix runs on. The page and the cluster run each make one. */
 export interface MatrixEnv {
@@ -374,9 +374,9 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const forRun = await row(A, APPS, "createApp (a package release, for the org run)", OK, () =>
     A.client.apps.create({ name: `run-${tag}`, package: pkg, version: "0.0.0", org: orgId() }).then((r) => r.appId), (a) => a);
   const inOpen = await row(A, APPS, "createApp (the open team's)", OK, () =>
-    createApp(A.client, { name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(open, "the open team") }] }).then((r) => r.appId), (a) => a);
+    A.client.apps.create({ name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(open, "the open team") }] }).then((r) => r.appId), (a) => a);
   const inClosed = await row(A, APPS, "createApp (the invite-only team's)", OK, () =>
-    createApp(A.client, { name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(closed, "the invite-only team") }] }).then((r) => r.appId), (a) => a);
+    A.client.apps.create({ name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(closed, "the invite-only team") }] }).then((r) => r.appId), (a) => a);
   // Since core#5193 (1.0.0-rc.32) there are no personal organizations: an
   // instance naming no `org` goes to its creator's only organization (here,
   // the one B joins). A's own app asks for an organization of its own with
@@ -614,15 +614,15 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     C.client.apps.view({ app: need(own, "A's own app"), method: "get", args: { key: "k" } }),
   );
   // An instance's access is its grants (core#5194, 1.0.0-rc.33).
-  await row(A, ACCESS, "setGrants (an account: the outsider)", OK, () =>
-    setGrants(A.client, need(own, "A's own app"), accountGrants([need(C.account, "the outsider's account")])));
+  await row(A, ACCESS, "setAccess (grants: an account, the outsider)", OK, () =>
+    A.client.apps.access({ app: need(own, "A's own app"), grants: accountGrants([need(C.account, "the outsider's account")]) }));
   // An account grant naming someone outside the organization makes them a
   // guest, admitted only where the release says `guests: allowed` and the
   // organization allows guests; a raw bundle allows none.
   await row(C, ACCESS, "A's own app (an account it names, not a member: no guests)", "NOT_FOUND", () =>
     C.client.apps.view({ app: need(own, "A's own app"), method: "myAccount", args: {} }));
-  await row(A, ACCESS, "setGrants (anyone)", OK, () =>
-    setGrants(A.client, need(own, "A's own app"), [{ kind: "anyone" }]),
+  await row(A, ACCESS, "setAccess (grants: anyone)", OK, () =>
+    A.client.apps.access({ app: need(own, "A's own app"), grants: [{ kind: "anyone" }] }),
   );
   await row(C, ACCESS, "an `anyone` app (a signed-in outsider)", OK, async () => {
     await contract(A.client, need(own, "A's own app")).set("open", "to anyone");

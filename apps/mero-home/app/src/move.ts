@@ -12,7 +12,7 @@
  * route is not there), and Home hides both "Move to another organization" and
  * "Merge organizations" ({@link movesSupported}).
  */
-import { describeError, grantsOf, type ClientRoutes, type MyOrg, type ReadGrant } from "@calimero-apps/connect";
+import { describeError, type ClientRoutes, type MyOrg, type ReadGrant } from "@calimero-apps/connect";
 import { passkeyConfirm, type CalimeroClient, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
 
 import { peopleOf, type Person, type Role } from "./homeOrg";
@@ -62,9 +62,7 @@ export async function moveApp(
   bringMembers: boolean,
   passkey: PasskeyProvider,
 ): Promise<MoveResult> {
-  const moved = await client.apps.move({ app, toOrg, bringMembers }, { confirm: passkeyConfirm(passkey) });
-  // TODO(core#5194): mero-js 1.0.0-rc.32 types the answer's removed `access`; rc.33 answers `grants`.
-  return { ...(moved as unknown as Omit<MoveResult, "grants">), grants: grantsOf(moved) };
+  return client.apps.move({ app, toOrg, bringMembers }, { confirm: passkeyConfirm(passkey) });
 }
 
 function administers(o: MyOrg): boolean {

@@ -36,7 +36,6 @@ import {
   appPeople,
   appTarget,
   appTeamIdIn,
-  createApp,
   finishAppOrg,
   grantedTeam,
   grantsOf,
@@ -347,7 +346,7 @@ export async function createVault(
     onStatus('Creating the vault…');
     // An open vault is on Hyperfeed Pass's team (made first, by an owner or admin,
     // in an org whose other apps have teams), or org access in a legacy org.
-    const contextId = (await createApp(conn.client, { name: opts.name, ...appTarget(conn.source), ...(grants
+    const contextId = (await conn.client.apps.create({ name: opts.name, ...appTarget(conn.source), ...(grants
         ? { org: opts.namespaceId, grants }
         : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME)) })).appId;
     onStatus('Naming it…');

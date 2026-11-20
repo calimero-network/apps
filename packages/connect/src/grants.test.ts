@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   accountGrants,
-  createApp,
   grantPeople,
   grantedAccounts,
   grantedTeam,
@@ -10,7 +9,6 @@ import {
   grantsAnyone,
   grantsOf,
   grantsOrg,
-  setGrants,
   type ReadGrant,
 } from "./grants";
 import { orgCluster } from "./testing";
@@ -24,7 +22,7 @@ describe("grantsOf", () => {
         { kind: "account", account: "acct-bob" },
         { kind: "account", account: "acct-gus", scope: { channel: "partners" } },
         { kind: "anyone" },
-        { kind: "link", link: "l1", role: "read" },
+        { kind: "link", link: "l1", ratePerMinute: 60, createdBy: "acct-me", createdAt: 1 },
       ],
     };
     expect(grantsOf(record)).toEqual(record.grants);
@@ -76,25 +74,15 @@ describe("reading grants", () => {
 });
 
 describe("writing grants", () => {
-  it("createApp and setGrants send `grants`, never `access`", async () => {
-    const create = vi.fn(async () => ({ appId: "app-1", compute: false }));
-    const access = vi.fn(async () => ({}));
-    const client = { apps: { create, access } } as unknown as Parameters<typeof createApp>[0] & Parameters<typeof setGrants>[0];
-    await createApp(client, { name: "x", bundle: "b", org: "o", grants: [{ kind: "team", team: "t" }] });
-    expect(create).toHaveBeenCalledWith({ name: "x", bundle: "b", org: "o", grants: [{ kind: "team", team: "t" }] }, undefined);
-    await setGrants(client, "app-1", []);
-    expect(access).toHaveBeenCalledWith({ app: "app-1", grants: [] }, undefined);
-  });
-
   it("the test cluster refuses the removed `access` as core does, and keeps grants", async () => {
     const cluster = orgCluster();
     const org = cluster.addOrg();
     await expect(
       cluster.client.apps.create({ name: "x", bundle: "b", org, access: { kind: "org" } } as never),
     ).rejects.toMatchObject({ status: 400, code: "ACCESS_REMOVED" });
-    const { appId } = await createApp(cluster.client, { name: "x", bundle: "b", org });
+    const { appId } = await cluster.client.apps.create({ name: "x", bundle: "b", org });
     expect(cluster.state.apps.get(appId)!.grants).toEqual([{ kind: "org" }]);
-    await setGrants(cluster.client, appId, accountGrants(["acct-bob"]));
+    await cluster.client.apps.access({ app: appId, grants: accountGrants(["acct-bob"]) });
     expect(cluster.state.apps.get(appId)!.grants).toEqual([{ kind: "account", account: "acct-bob" }]);
     expect(grantsOf(await cluster.client.apps.get({ app: appId }))).toEqual([{ kind: "account", account: "acct-bob" }]);
   });

@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { passkeyConfirm, type AppInfo, type PasskeyProvider } from '@calimero-network/mero-js';
-import { appTarget, createApp, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
+import { appTarget, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
 
 export type RoomVisibility = 'public' | 'private';
 
@@ -30,7 +30,7 @@ export function useTeamRooms(client: Client, source: AppSource, org: string | nu
       if (!org) throw new Error('no organization');
       const join = visibility === 'public' ? 'everyone' : 'invite';
       const { teamId: team } = await client.orgs.teamCreate({ org, name, join });
-      const { appId } = await createApp(client, { name, ...appTarget(source), org, grants: [{ kind: 'team', team }] });
+      const { appId } = await client.apps.create({ name, ...appTarget(source), org, grants: [{ kind: 'team', team }] });
       if (visibility === 'private') {
         for (const account of members) {
           await client.orgs.teamSetMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) });

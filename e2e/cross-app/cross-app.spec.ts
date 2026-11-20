@@ -156,10 +156,8 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   const teams = await alice.client.orgs.appTeamList({ org });
   const kvTeam = teams.appTeams.find((t) => t.package === KV)?.teamId;
   expect(kvTeam, "Home made no app team for KV Store").toBeTruthy();
-  // Its one grant is the app team (core#5194). TODO(core#5194): drop the cast
-  // once the catalog's mero-js types `grants` (1.0.0-rc.32 still types `access`).
-  const body = { name: STORE, package: KV, org, grants: [{ kind: "team", team: kvTeam! }] };
-  await alice.client.apps.create(body as Parameters<typeof alice.client.apps.create>[0]);
+  // Its one grant is the app team (core#5194).
+  await alice.client.apps.create({ name: STORE, package: KV, org, grants: [{ kind: "team", team: kvTeam! }] });
 });
 
 test("4. Alice invites Bob to every app; he joins from Home and reaches the org in Chat and KV Store", async ({

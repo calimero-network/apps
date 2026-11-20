@@ -42,7 +42,6 @@ import {
   appTarget,
   appTeamIdIn,
   appTeamMembers,
-  createApp,
   createAppOrg,
   finishAppOrg,
   grantedAccounts,
@@ -707,7 +706,7 @@ export async function createChatApp(
   const initArgs = initArgsFrom(initializationParams);
   const visibility = pending?.visibility ?? (initArgs.contextType === "Dm" ? "restricted" : "open");
   const create = (grants: Grant[]) =>
-    run((c) => createApp(c, { name: title, ...appTarget(chatSource()), org, grants, initArgs }).then((r) => r.appId));
+    run((c) => c.apps.create({ name: title, ...appTarget(chatSource()), org, grants, initArgs }).then((r) => r.appId));
 
   const parent = await channelParent(org);
   // Without Chat's team, a private channel or DM would be a team at the top

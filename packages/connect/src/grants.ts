@@ -16,35 +16,23 @@
  * | `team { team }` | `[{ kind: "team", team }]` |
  * | `public` | `[{ kind: "anyone" }]`: any **signed-in** account; nobody signed out |
  *
- * TODO(core#5194): mero-js 1.0.0-rc.32 (the catalog's pin) still types
- * `access` on these routes. Once the catalog's mero-js is the rc.33 client,
- * `Grant` is its `components["schemas"]["Grant"]`, and {@link createApp},
- * {@link setGrants} and {@link grantsOf} lose their casts (or go, for direct
- * `client.apps.create` / `client.apps.access` calls). The generated methods
- * send the body as given, so `grants` reaches core from rc.32 already.
+ * mero-js types `grants` on every one of those routes (its `Grant` schema), so
+ * an instance is made with `client.apps.create({ ..., grants })` and its grants
+ * replaced with `client.apps.access({ app, grants })`; this module only reads
+ * and builds them.
  */
-import type { MethodOptions, Routes } from "@calimero-network/mero-js";
-
-/** One way into an instance, as `POST /apps` and `POST /apps/{app}/access` take it. */
-export type Grant =
-  /** Every member of the instance's organization (not beside a team grant). */
-  | { kind: "org" }
-  /** The members of a team of the instance's organization. */
-  | { kind: "team"; team: string }
-  /**
-   * One account: a member of the organization (a named member) or not (a guest).
-   * `scope` is the app's own JSON (at most 256 bytes), which the platform carries
-   * and never reads; absent: the whole app.
-   */
-  | { kind: "account"; account: string; scope?: unknown }
-  /** Any signed-in account, a member or not. Never a caller without an account. */
-  | { kind: "anyone" };
+import type { ApiComponents } from "@calimero-network/mero-js";
 
 /**
- * A grant as an instance's record may answer it: also a public link (core#5195),
- * which has its own routes and is never sent through `grants` from here.
+ * A grant as an instance's record answers it (mero-js's `Grant`): `org`, `team`,
+ * `account` (with an optional `scope`, the app's own JSON of at most 256 bytes),
+ * `anyone` (any signed-in account; never a caller without one), or a public
+ * link (core#5195), which has its own routes and is never sent through `grants`.
  */
-export type ReadGrant = Grant | { kind: "link"; [field: string]: unknown };
+export type ReadGrant = ApiComponents["schemas"]["Grant"];
+
+/** One way into an instance, as `POST /apps` and `POST /apps/{app}/access` take it: any grant but a link. */
+export type Grant = Exclude<ReadGrant, { kind: "link" }>;
 
 /** An instance's grants from its record (`GET /apps/{app}`, a move's answer); `[]` for none or a malformed one. */
 export function grantsOf(record: unknown): ReadGrant[] {
@@ -67,7 +55,7 @@ export function grantsOf(record: unknown): ReadGrant[] {
         }
         break;
       case "link":
-        out.push({ ...(g as Record<string, unknown>), kind: "link" });
+        out.push({ ...(g as Record<string, unknown>), kind: "link" } as ReadGrant);
         break;
       default:
         break;
@@ -135,35 +123,4 @@ export function grantPeople(owner: string | null | undefined, grants: readonly R
     else if (g.kind === "team") for (const a of sources.team?.(g.team) ?? []) out.add(a);
   }
   return [...out];
-}
-
-/** `POST /apps`'s body with `grants` in place of the removed `access`. */
-export type CreateAppBody = Omit<NonNullable<Parameters<Routes["apps"]["create"]>[0]>, "access"> & { grants?: Grant[] };
-
-/** The answer of `POST /apps`. */
-export type CreatedApp = Awaited<ReturnType<Routes["apps"]["create"]>>;
-
-/**
- * `client.apps.create` with `grants` (absent: the organization; `[]`: the owner alone).
- * TODO(core#5194): a plain `client.apps.create` once mero-js types `grants`.
- */
-export function createApp(
-  client: { readonly apps: Pick<Routes["apps"], "create"> },
-  body: CreateAppBody,
-  options?: MethodOptions,
-): Promise<CreatedApp> {
-  return client.apps.create(body as Parameters<Routes["apps"]["create"]>[0], options);
-}
-
-/**
- * Replaces instance `app`'s grants (`POST /apps/{app}/access`; `[]`: the owner alone).
- * TODO(core#5194): a plain `client.apps.access({ app, grants })` once mero-js types `grants`.
- */
-export async function setGrants(
-  client: { readonly apps: Pick<Routes["apps"], "access"> },
-  app: string,
-  grants: readonly Grant[],
-  options?: MethodOptions,
-): Promise<void> {
-  await client.apps.access({ app, grants: [...grants] } as unknown as Parameters<Routes["apps"]["access"]>[0], options);
 }

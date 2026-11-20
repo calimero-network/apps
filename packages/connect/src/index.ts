@@ -123,7 +123,6 @@ export {
 } from "./appTeams";
 export {
   accountGrants,
-  createApp,
   grantPeople,
   grantedAccounts,
   grantedTeam,
@@ -131,9 +130,6 @@ export {
   grantsAnyone,
   grantsOf,
   grantsOrg,
-  setGrants,
-  type CreateAppBody,
-  type CreatedApp,
   type Grant,
   type GrantPeopleSources,
   type ReadGrant,

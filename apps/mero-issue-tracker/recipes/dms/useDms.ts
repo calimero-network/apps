@@ -3,7 +3,7 @@
  * Reference code; copy into app/src/hooks/.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { accountGrants, appTarget, createApp, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
+import { accountGrants, appTarget, listAppInfos, type AppSource, type ClientRoutes } from '@calimero-apps/connect';
 
 export interface Dm {
   appId: string;
@@ -42,7 +42,7 @@ export function useDms(client: Client, source: AppSource, org: string | null, se
       if (existing) return existing.appId;
       const [a, b] = [self, other].sort() as [string, string];
       // Its owner (who creates it) and one account grant: exactly two people.
-      const { appId } = await createApp(client, {
+      const { appId } = await client.apps.create({
         name: `dm:${a}:${b}`,
         ...appTarget(source),
         org,
