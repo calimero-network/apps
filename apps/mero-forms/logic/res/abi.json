@@ -101,7 +101,7 @@
     "createLink": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Records a public link for `formId`: `link` is the SHA-256 (hex) of the\nAPI key's token, `grantId` the key's id. Team only.",
+      "doc": "Binds a public link of this instance to `formId`: `link` is the link's\nkey (hex), as core answered it when the teammate made the link\n(`POST /apps/{app}/public-links`), and `expiresAt` the expiry they gave\nit there (ms, 0 for none), kept so the team sees it. Team only.\n\nCore admits the link's visitors to the public methods while the link\nlives; this binding is which form they answer. A link is bound once.",
       "kind": "call",
       "params": [
         [
@@ -113,12 +113,12 @@
           "string"
         ],
         [
-          "grantId",
+          "label",
           "string"
         ],
         [
-          "label",
-          "string"
+          "expiresAt",
+          "u64"
         ]
       ],
       "public": false,
@@ -127,7 +127,7 @@
     "deleteForm": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nA form with more than 1,000 public links is refused whole: delete\nsome with `deleteLink` first. Team only.",
+      "doc": "Deletes a form that has no responses and no public links. A form with\nresponses is closed instead, so nothing anyone sent disappears; a form\nwith links is refused until they are deleted (`deleteLink`, and the\nlink revoked at core), so no link of the instance outlives its form.\nTeam only.",
       "kind": "call",
       "params": [
         [
@@ -141,7 +141,7 @@
     "deleteLink": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Stops a public link and returns what it was, so the app can revoke its\nAPI key. Team only.",
+      "doc": "Unbinds a public link and returns what it was; its visitors are refused\nfrom now on. The app then revokes the link at core\n(`DELETE /apps/{app}/public-links/{link}`). Team only.",
       "kind": "call",
       "params": [
         [
@@ -215,15 +215,10 @@
     "linkForm": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "The form a public link is for, as its visitor sees it. One of the two\nmethods a link's API key names.",
+      "doc": "The form the caller's public link is bound to, as its visitor sees it.\nPublic: a link's visitors only (`Caller::Visitor`); the link is the\ncaller's, never an argument.",
       "kind": "view",
-      "params": [
-        [
-          "link",
-          "string"
-        ]
-      ],
-      "public": false,
+      "params": [],
+      "public": true,
       "returns": "LinkFormView"
     },
     "listFormKeys": {
@@ -513,13 +508,9 @@
     "submitViaLink": {
       "allowSystem": false,
       "confirm": false,
-      "doc": "Stores a response that came through a public link and returns its id.\nThe other method a link's API key names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, `captcha` is a pass\nthe form's verifier signed for this form and link, unexpired and\nunused. `captchaToken` was v1's Turnstile token for a node-checked\nform; it is ignored.",
+      "doc": "Stores a response to the form the caller's public link is bound to and\nreturns its id. Public: a link's visitors only.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, `captcha` is a pass\nthe form's verifier signed for this form and link, unexpired and\nunused. `captchaToken` was v1's Turnstile token for a node-checked\nform; it is ignored. The response names the visitor by its key.",
       "kind": "call",
       "params": [
-        [
-          "link",
-          "string"
-        ],
         [
           "answers",
           "list<AnswerInput>"
@@ -533,7 +524,7 @@
           "option<string>"
         ]
       ],
-      "public": false,
+      "public": true,
       "returns": "string"
     },
     "updateForm": {
@@ -582,7 +573,6 @@
       "formResponses": "set",
       "formStats": "unorderedMap",
       "forms": "unorderedMap",
-      "linkKeys": "unorderedMap",
       "linkStats": "unorderedMap",
       "links": "unorderedMap",
       "responses": "unorderedMap",
@@ -600,7 +590,6 @@
       "formResponses": [],
       "formStats": [],
       "forms": [],
-      "linkKeys": [],
       "linkStats": [],
       "links": [],
       "responses": [],
@@ -958,8 +947,8 @@
           "string"
         ],
         [
-          "grantId",
-          "string"
+          "expiresAt",
+          "u64"
         ],
         [
           "createdAt",
@@ -1051,5 +1040,5 @@
       "kind": "record"
     }
   },
-  "world": "calimero:app@0.5.4"
+  "world": "calimero:app@0.5.6"
 }

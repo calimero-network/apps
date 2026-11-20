@@ -1,7 +1,7 @@
 //! Mero Forms on core's real wasmtime engine (`TestApp`): v1's `TestHost`
 //! tests method for method, v1's storage-level write rules as the method checks
-//! they became, form keys and public links as API keys acting for a teammate,
-//! captcha passes signed with a real ed25519 key, and the access and wire
+//! they became, form keys as API keys acting for an admin, public links as
+//! core's link grants whose visitors call the two public methods, captcha passes signed with a real ed25519 key, and the access and wire
 //! checks v1 could not express. Every method of the ABI is called here.
 
 #![cfg(not(target_arch = "wasm32"))]
@@ -787,60 +787,31 @@ fn stored_naming(t: &TestApp, id: &str) -> Vec<String> {
         .collect()
 }
 
-/// Public link `i` of a form: a SHA-256-shaped id and the longest grant id.
-fn link_args(form_id: &str, i: usize) -> Value {
-    json!({
-        "formId": form_id,
-        "link": format!("{i:064x}"),
-        "grantId": format!("{i:0128}"),
-        "label": "site",
-    })
-}
-
 #[test]
-fn a_deleted_form_leaves_no_link_behind() {
+fn a_form_with_public_links_is_not_deleted_until_they_are() {
     let mut t = app();
     let form_id = contact_form(&mut t);
-    // One more link than a delete removes.
-    for i in 0..1001 {
-        call(&mut t, "owner", "createLink", link_args(&form_id, i));
-    }
-    let result = t
+    make_link(&mut t, &form_id, 1, "site");
+    // Core keeps the link (a grant of the instance, at most 16 of them):
+    // the form goes only once the team has deleted it, and revoked it there.
+    let (code, message) = err(t
         .as_("owner")
-        .call("deleteForm", json!({ "formId": form_id }));
-    // Either the form and its links stay, or both go: never links of a
-    // deleted form.
-    let deleted = result.is_ok();
-    let left = stored_naming(&t, &form_id);
-    assert!(
-        !deleted || left.is_empty(),
-        "deleteForm left {} entries of the deleted form: {left:?}",
-        left.len()
-    );
-    let (code, message) = err(result);
+        .call("deleteForm", json!({ "formId": form_id })));
     assert_eq!(code, "Refused");
-    assert_eq!(
-        message,
-        "this form has more than 1000 public links; delete some with deleteLink first"
-    );
+    assert!(message.contains("public links"), "{message}");
     assert_eq!(
         view(&mut t, "owner", "listLinks", json!({ "formId": form_id }))
             .as_array()
             .map(Vec::len),
-        Some(1000)
+        Some(1)
     );
-    // At 1,000 links (with the longest ids) it goes in one run, links, keys
-    // and all.
-    call(
-        &mut t,
-        "owner",
-        "deleteLink",
-        json!({ "link": format!("{:064x}", 1000) }),
-    );
+    call(&mut t, "owner", "deleteLink", json!({ "link": link_id(1) }));
     call(&mut t, "owner", "deleteForm", json!({ "formId": form_id }));
     assert_eq!(stored_naming(&t, &form_id), Vec::<String>::new());
+    assert_eq!(stored_naming(&t, &link_id(1)), Vec::<String>::new());
+    // The link's key is free to bind again.
     let other = contact_form(&mut t);
-    call(&mut t, "owner", "createLink", link_args(&other, 999));
+    make_link(&mut t, &other, 1, "");
 }
 
 #[test]
@@ -957,9 +928,18 @@ fn responses_read_newest_first() {
 }
 
 // ── public links ─────────────────────────────────────────────────────────────
+//
+// A public link is core's (a `link` grant of the instance, made and revoked
+// with a teammate's passkey, admitting visitors while it lives); the harness
+// plays its visitors with `TestApp::visitor(link, key)`, as the node names
+// them to the app. The contract binds a link to one form.
 
-/// A form with links, made public. Its link `l1` is the API key `key-l1` of
-/// the owner's account.
+/// A visitor's own Ed25519 key (hex), as mero-js `useVisitor` proves it.
+fn visitor_key(n: u8) -> String {
+    format!("{:02x}", 0x90 + n).repeat(32)
+}
+
+/// A form made public.
 fn public_form(t: &mut TestApp) -> String {
     let form_id = contact_form(t);
     call(
@@ -971,24 +951,33 @@ fn public_form(t: &mut TestApp) -> String {
     form_id
 }
 
+/// Link `n`'s key: 32 bytes of hex, as core's `publicLinkKey(token)`.
 fn link_id(n: u8) -> String {
     format!("{n:02x}").repeat(32)
 }
 
+/// Binds link `n` to `form_id`, with no expiry.
 fn make_link(t: &mut TestApp, form_id: &str, n: u8, label: &str) -> Value {
     call(
         t,
         "owner",
         "createLink",
-        json!({ "formId": form_id, "link": link_id(n), "grantId": format!("key-l{n}"), "label": label }),
+        json!({ "formId": form_id, "link": link_id(n), "label": label, "expiresAt": "0" }),
     )
 }
 
+/// A response through link `n`, by visitor 1.
 fn via_link(t: &mut TestApp, n: u8, captcha: Value) -> Result<Value, Failure> {
-    t.api_key(&format!("key-l{n}"), "owner").call(
+    t.visitor(&link_id(n), &visitor_key(1)).call(
         "submitViaLink",
-        json!({ "link": link_id(n), "answers": contact_answers("Visitor"), "captcha": captcha, "captchaToken": null }),
+        json!({ "answers": contact_answers("Visitor"), "captcha": captcha, "captchaToken": null }),
     )
+}
+
+/// What link `n`'s visitor sees.
+fn link_form(t: &mut TestApp, n: u8) -> Result<Value, Failure> {
+    t.visitor(&link_id(n), &visitor_key(1))
+        .view("linkForm", json!({}))
 }
 
 #[test]
@@ -996,14 +985,13 @@ fn a_link_takes_responses_only_while_its_form_is_public() {
     let mut t = app();
     let form_id = contact_form(&mut t);
     let made = make_link(&mut t, &form_id, 1, " newsletter ");
+    assert_eq!(made["id"], json!(link_id(1)));
     assert_eq!(made["label"], json!("newsletter"));
-    assert_eq!(made["grantId"], json!("key-l1"));
+    assert_eq!(made["expiresAt"], json!("0"));
     assert_eq!(made["responses"], json!(0));
+    assert_eq!(made.get("grantId"), None);
 
-    let seen = t
-        .api_key("key-l1", "owner")
-        .view("linkForm", json!({ "link": link_id(1) }))
-        .unwrap();
+    let seen = link_form(&mut t, 1).unwrap();
     assert_eq!(seen["formId"], json!(form_id));
     assert_eq!(seen["accepting"], json!(false));
     assert_eq!(seen["captcha"], json!(false));
@@ -1023,9 +1011,14 @@ fn a_link_takes_responses_only_while_its_form_is_public() {
     );
     let id = via_link(&mut t, 1, Value::Null).unwrap();
     let r = view(&mut t, "owner", "getResponse", json!({ "id": id }));
+    assert_eq!(r["formId"], json!(form_id));
     assert_eq!(r["link"], json!(link_id(1)));
     assert_eq!(r["source"], json!("public link · newsletter"));
-    assert_eq!(r["submittedBy"], json!("owner"));
+    // The visitor, by its own key: not the teammate who made the link.
+    assert_eq!(
+        r["submittedBy"],
+        json!(format!("visitor:{}", visitor_key(1)))
+    );
     let links = view(&mut t, "owner", "listLinks", json!({ "formId": form_id }));
     assert_eq!(links[0]["responses"], json!(1));
     assert_eq!(links[0]["lastHour"], json!(1));
@@ -1040,48 +1033,118 @@ fn a_link_takes_responses_only_while_its_form_is_public() {
     assert_eq!(message, "this form is closed");
 }
 
+/// Two visitors of one link are two senders, each named by its key.
 #[test]
-fn a_link_key_opens_only_its_own_link_and_reaches_nothing_else() {
+fn each_visitor_is_named_by_its_own_key() {
     let mut t = app();
     let form_id = public_form(&mut t);
     make_link(&mut t, &form_id, 1, "");
-    make_link(&mut t, &form_id, 2, "");
-    // key-l2 cannot use link 1.
-    let (_, message) = err(t
-        .api_key("key-l2", "owner")
-        .view("linkForm", json!({ "link": link_id(1) })));
-    assert_eq!(message, "this link no longer works");
-    // A link's key is never the teammate it belongs to.
-    let (code, _) = err(t
-        .api_key("key-l1", "owner")
-        .view("listResponses", json!({ "formId": form_id })));
-    assert_eq!(code, "Forbidden");
-    let (code, _) = err(t.api_key("key-l1", "owner").call(
-        "submitResponse",
-        json!({ "formId": form_id, "answers": contact_answers("x"), "source": "" }),
+    let mut by = Vec::new();
+    for v in [1, 2] {
+        let id = t
+            .visitor(&link_id(1), &visitor_key(v))
+            .call(
+                "submitViaLink",
+                json!({ "answers": contact_answers("V"), "captcha": null, "captchaToken": null }),
+            )
+            .unwrap();
+        by.push(view(&mut t, "owner", "getResponse", json!({ "id": id }))["submittedBy"].clone());
+    }
+    assert_eq!(
+        by,
+        vec![
+            json!(format!("visitor:{}", visitor_key(1))),
+            json!(format!("visitor:{}", visitor_key(2)))
+        ]
+    );
+}
+
+/// The ABI marks exactly the two link methods `public`: the node lets a
+/// link's visitor call nothing else (`403` before the app runs), whatever the
+/// arguments.
+#[test]
+fn a_visitor_calls_only_the_two_public_methods() {
+    let abi: Value = serde_json::from_str(include_str!("../res/abi.json")).expect("abi.json");
+    let methods = abi["methods"].as_object().expect("methods");
+    let public: Vec<&str> = methods
+        .iter()
+        .filter(|(_, m)| m["public"] == json!(true))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(public, vec!["linkForm", "submitViaLink"]);
+
+    let mut t = app();
+    let form_id = public_form(&mut t);
+    make_link(&mut t, &form_id, 1, "");
+    for (name, m) in methods {
+        if public.contains(&name.as_str()) || m["kind"] == json!("init") {
+            continue;
+        }
+        let args = json!({ "formId": form_id });
+        let mut as_visitor = t.visitor(&link_id(1), &visitor_key(1));
+        let result = if m["kind"] == json!("view") {
+            as_visitor.view(name, args)
+        } else {
+            as_visitor.call(name, args)
+        };
+        assert!(
+            matches!(result, Err(Failure::Refused { status: 403, .. })),
+            "{name}: {result:?}"
+        );
+    }
+}
+
+/// A link answers the one form it is bound to: the form is never an
+/// argument, so a link for form A cannot reach form B.
+#[test]
+fn a_link_answers_only_the_form_it_is_bound_to() {
+    let mut t = app();
+    let a = public_form(&mut t);
+    let b = public_form(&mut t);
+    make_link(&mut t, &a, 1, "a");
+    make_link(&mut t, &b, 2, "b");
+    assert_eq!(link_form(&mut t, 1).unwrap()["formId"], json!(a));
+    assert_eq!(link_form(&mut t, 2).unwrap()["formId"], json!(b));
+    // A form id in the arguments is not taken: the call names only answers.
+    let (code, _) = err(t.visitor(&link_id(1), &visitor_key(1)).call(
+        "submitViaLink",
+        json!({ "formId": b, "answers": contact_answers("V"), "captcha": null, "captchaToken": null }),
     ));
-    assert_eq!(code, "Forbidden");
-    let (code, _) = err(t
-        .api_key("key-l1", "owner")
-        .view("getForm", json!({ "formId": form_id })));
-    assert_eq!(code, "Forbidden");
-    // A form key cannot use a link either.
-    issue_key(&mut t, &form_id);
-    let (_, message) = err(t
-        .api_key("key-site", "owner")
-        .view("linkForm", json!({ "link": link_id(1) })));
-    assert_eq!(message, "this link no longer works");
-    // A key id is one thing only.
-    let (_, message) = err(t.as_("owner").call(
-        "createLink",
-        json!({ "formId": form_id, "link": link_id(9), "grantId": "key-site", "label": "" }),
-    ));
-    assert_eq!(message, "this key is already in use");
-    let (_, message) = err(t.as_("owner").call(
-        "registerFormKey",
-        json!({ "account": "key-l1", "formId": form_id, "label": "x" }),
-    ));
-    assert_eq!(message, "this key is already in use");
+    assert_eq!(code, "BadArgs");
+    let id = via_link(&mut t, 1, Value::Null).unwrap();
+    assert_eq!(
+        view(&mut t, "owner", "getResponse", json!({ "id": id }))["formId"],
+        json!(a)
+    );
+    let counts = |t: &mut TestApp, f: &str| {
+        view(t, "owner", "listResponses", json!({ "formId": f }))
+            .as_array()
+            .map(Vec::len)
+    };
+    assert_eq!(counts(&mut t, &a), Some(1));
+    assert_eq!(counts(&mut t, &b), Some(0));
+    // A link of the instance the team never bound answers nothing.
+    let (code, message) = err(link_form(&mut t, 9));
+    assert_eq!(
+        (code.as_str(), message.as_str()),
+        ("Refused", "this link no longer works")
+    );
+    // The link methods answer a link's visitors only: an account, a form key.
+    issue_key(&mut t, &a);
+    for result in [
+        t.as_("owner").view("linkForm", json!({})),
+        t.as_("bob").call(
+            "submitViaLink",
+            json!({ "answers": contact_answers("x"), "captcha": null, "captchaToken": null }),
+        ),
+        t.api_key("key-site", "owner").view("linkForm", json!({})),
+    ] {
+        let (code, message) = err(result);
+        assert_eq!(
+            (code.as_str(), message.as_str()),
+            ("Forbidden", "open this form through its public link")
+        );
+    }
 }
 
 #[test]
@@ -1090,13 +1153,15 @@ fn a_deleted_or_unknown_link_answers_nothing() {
     let form_id = public_form(&mut t);
     make_link(&mut t, &form_id, 1, "a");
     let gone = call(&mut t, "owner", "deleteLink", json!({ "link": link_id(1) }));
-    assert_eq!(gone["grantId"], json!("key-l1"));
+    assert_eq!(gone["id"], json!(link_id(1)));
     assert_eq!(gone["createdBy"], json!("owner"));
     let (code, message) = err(via_link(&mut t, 1, Value::Null));
     assert_eq!(
         (code.as_str(), message.as_str()),
         ("Refused", "this link no longer works")
     );
+    let (_, message) = err(link_form(&mut t, 1));
+    assert_eq!(message, "this link no longer works");
     let (code, _) = err(t
         .as_("owner")
         .call("deleteLink", json!({ "link": link_id(1) })));
@@ -1105,17 +1170,50 @@ fn a_deleted_or_unknown_link_answers_nothing() {
         view(&mut t, "owner", "listLinks", json!({ "formId": form_id })),
         json!([])
     );
-    let (_, message) = err(t.as_("owner").call(
+    let (code, message) = err(t.as_("owner").call(
         "createLink",
-        json!({ "formId": form_id, "link": "abc", "grantId": "k", "label": "" }),
+        json!({ "formId": form_id, "link": "abc", "label": "", "expiresAt": "0" }),
     ));
-    assert!(message.contains("SHA-256"));
+    assert_eq!(code, "Invalid");
+    assert!(message.contains("link's key"), "{message}");
     make_link(&mut t, &form_id, 3, "");
+    let other = contact_form(&mut t);
     let (_, message) = err(t.as_("owner").call(
         "createLink",
-        json!({ "formId": form_id, "link": link_id(3), "grantId": "key-other", "label": "" }),
+        json!({ "formId": other, "link": link_id(3).to_uppercase(), "label": "", "expiresAt": "0" }),
     ));
     assert_eq!(message, "this link already exists");
+}
+
+/// Core stops an expired link's visitors; the contract, which keeps the
+/// expiry the teammate gave it, refuses them on the leader's clock as well.
+#[test]
+fn an_expired_link_is_refused() {
+    let mut t = app();
+    let form_id = public_form(&mut t);
+    let ends = common::T0 + HOUR;
+    let made = call(
+        &mut t,
+        "owner",
+        "createLink",
+        json!({ "formId": form_id, "link": link_id(1), "label": "", "expiresAt": ends.to_string() }),
+    );
+    assert_eq!(made["expiresAt"], json!(ends.to_string()));
+    via_link(&mut t, 1, Value::Null).unwrap();
+    t.advance(HOUR);
+    let (code, message) = err(via_link(&mut t, 1, Value::Null));
+    assert_eq!(
+        (code.as_str(), message.as_str()),
+        ("Refused", "this link no longer works")
+    );
+    let (_, message) = err(link_form(&mut t, 1));
+    assert_eq!(message, "this link no longer works");
+    // An expiry already past is refused when the link is bound.
+    let (code, _) = err(t.as_("owner").call(
+        "createLink",
+        json!({ "formId": form_id, "link": link_id(2), "label": "", "expiresAt": common::T0.to_string() }),
+    ));
+    assert_eq!(code, "Invalid");
 }
 
 #[test]
@@ -1135,7 +1233,11 @@ fn a_link_is_capped_per_hour() {
     );
     via_link(&mut t, 1, Value::Null).unwrap();
     via_link(&mut t, 1, Value::Null).unwrap();
-    let (_, message) = err(via_link(&mut t, 1, Value::Null));
+    // Per link, not per visitor: another visitor meets the same cap.
+    let (_, message) = err(t.visitor(&link_id(1), &visitor_key(2)).call(
+        "submitViaLink",
+        json!({ "answers": contact_answers("V"), "captcha": null, "captchaToken": null }),
+    ));
     assert!(message.contains("this hour"));
     // The next clock hour takes responses again.
     t.advance(HOUR);
@@ -1158,28 +1260,13 @@ fn only_the_team_manages_links() {
         ("setCaptchaKey", json!({ "formId": form_id, "key": "" })),
         (
             "createLink",
-            json!({ "formId": form_id, "link": link_id(1), "grantId": "k", "label": "" }),
+            json!({ "formId": form_id, "link": link_id(1), "label": "", "expiresAt": "0" }),
         ),
         ("deleteLink", json!({ "link": link_id(1) })),
     ] {
         let (code, _) = err(t.as_("bob").call(method, args));
         assert_eq!(code, "Forbidden", "{method}");
     }
-}
-
-#[test]
-fn deleting_a_form_takes_its_links_with_it() {
-    let mut t = app();
-    let form_id = public_form(&mut t);
-    make_link(&mut t, &form_id, 1, "");
-    call(&mut t, "owner", "deleteForm", json!({ "formId": form_id }));
-    let (_, message) = err(t
-        .api_key("key-l1", "owner")
-        .view("linkForm", json!({ "link": link_id(1) })));
-    assert_eq!(message, "this link no longer works");
-    // The key id is free again.
-    let other = contact_form(&mut t);
-    make_link(&mut t, &other, 1, "");
 }
 
 // ── captchas ─────────────────────────────────────────────────────────────────
@@ -1207,12 +1294,7 @@ fn a_captcha_pass_is_checked_and_spent_once() {
         json!({ "formId": form_id, "key": key.to_uppercase() }),
     );
     assert_eq!(form["captchaKey"], json!(key));
-    assert_eq!(
-        t.api_key("key-l1", "owner")
-            .view("linkForm", json!({ "link": link_id(1) }))
-            .unwrap()["captcha"],
-        json!(true)
-    );
+    assert_eq!(link_form(&mut t, 1).unwrap()["captcha"], json!(true));
     let now = common::T0;
     let nonce = "ab".repeat(16);
 
@@ -1305,9 +1387,10 @@ fn who_reaches_the_workspace() {
         t.anonymous().view("listForms", json!({})),
         refused(401, "UNAUTHENTICATED")
     );
+    // Signed out without a link: the org app refuses before any method,
+    // public ones included.
     assert_eq!(
-        t.anonymous()
-            .view("linkForm", json!({ "link": link_id(1) })),
+        t.anonymous().view("linkForm", json!({})),
         refused(401, "UNAUTHENTICATED")
     );
     assert_eq!(
