@@ -248,7 +248,7 @@ describe("adding the app to an org (orgWideAccess)", () => {
     expect(await orgInstanceOptions(cluster(legacy()), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({ org: "org" });
     expect(await orgInstanceOptions(cluster(standalone()), "org", SOURCE, passkey, "Hyperfeed CRM")).toEqual({
       org: "org",
-      access: { kind: "team", team: "team-crm" },
+      grants: [{ kind: "team", team: "team-crm" }],
     });
   });
 

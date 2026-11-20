@@ -53,7 +53,7 @@ only through `@calimero-apps/connect`'s org-app module
 (`scripts/check-org-app-module.py` fails CI otherwise):
 
 - A new workspace gets the app's team at once, **open** (`standalone`:
-  everyone in the org has the app). New repositorys use `{ kind: "team" }` access
+  everyone in the org has the app). New repositorys get a `{ kind: "team" }` grant
   on it, invites name it (`appInvite`), and the member list is its people
   (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an

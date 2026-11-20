@@ -53,7 +53,7 @@ describe("a new team gets Hyperfeed Pass's own app team", () => {
     expect(cluster.modeOf(org)).toBe('standalone');
     expect(cluster.callsOf('scopeApps')[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Logins', restricted: false });
-    expect(cluster.state.apps.get(contextId)!.access).toEqual({ kind: 'team', team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(contextId)!.grants).toEqual([{ kind: 'team', team: cluster.teamOf(org, PKG) }]);
     expect(await listVaults(conn, org)).toMatchObject([{ vaultId: contextId, restricted: false, team: null }]);
     expect(await findVaultByContext(conn, contextId)).toMatchObject({ restricted: false, team: null });
   });
@@ -61,12 +61,14 @@ describe("a new team gets Hyperfeed Pass's own app team", () => {
   it('an invite-only vault keeps its own team', async () => {
     const { cluster, conn, org } = await team();
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Prod', restricted: true });
-    const access = cluster.state.apps.get(contextId)!.access as { kind: string; team: string };
-    expect(access.team).not.toBe(cluster.teamOf(org, PKG));
-    expect(await listVaults(conn, org)).toMatchObject([{ restricted: true, team: access.team }]);
+    const [grant, ...more] = cluster.state.apps.get(contextId)!.grants as Array<{ kind: string; team: string }>;
+    expect(more).toEqual([]);
+    expect(grant!.kind).toBe('team');
+    expect(grant!.team).not.toBe(cluster.teamOf(org, PKG));
+    expect(await listVaults(conn, org)).toMatchObject([{ restricted: true, team: grant!.team }]);
   });
 
-  it('a declined team leaves a legacy org, whose open vaults use organization access as before', async () => {
+  it('a declined team leaves a legacy org, whose open vaults have the organization grant as before', async () => {
     const cluster = orgCluster();
     cluster.state.declined.add('scopeApps');
     const conn = { client: cluster.client, source: SOURCE, passkey };
@@ -144,7 +146,7 @@ describe('Remove', () => {
   it('apps kept apart: out of Hyperfeed Pass and its invite-only vaults, never out of the org', async () => {
     const { cluster, conn, org } = await team({ 'acct-bob': 'member' });
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Prod', restricted: true });
-    const vaultTeam = (cluster.state.apps.get(contextId)!.access as { team: string }).team;
+    const vaultTeam = (cluster.state.apps.get(contextId)!.grants[0] as { team: string }).team;
     cluster.org(org).teams[vaultTeam]!.members['acct-bob'] = false;
     cluster.keepAppsApart(org);
     expect(await removeTeamMember(conn, { namespaceId: org, accountId: 'acct-bob' })).toBe('app');
@@ -155,7 +157,7 @@ describe('Remove', () => {
   it('standalone: off Hyperfeed Pass\'s team and its invite-only vaults, still in the org', async () => {
     const { cluster, conn, org } = await team({ 'acct-bob': 'member' });
     const { contextId } = await createVault(conn, { namespaceId: org, name: 'Prod', restricted: true });
-    const vaultTeam = (cluster.state.apps.get(contextId)!.access as { team: string }).team;
+    const vaultTeam = (cluster.state.apps.get(contextId)!.grants[0] as { team: string }).team;
     cluster.org(org).teams[vaultTeam]!.members['acct-bob'] = false;
     expect(await removeTeamMember(conn, { namespaceId: org, accountId: 'acct-bob' })).toBe('app');
     expect(cluster.callsOf('removeTeamMember').map((c) => c[1])).toEqual([cluster.teamOf(org, PKG), vaultTeam]);

@@ -214,11 +214,43 @@ await client.createApp(name, source, { org: others[0].orgId }); // only on the p
   `listApps` filter for a source; `packageTitle`, `holdingsLabel` and
   `appTeamsLabel` the words.
 
+## Grants: who reaches an instance
+
+Core 1.0.0-rc.33 (core#5194) replaced an instance's single `access` mode with a
+list of **grants** (`grants.ts`), in requests and answers alike: `POST /apps`
+takes `grants` (absent: `[{ kind: "org" }]`; `[]`: the owner alone), `POST
+/apps/{app}/access` takes `{ grants }`, and `GET /apps/{app}` and a move answer
+`grants`. A request still carrying `access` is refused `400 ACCESS_REMOVED`.
+
+| before (`access`) | now (`grants`) |
+|---|---|
+| `owner` | `[]` |
+| `org` | `[{ kind: "org" }]` |
+| `accounts { accounts }` | `accountGrants(accounts)`: one `{ kind: "account", account }` each (a member, or a guest; optional app-defined `scope`) |
+| `team { team }` | `[{ kind: "team", team }]` |
+| `public` | `[{ kind: "anyone" }]`: any **signed-in** account. Nobody signed out is admitted by a grant (that is public links, core#5195). |
+
+```ts
+import { accountGrants, createApp, grantPeople, grantedTeam, grantsOf, setGrants } from "@calimero-apps/connect";
+
+await createApp(client, { name, ...appTarget(source), org, grants: [{ kind: "team", team }] });
+await setGrants(client, app, accountGrants([bob]));
+const grants = grantsOf(await client.apps.get({ app }));
+grantedTeam(grants); // the instance's one team, or null
+grantPeople(owner, grants, { org: () => orgPeople, team: (t) => teamPeople(t) }); // who it names
+```
+
+`grantsOf` reads a record's `grants` (also a public link, `{ kind: "link" }`,
+read-only here); `grantedTeams`, `grantedAccounts`, `grantsOrg` and
+`grantsAnyone` read one kind each. `createApp` and `setGrants` exist because
+the catalog's mero-js (1.0.0-rc.32) still types `access` on those routes:
+`TODO(core#5194)` in `grants.ts` marks what goes once it types `grants`.
+
 ## App teams
 
 One organization, many apps, separate access (`appTeams.ts`; core#4890,
 #4891). Each app installed in an org has its own **app team** (a top-level
-team marked with its package), its instances use team access on it, and an
+team marked with its package), its instances have a team grant on it, and an
 in-app invite names it, so the person gets that app and no other. The node
 derives the org's mode: `legacy` (no app teams: organization access, as
 before), `standalone` (open app teams: the org is one app's, members may
@@ -297,7 +329,7 @@ const { left, lastApp } = await leaveApp(client, orgId, source, passkey); // las
 | Call | Does |
 |---|---|
 | `createAppOrg(client, name, source, passkey, { capabilities, mark })` | `createOrg`, marked for the app, member defaults (`capabilitiesError` when declined), and the app's open team. Without the team (declined, an older node) the org is legacy. |
-| `orgWideAccess` / `orgInstanceOptions(client, org, source, passkey, appName)` | The access of a new org-wide instance, which is also how the app is added to an existing org: its team; in an org whose apps have teams but none for this one, the team is made first in the org's mode (owners and admins; anyone else gets `AppTeamAdminError`); organization access in a legacy org (`orgInstanceOptions` then sends `{ org }` alone, as before). |
+| `orgWideAccess` / `orgInstanceOptions(client, org, source, passkey, appName)` | The one grant of a new org-wide instance, which is also how the app is added to an existing org: its team; in an org whose apps have teams but none for this one, the team is made first in the org's mode (owners and admins; anyone else gets `AppTeamAdminError`); organization access in a legacy org. `orgInstanceOptions` is `{ org, grants: [team] }`, or `{ org }` alone for organization access (core's default), as before. |
 | `adoptAppTeam(client, org, source, passkey)` | The app's team in the org's mode, `shared` always passed. |
 | `appInvite(client, org, source, passkey, { teams })` | `inviteToApp` with `appOnly` (a shared org); org-wide in a legacy org. |
 | `appPeople(view, pkg)`, `isAppOnly`, `appTeamIdIn`, `orgModeOf` | Who has the app, from `getOrg`: its team, else the org (no guest once it has app teams). |
@@ -318,7 +350,7 @@ legacy throughout:
   app's team, open (standalone). `shared` is always passed (true only in an
   org that is shared already), so another app's team is never closed. A caller
   that catches its failure (declined, an older node) keeps a legacy org.
-- `orgWideAccess(client, org, source, passkey, appName)` is the `access` for a
+- `orgWideAccess(client, org, source, passkey, appName)` is the one grant of a
   new org-wide instance: `{ kind: "team" }` on the app team; in an org whose
   apps have teams but none for this one, the team is made first (owners and
   admins; anyone else gets `AppTeamAdminError`); `{ kind: "org" }` in a legacy

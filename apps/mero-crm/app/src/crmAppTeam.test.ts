@@ -65,7 +65,7 @@ describe('a new workspace gets Hyperfeed CRM\'s own app team', () => {
     expect(cluster.modeOf(org)).toBe('standalone');
     expect(cluster.callsOf('scopeApps')[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const app = await addPipeline(cluster.client, SOURCE, org, 'Main', 'USD', passkey);
-    expect(cluster.state.apps.get(app)!.access).toEqual({ kind: 'team', team });
+    expect(cluster.state.apps.get(app)!.grants).toEqual([{ kind: 'team', team }]);
   });
 
   it('a declined team leaves a legacy workspace, whose pipelines use organization access as before', async () => {
@@ -168,7 +168,7 @@ describe('adding Hyperfeed CRM to an organization whose apps have teams', () => 
     const app = await addPipeline(cluster.client, SOURCE, org, 'Main', 'USD', passkey);
     expect(cluster.callsOf('scopeApps')[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     expect(cluster.modeOf(org)).toBe('standalone');
-    expect(cluster.state.apps.get(app)!.access).toEqual({ kind: 'team', team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(app)!.grants).toEqual([{ kind: 'team', team: cluster.teamOf(org, PKG) }]);
   });
 
   it('an admin of an org that keeps its apps apart: the team is made closed, like the others', async () => {

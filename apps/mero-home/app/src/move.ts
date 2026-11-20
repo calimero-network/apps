@@ -4,7 +4,7 @@
  *
  * Core decides everything: the mover must manage the app where it is and be an
  * admin of the target; the app's data stays where it is; its payer, quotas and
- * access go to the target; `bringMembers` adds the people of its organization
+ * grants go to the target; `bringMembers` adds the people of its organization
  * who reach it (as members at most). Each move takes its own passkey prompt:
  * the node asks for consent over one app at a time.
  *
@@ -12,7 +12,7 @@
  * route is not there), and Home hides both "Move to another organization" and
  * "Merge organizations" ({@link movesSupported}).
  */
-import { describeError, type ClientRoutes, type MyOrg } from "@calimero-apps/connect";
+import { describeError, grantsOf, type ClientRoutes, type MyOrg, type ReadGrant } from "@calimero-apps/connect";
 import { passkeyConfirm, type CalimeroClient, type OrgInvite, type PasskeyProvider } from "@calimero-network/mero-js";
 
 import { peopleOf, type Person, type Role } from "./homeOrg";
@@ -45,7 +45,8 @@ export interface MoveResult {
   /** The organization it left; `null` for a personal app. */
   from: string | null;
   org: string;
-  access: Record<string, unknown>;
+  /** Who reaches it there (core#5194): its grants, which went with it. */
+  grants: ReadGrant[];
   /** Whether the target's app team of its package was made for it. */
   created: boolean;
   /** Accounts that joined the target with it. */
@@ -61,7 +62,9 @@ export async function moveApp(
   bringMembers: boolean,
   passkey: PasskeyProvider,
 ): Promise<MoveResult> {
-  return await client.apps.move({ app, toOrg, bringMembers }, { confirm: passkeyConfirm(passkey) });
+  const moved = await client.apps.move({ app, toOrg, bringMembers }, { confirm: passkeyConfirm(passkey) });
+  // TODO(core#5194): mero-js 1.0.0-rc.32 types the answer's removed `access`; rc.33 answers `grants`.
+  return { ...(moved as unknown as Omit<MoveResult, "grants">), grants: grantsOf(moved) };
 }
 
 function administers(o: MyOrg): boolean {

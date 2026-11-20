@@ -44,7 +44,7 @@ describe('a new workspace gets Docs\' own app team', () => {
     expect(cluster.modeOf(org)).toBe('standalone');
     expect(cluster.callsOf('scopeApps')[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const { contextId } = await admin.createContext({ groupId: org, name: 'Registry' });
-    expect(cluster.state.apps.get(contextId)!.access).toEqual({ kind: 'team', team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(contextId)!.grants).toEqual([{ kind: 'team', team: cluster.teamOf(org, PKG) }]);
   });
 
   it('the app team is not a folder; folders made after it are', async () => {
@@ -74,13 +74,13 @@ describe('a new workspace gets Docs\' own app team', () => {
     expect((await admin.org(org, true)).teams[groupId]!.parent ?? null).toBeNull();
   });
 
-  it('a declined team leaves a legacy workspace, whose registry uses organization access', async () => {
+  it('a declined team leaves a legacy workspace, whose registry has the organization grant', async () => {
     const { cluster, admin } = docs();
     cluster.state.declined.add('scopeApps');
     const org = await createNamespace({ cluster, admin });
     expect(cluster.modeOf(org)).toBe('legacy');
     const { contextId } = await admin.createContext({ groupId: org, name: 'Registry' });
-    expect(cluster.state.apps.get(contextId)!.access).toEqual({ kind: 'org' });
+    expect(cluster.state.apps.get(contextId)!.grants).toEqual([{ kind: 'org' }]);
   });
 });
 

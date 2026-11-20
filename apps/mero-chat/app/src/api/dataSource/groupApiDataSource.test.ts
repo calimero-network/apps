@@ -40,14 +40,16 @@ const h = await vi.hoisted(async () => {
       return orgId;
     }),
     setCapabilities: vi.fn(async () => {}),
-    createApp: vi.fn(async (name: string, _source: unknown, options: { org: string; access: unknown; initArgs: unknown }) => {
+    createApp: vi.fn(async (name: string, _source: unknown, options: { org: string; grants?: unknown[]; initArgs: unknown } & Record<string, unknown>) => {
+      // As core (1.0.0-rc.33): the removed `access` is refused; no grants is the organization.
+      if ("access" in options) throw Object.assign(new Error("ACCESS_REMOVED"), { status: 400, code: "ACCESS_REMOVED" });
       const appId = `app-${(state.seq += 1)}`;
-      state.apps.set(appId, { appId, name, owner: "acct-me", org: options.org, access: options.access, metadata: null, initArgs: options.initArgs });
+      state.apps.set(appId, { appId, name, owner: "acct-me", org: options.org, grants: options.grants ?? [{ kind: "org" }], metadata: null, initArgs: options.initArgs });
       return appId;
     }),
-    setAccess: vi.fn(async (app: string, access: unknown) => {
+    setAccess: vi.fn(async (app: string, grants: unknown[]) => {
       const a = state.apps.get(app)!;
-      a.access = access;
+      a.grants = grants;
     }),
     session: { accountId: "acct-me" },
     setMemberMetadata: vi.fn(async () => {}),
@@ -74,7 +76,7 @@ const h = await vi.hoisted(async () => {
     }),
     deleteTeam: vi.fn(async (org: string, team: string) => {
       delete (state.orgs.get(org)!.teams as Record<string, object>)[team];
-      for (const [id, a] of state.apps) if ((a.access as { team?: string }).team === team) state.apps.delete(id);
+      for (const [id, a] of state.apps) if ((a.grants as Array<{ team?: string }>).some((g) => g.team === team)) state.apps.delete(id);
       return { teams: [team], apps: [] };
     }),
   });
@@ -184,7 +186,7 @@ describe("a channel is a chat instance in the org", () => {
     expect(h.client.setTeamMember).toHaveBeenCalledWith("org-1", "team-2", "acct-bob", expect.anything(), { lead: false });
     expect(h.client.createApp).toHaveBeenCalledWith("secret", "bundle-hash", {
       org: "org-1",
-      access: { kind: "team", team: "team-2" },
+      grants: [{ kind: "team", team: "team-2" }],
       initArgs: { name: "secret", contextType: "Channel", description: "", creatorUsername: "me" },
     });
   });
@@ -199,7 +201,7 @@ describe("a channel is a chat instance in the org", () => {
       createGroupContext: (...a) => new ContextApiDataSource().createGroupContext(...a),
     });
     const id = (general as { contextId: string }).contextId;
-    expect(h.state.apps.get(id)!.access).toEqual({ kind: "team", team: "team-2" });
+    expect(h.state.apps.get(id)!.grants).toEqual([{ kind: "team", team: "team-2" }]);
 
     const info = await api.getGroup(id);
     expect(info.data).toMatchObject({ subgroupVisibility: "open", memberCount: 2, alias: "general" });
@@ -212,7 +214,7 @@ describe("a channel is a chat instance in the org", () => {
     expect(h.client.updateTeam).toHaveBeenLastCalledWith("org-1", "team-2", { join: "invite" });
     expect((await api.listMembers(id)).data?.members.map((m) => m.identity)).toEqual(["acct-me"]);
     await api.addGroupMember(id, "acct-bob");
-    expect(h.state.apps.get(id)!.access).toEqual({ kind: "team", team: "team-2" });
+    expect(h.state.apps.get(id)!.grants).toEqual([{ kind: "team", team: "team-2" }]);
     const members = await api.listMembers(id);
     expect(members.data?.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
 
@@ -222,7 +224,7 @@ describe("a channel is a chat instance in the org", () => {
   });
 
   it("joining a channel needs nothing but reaching it", async () => {
-    h.state.apps.set("app-9", { appId: "app-9", name: "x", owner: "o", org: "org-1", access: { kind: "org" } });
+    h.state.apps.set("app-9", { appId: "app-9", name: "x", owner: "o", org: "org-1", grants: [{ kind: "org" }] });
     const res = await api.joinGroupContext("org-1", { contextId: "app-9" });
     expect(res.data).toEqual({ contextId: "app-9", memberPublicKey: "acct-me" });
   });
@@ -247,7 +249,7 @@ describe("an org made for another app is not a workspace", () => {
       org: "ow",
       bundle: "blocks-bundle",
       package: "com.calimero.mero-blocks",
-      access: { kind: "org" },
+      grants: [{ kind: "org" }],
       metadata: null,
     });
   }

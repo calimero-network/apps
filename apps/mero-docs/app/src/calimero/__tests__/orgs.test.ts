@@ -129,7 +129,7 @@ describe('OrgAdmin', () => {
     expect(contextId).toBe('app-9');
     expect(client.createApp).toHaveBeenCalledWith('Plans', 'bundle-hash', {
       org: 'org-1',
-      access: { kind: 'team', team: 'new-team' },
+      grants: [{ kind: 'team', team: 'new-team' }],
     });
     expect(client.updateTeam).toHaveBeenCalledWith('org-1', 'new-team', { metadata: { docsApp: 'app-9' } });
   });
@@ -137,7 +137,7 @@ describe('OrgAdmin', () => {
   it('pins a workspace registry in the org metadata, keeping what is there', async () => {
     const { admin: a, client } = admin();
     await a.createContext({ groupId: 'org-1', name: 'Registry' });
-    expect(client.createApp).toHaveBeenCalledWith('Registry', 'bundle-hash', { org: 'org-1', access: { kind: 'org' } });
+    expect(client.createApp).toHaveBeenCalledWith('Registry', 'bundle-hash', { org: 'org-1', grants: [{ kind: 'org' }] });
     expect(client.setOrgMetadata).toHaveBeenCalledWith('org-1', { registryApp: 'app-9' });
   });
 
