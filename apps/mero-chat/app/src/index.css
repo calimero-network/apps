@@ -45,7 +45,7 @@
   color-scheme: light;
 }
 
-/* mero-ui's stylesheet is imported after this one and redeclares the same
+/* mero-design's stylesheet is imported after this one and redeclares the same
    tokens on :root with its dark values; the extra type selector wins. */
 html:root {
   --color-neutral-200: var(--glass-ink-2);
@@ -1108,7 +1108,7 @@ body {
     text-size-adjust: 100% !important;
   }
 }
-/* ── glass: mero-ui's RichTextEditor ──────────────────────────────────────
+/* ── glass: mero-design's RichTextEditor ──────────────────────────────────────
    The composer paints itself dark with inline styles and an embedded
    stylesheet; these restate it on the glass tokens. The toolbar and the text
    box sit together in one solid rounded card, like a message bubble. */
@@ -1143,7 +1143,7 @@ body {
   border-color: transparent !important;
 }
 
-/* The active format (bold on, list on): mero-ui marks it lime inline. */
+/* The active format (bold on, list on): mero-design marks it lime inline. */
 .full-width-editor > div:first-child button[style*="165, 255, 17"],
 .full-width-editor > div:first-child button[style*="165,255,17"] {
   background-color: color-mix(in srgb, var(--glass-accent) 14%, transparent) !important;
@@ -1181,7 +1181,7 @@ body {
   background-color: var(--glass-sunken) !important;
 }
 
-/* ── glass: mero-ui's Button ──────────────────────────────────────────────
+/* ── glass: mero-design's Button ──────────────────────────────────────────────
    Button paints its palette inline (primary is the tint with black text,
    which goes muddy in dark). The fleet's controls are pills, and the primary
    one is the ink pill. */
@@ -1233,7 +1233,7 @@ select {
   color-scheme: inherit;
 }
 
-/* mero-ui's Input (and SearchInput, which renders it) sets `color: #FFFFFF`
+/* mero-design's Input (and SearchInput, which renders it) sets `color: #FFFFFF`
    inline, written for its dark theme: on these light surfaces typed text is
    white on white. Only !important beats an inline style. Every input the app
    styles itself already uses the ink colour, so this changes none of them. */

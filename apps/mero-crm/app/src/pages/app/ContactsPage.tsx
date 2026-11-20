@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 import { Overlay, Dialog, Close, Actions, ErrorLine } from '../../components/modalKit';
 import { Button, Empty, Input, Label, Money, Page, PageHead, Table, TableCard } from '../../components/ui';
 import AvatarGlyph from '../../components/AvatarGlyph';

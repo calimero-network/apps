@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { ToastProvider } from '@calimero-network/mero-ui';
+import { ToastProvider } from '@calimero-network/mero-design';
 import { nodeBasename } from '@calimero-apps/node-served';
 
 import LandingPage from './pages/landing/LandingPage';

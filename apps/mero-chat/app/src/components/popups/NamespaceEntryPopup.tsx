@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
-import { Button, Input } from "@calimero-network/mero-ui";
+import { Button, Input } from "@calimero-network/mero-design";
 import type { OtherOrg } from "@calimero-apps/connect";
 import { ConnectExistingOrg } from "@calimero-apps/passkey";
 import "@calimero-apps/passkey/passkey.css";

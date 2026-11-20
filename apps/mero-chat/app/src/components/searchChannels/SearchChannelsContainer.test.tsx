@@ -20,7 +20,7 @@ const {
   mockFetchContextIdentities: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   Button: ({
     children,
     disabled,

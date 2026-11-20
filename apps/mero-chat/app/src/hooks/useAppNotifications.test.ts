@@ -11,7 +11,7 @@ vi.mock("../contexts/ToastContext", () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   useNotifications: () => ({ addNotification: mockAddNotification }),
 }));
 

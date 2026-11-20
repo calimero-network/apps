@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import '@calimero-network/mero-ui/styles.css';
+@import '@calimero-network/mero-design/styles.css';
 /* Scan this folder for utility classes explicitly. Automatic detection starts
    from the Vite root, which is the app for the app's build but e2e/shots for
    the screenshot harness, where `sm:block` and friends silently went missing. */
@@ -96,7 +96,7 @@
   --current-border: var(--sign-line-strong);
   --current-card: var(--sign-solid);
 
-  /* @calimero-network/mero-ui's brand (lime #a5ff11) ramp. Its primary button
+  /* @calimero-network/mero-design's brand (lime #a5ff11) ramp. Its primary button
      hard-codes BLACK text, so the glass ink cannot be its fill; the app's own
      glass tint is, which black reads on. */
   --color-brand-100: color-mix(in srgb, var(--glass-tint) 55%, #ffffff);

@@ -13,7 +13,7 @@
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-react": "catalog:component",
-    "@calimero-network/mero-ui": "catalog:",
+    "@calimero-network/mero-design": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

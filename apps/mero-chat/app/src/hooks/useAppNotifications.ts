@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useNotifications } from "@calimero-network/mero-ui";
+import { useNotifications } from "@calimero-network/mero-design";
 import { useNotificationSound } from "./useNotificationSound";
 import type { NotificationType } from "../utils/notificationSound";
 import { useToast } from "../contexts/ToastContext";

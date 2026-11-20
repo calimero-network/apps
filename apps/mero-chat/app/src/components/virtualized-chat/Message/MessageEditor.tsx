@@ -4,7 +4,7 @@ import styled from "styled-components";
 import EmojiSelectorPopup from "../EmojiSelector/EmojiSelectorPopup";
 import type { AccountData } from "../types/curbTypes";
 
-import { RichTextEditor } from "@calimero-network/mero-ui";
+import { RichTextEditor } from "@calimero-network/mero-design";
 import {
   ActionsWrapper,
   EditorWrapper,

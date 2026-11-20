@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import type { User } from "../../types/Common";
-import { Button, Input } from "@calimero-network/mero-ui";
+import { Button, Input } from "@calimero-network/mero-design";
 import { IdentityAvatar } from "../IdentityAvatar";
 import type { Role, UserId } from "../../api/clientApi";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";

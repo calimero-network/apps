@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 import { tokens as t, STATUSES, PRIORITIES, STATUS_COLOR } from '../../theme';
 import { APP_ROUTE } from '../../config';
 import { describeError } from '../../utils/errors';

@@ -4,7 +4,7 @@ import {
   NotificationCenter,
   useNotifications,
   type Notification,
-} from "@calimero-network/mero-ui";
+} from "@calimero-network/mero-design";
 
 const NotificationButton = styled.button`
   position: relative;

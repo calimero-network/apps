@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Input } from '@calimero-network/mero-ui';
+import { Input } from '@calimero-network/mero-design';
 import { ShieldCheck } from '@calimero-network/mero-icons';
 import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../battleships';

@@ -13,7 +13,7 @@ import {
   getGroupId,
   setContextMemberIdentity,
 } from "../../constants/config";
-import { Button, SearchInput } from "@calimero-network/mero-ui";
+import { Button, SearchInput } from "@calimero-network/mero-design";
 import { log } from "../../utils/logger";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import { buildChannelEntryChat } from "../../utils/channelEntry";
@@ -36,7 +36,7 @@ const SearchContainer = styled.div`
     padding: 42px 0 0;
     background-color: var(--glass-surface-solid);
   }
-  /* mero-ui's SearchInput paints its label and typed text white inline. */
+  /* mero-design's SearchInput paints its label and typed text white inline. */
   .inputFieldWrapper label,
   .inputFieldWrapper input {
     color: var(--glass-ink) !important;

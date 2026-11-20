@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import UserItem from "./UserItem";
 
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   Avatar: ({ name }: { name: string }) => <div>{name}</div>,
 }));
 

@@ -5,7 +5,7 @@ import React, {
 /**
  * Toasts, in this app's palette.
  *
- * mero-ui ships a `ToastProvider`, but it paints each variant INLINE from its
+ * mero-design ships a `ToastProvider`, but it paints each variant INLINE from its
  * own palette — an error arrived as white text on saturated red, which is hard
  * to read and belongs to a different product than the page behind it. There is
  * no style passthrough on the item and the variant is not in a class, so CSS
