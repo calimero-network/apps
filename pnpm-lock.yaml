@@ -14,8 +14,8 @@ catalogs:
       version: 1.0.0-rc.32
   default:
     '@calimero-network/mero-icons':
-      specifier: ^0.0.5
-      version: 0.0.5
+      specifier: ^1.0.0-rc.32
+      version: 1.0.0-rc.32
     '@calimero-network/mero-js':
       specifier: 26.11.0
       version: 26.11.0
@@ -142,7 +142,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -340,7 +340,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -510,7 +510,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -595,7 +595,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -710,7 +710,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -879,7 +879,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -973,7 +973,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1070,7 +1070,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1182,7 +1182,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1375,7 +1375,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1463,7 +1463,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1639,7 +1639,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1733,7 +1733,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1821,7 +1821,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -1921,7 +1921,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2021,7 +2021,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2124,7 +2124,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2224,7 +2224,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2487,7 +2487,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2587,7 +2587,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -2766,7 +2766,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
+        version: 1.0.0-rc.32(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.32
@@ -3954,6 +3954,11 @@ packages:
 
   '@calimero-network/mero-icons@0.0.6':
     resolution: {integrity: sha512-pKxSazpsvSFgdFCJAloO5tnWsB/6O4jKundiKerbYWn8G2H2RXAsiGuvlMYDrK5PwByY5O3xB4vOtd2LgmwY3Q==}
+    peerDependencies:
+      react: ^18.3.1
+
+  '@calimero-network/mero-icons@1.0.0-rc.32':
+    resolution: {integrity: sha512-sxijVaJVG4UL+E8W7EoO6cMCzTDRiR3cknr24sr6H5/YjcKKijc0NcEsdga/r0Z9bhoBkdHs/0wGTYsvBDeHqg==}
     peerDependencies:
       react: ^18.3.1
 
@@ -11810,6 +11815,10 @@ snapshots:
       react: 19.2.8
 
   '@calimero-network/mero-icons@0.0.6(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+
+  '@calimero-network/mero-icons@1.0.0-rc.32(react@19.2.8)':
     dependencies:
       react: 19.2.8
 
