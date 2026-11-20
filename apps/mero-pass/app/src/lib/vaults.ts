@@ -37,6 +37,8 @@ import {
   appTarget,
   appTeamIdIn,
   finishAppOrg,
+  grantedTeam,
+  grantsOf,
   isAppOnly,
   listAppInfos,
   appInviteTeams,
@@ -49,6 +51,7 @@ import {
   type AppOrgView,
   type AppSource,
   type ClientRoutes,
+  type Grant,
 } from '@calimero-apps/connect';
 import {
   VaultSession,
@@ -273,18 +276,13 @@ export interface VaultRow {
   team: string | null;
 }
 
-/** The access an instance was created with (`GET /apps/{app}`). */
+/** The team an instance is on: its one team grant (`GET /apps/{app}`'s `grants`). */
 async function teamOf(
   client: CalimeroClient,
   appId: string,
 ): Promise<string | null> {
   try {
-    const app = (await client.apps.get({ app: appId })) as {
-      access?: { kind?: string; team?: string };
-    };
-    return app.access?.kind === 'team' && app.access.team
-      ? app.access.team
-      : null;
+    return grantedTeam(grantsOf(await client.apps.get({ app: appId })));
   } catch {
     return null;
   }
@@ -330,7 +328,7 @@ export async function listVaults(
 /**
  * A new vault in `org`: an instance named `name`, its contract named the same
  * (`renameVault`). Invite-only makes an invite-only team for it first and gives
- * the instance that team's access.
+ * the instance that team as its one grant.
  */
 export async function createVault(
   conn: Conn,
@@ -338,18 +336,18 @@ export async function createVault(
   onStatus: StatusFn = noop,
 ): Promise<{ contextId: string }> {
   try {
-    let access: { kind: 'team'; team: string } | undefined;
+    let grants: Grant[] | undefined;
     if (opts.restricted) {
       onStatus('Creating the vault’s invite-only team…');
       const team = (await conn.client.orgs.teamCreate({ org: opts.namespaceId, name: opts.name, join: 'invite' }))
         .teamId;
-      access = { kind: 'team', team };
+      grants = [{ kind: 'team', team }];
     }
     onStatus('Creating the vault…');
     // An open vault is on Hyperfeed Pass's team (made first, by an owner or admin,
     // in an org whose other apps have teams), or org access in a legacy org.
-    const contextId = (await conn.client.apps.create({ name: opts.name, ...appTarget(conn.source), ...(access
-        ? { org: opts.namespaceId, access }
+    const contextId = (await conn.client.apps.create({ name: opts.name, ...appTarget(conn.source), ...(grants
+        ? { org: opts.namespaceId, grants }
         : await orgInstanceOptions(conn.client, opts.namespaceId, conn.source, conn.passkey, PRODUCT_NAME)) })).appId;
     onStatus('Naming it…');
     await new MeroPassClient(conn.client, contextId, { after: conn.after }).renameVault({ name: opts.name });

@@ -88,13 +88,15 @@ const h = await vi.hoisted(async () => {
     }),
     setCapabilities: vi.fn(async () => {}),
     setOrgMetadata: vi.fn(async () => {}),
-    createApp: vi.fn(async (name: string, _source: unknown, options: { org: string; access: unknown }) => {
+    createApp: vi.fn(async (name: string, _source: unknown, options: { org: string; grants?: unknown[] } & Record<string, unknown>) => {
+      // As core (1.0.0-rc.33): the removed `access` is refused; no grants is the organization.
+      if ("access" in options) throw Object.assign(new Error("ACCESS_REMOVED"), { status: 400, code: "ACCESS_REMOVED" });
       const appId = `app-${(state.seq += 1)}`;
-      state.apps.set(appId, { appId, name, owner: state.me, org: options.org, access: options.access, metadata: null });
+      state.apps.set(appId, { appId, name, owner: state.me, org: options.org, grants: options.grants ?? [{ kind: "org" }], metadata: null });
       return appId;
     }),
-    setAccess: vi.fn(async (app: string, access: unknown) => {
-      state.apps.get(app)!.access = access;
+    setAccess: vi.fn(async (app: string, grants: unknown[]) => {
+      state.apps.get(app)!.grants = grants;
     }),
     session: { accountId: "acct-me" },
     // core's ScopeApps for chat: find or make its team, move org-access chat instances onto it.
@@ -112,8 +114,8 @@ const h = await vi.hoisted(async () => {
         }
         const moved: string[] = [];
         for (const a of state.apps.values()) {
-          if (a.org === org && (a.access as { kind: string }).kind === "org") {
-            a.access = { kind: "team", team: teamId };
+          if (a.org === org && (a.grants as Array<{ kind: string }>).some((g) => g.kind === "org")) {
+            a.grants = [{ kind: "team", team: teamId }];
             moved.push(a.appId as string);
           }
         }
@@ -170,13 +172,13 @@ const h = await vi.hoisted(async () => {
     // As core: the team goes, and the instances on it.
     deleteTeam: vi.fn(async (org: string, team: string) => {
       delete state.orgs.get(org)!.teams[team];
-      for (const [id, a] of state.apps) if ((a.access as { team?: string }).team === team) state.apps.delete(id);
+      for (const [id, a] of state.apps) if ((a.grants as Array<{ team?: string }>).some((g) => g.team === team)) state.apps.delete(id);
       return { teams: [team], apps: [] };
     }),
     getTeam: vi.fn(async (_org: string, team: string) => ({
       teamId: team,
       apps: [...state.apps.values()]
-        .filter((a) => (a.access as { team?: string }).team === team)
+        .filter((a) => (a.grants as Array<{ team?: string }>).some((g) => g.team === team))
         .map((a) => ({ appId: a.appId, name: a.name })),
     })),
     setMemberMetadata: vi.fn(async () => {}),
@@ -245,7 +247,12 @@ function otherOrg(mode: "legacy" | "standalone" | "shared", role = "owner"): str
   return orgId;
 }
 
-const accessOf = (app: string) => h.state.apps.get(app)!.access as { kind: string; team?: string; accounts?: string[] };
+/** A channel's one grant (every channel here has exactly one). */
+const accessOf = (app: string) => {
+  const grants = h.state.apps.get(app)!.grants as Array<{ kind: string; team?: string }>;
+  expect(grants).toHaveLength(1);
+  return grants[0]!;
+};
 
 beforeEach(() => {
   h.state.orgs.clear();
@@ -569,7 +576,7 @@ describe("channels and DMs are teams below Chat's", () => {
     const { org, general } = await workspace({ "acct-bob": "member" });
     const secret = await createChannel(org, "secret", false);
     if ("error" in secret) throw new Error(secret.error);
-    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, access: { kind: "accounts", accounts: ["acct-bob"] }, metadata: null });
+    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, grants: [{ kind: "account", account: "acct-bob" }], metadata: null });
     invalidate();
     const ids = (await api.listSubgroups(org)).data!.map((s) => s.groupId);
     expect(ids).toEqual([general, secret.contextId, "app-old"]);
@@ -584,14 +591,17 @@ describe("channels and DMs are teams below Chat's", () => {
 
   it("a channel made before channels had teams opens as before; its member controls point to Calimero Home", async () => {
     const { org, general } = await workspace({ "acct-bob": "member" });
-    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, access: { kind: "accounts", accounts: ["acct-bob"] }, metadata: null });
-    h.state.apps.get(general)!.access = { kind: "team", team: "team-chat" };
+    h.state.apps.set("app-old", { appId: "app-old", name: "old", owner: "acct-me", org, grants: [{ kind: "account", account: "acct-bob" }], metadata: null });
+    h.state.apps.get(general)!.grants = [{ kind: "team", team: "team-chat" }];
     invalidate();
 
     expect((await api.listMembers("app-old")).data!.members.map((m) => m.identity)).toEqual(["acct-me", "acct-bob"]);
     expect((await api.getContextVisibility(org, "app-old")).data?.mode).toBe("restricted");
     expect((await api.getContextVisibility(org, general)).data?.mode).toBe("open");
-    expect(visibilityOf({ kind: "team", team: "t" })).toBe("open");
+    expect(visibilityOf([{ kind: "team", team: "t" }])).toBe("open");
+    expect(visibilityOf([{ kind: "anyone" }])).toBe("open");
+    expect(visibilityOf([{ kind: "account", account: "acct-bob" }])).toBe("restricted");
+    expect(visibilityOf([])).toBe("restricted");
     expect(await api.channelManagedInHome("app-old")).toBe(true);
     expect(await api.channelManagedInHome(general)).toBe(true);
 

@@ -196,7 +196,7 @@ test.fixme("5. Ann creates a private channel", async () => {
 });
 
 test.fixme("6. Ann adds Bob to the private channel", async () => {
-  // Needs channel members as rows on the channel's team (apps.access with an account list is refused).
+  // Needs channel members as rows on the channel's team (apps.access with account grants is refused).
   const page = annBrowser.page;
   await channel(page).click();
   await page.getByTestId("channel-details").click();
@@ -210,7 +210,7 @@ test.fixme("6. Ann adds Bob to the private channel", async () => {
 });
 
 test.fixme("7. Ann removes Bob from the private channel", async () => {
-  // Needs channel members as rows on the channel's team (apps.access with an account list is refused).
+  // Needs channel members as rows on the channel's team (apps.access with account grants is refused).
   const page = annBrowser.page;
   await page.getByRole("button", { name: "Remove from channel" }).click();
   await expect(page.getByText("Member removed")).toBeVisible();

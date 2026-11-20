@@ -40,7 +40,8 @@ export interface ClusterApp {
   name: string;
   owner: string;
   org: string | null;
-  access: Record<string, unknown>;
+  /** Its grants, as core answers them (core#5194): `[]` is its owner alone. */
+  grants: Array<Record<string, unknown>>;
   package: string | null;
   bundle: string;
   metadata: unknown;
@@ -72,6 +73,14 @@ const ADMIN = new Set(["owner", "admin"]);
 
 function notFound(what: string): Error {
   return Object.assign(new Error(`404 ${what}`), { status: 404 });
+}
+
+/** Core (1.0.0-rc.33, core#5194) refuses a request still carrying the removed `access` mode. */
+function accessRemoved(): Error {
+  return Object.assign(new Error("400 ACCESS_REMOVED: an instance's access is its `grants`"), {
+    status: 400,
+    code: "ACCESS_REMOVED",
+  });
 }
 
 /** The cluster. Its `client` is what the app's code is handed. */
@@ -240,8 +249,10 @@ export function orgCluster(options: OrgClusterOptions = {}) {
         }
         const moved: string[] = [];
         for (const a of state.apps.values()) {
-          if (a.org === id && a.package === pkg && a.access.kind === "org") {
-            a.access = { kind: "team", team: teamId };
+          // Core's `members_replaced_by`: the organization grant goes for the
+          // team's; named members, guests and `anyone` stay.
+          if (a.org === id && a.package === pkg && a.grants.some((g) => g.kind === "org")) {
+            a.grants = [{ kind: "team", team: teamId }, ...a.grants.filter((g) => g.kind !== "org" && g.kind !== "team")];
             moved.push(a.appId);
           }
         }
@@ -291,7 +302,8 @@ export function orgCluster(options: OrgClusterOptions = {}) {
   };
 
   const apps = {
-    create: async (args: { name: string; org?: string; access?: Record<string, unknown> } & Record<string, unknown>) => {
+    create: async (args: { name: string; org?: string; grants?: Array<Record<string, unknown>> } & Record<string, unknown>) => {
+      if ("access" in args) throw accessRemoved();
       const { source, rest } = createTarget(args);
       record("createApp", [args.name, source, rest]);
       const appId = `app-${(state.seq += 1)}`;
@@ -300,7 +312,7 @@ export function orgCluster(options: OrgClusterOptions = {}) {
         name: args.name,
         owner: state.me,
         org: args.org ?? null,
-        access: args.access ?? (args.org ? { kind: "org" } : { kind: "owner" }),
+        grants: structuredClone(args.grants ?? (args.org ? [{ kind: "org" }] : [])),
         package: pkgOf(source),
         bundle: typeof source === "string" ? source : "bundle-hash",
         metadata: null,
@@ -321,11 +333,13 @@ export function orgCluster(options: OrgClusterOptions = {}) {
           .map((a) => ({ appId: a.appId, name: a.name, owner: a.owner, org: a.org, bundle: a.bundle, package: a.package, version: null })),
       };
     },
-    access: async ({ app: id, access }: { app: string; access: Record<string, unknown> }) => {
-      record("setAccess", [id, access]);
+    access: async (args: { app: string; grants: Array<Record<string, unknown>> }) => {
+      if ("access" in args) throw accessRemoved();
+      const { app: id, grants } = args;
+      record("setAccess", [id, grants]);
       const a = state.apps.get(id);
       if (!a) throw notFound(`app ${id}`);
-      a.access = access;
+      a.grants = structuredClone(grants);
       return {};
     },
     /** A contract call: answered empty (the app's own tests cover its contract). */
@@ -495,7 +509,7 @@ const ROUTES: Array<[string, string, string, (a: Args, o: Opts) => unknown[], ((
   ],
   ["apps", "delete", "deleteApp", (a) => [a.app]],
   ["apps", "metadata", "setAppMetadata", (a) => [a.app, a.metadata]],
-  ["apps", "access", "setAccess", (a) => [a.app, a.access]],
+  ["apps", "access", "setAccess", (a) => [a.app, a.grants]],
   ["apps", "abi", "appAbi", (a) => [a.app]],
   ["apps", "call", "call", (a) => [a.app, a.method, a.args, a.idempotencyKey]],
   [

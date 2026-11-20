@@ -156,7 +156,8 @@ test("3. Alice keeps apps apart, then adds KV Store from Home's Admin screen, fo
   const teams = await alice.client.orgs.appTeamList({ org });
   const kvTeam = teams.appTeams.find((t) => t.package === KV)?.teamId;
   expect(kvTeam, "Home made no app team for KV Store").toBeTruthy();
-  await alice.client.apps.create({ name: STORE, package: KV, org, access: { kind: "team", team: kvTeam! } });
+  // Its one grant is the app team (core#5194).
+  await alice.client.apps.create({ name: STORE, package: KV, org, grants: [{ kind: "team", team: kvTeam! }] });
 });
 
 test("4. Alice invites Bob to every app; he joins from Home and reaches the org in Chat and KV Store", async ({

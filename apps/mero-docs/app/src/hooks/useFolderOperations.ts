@@ -1,6 +1,6 @@
 // Folder CRUD, in core alone. A folder is a team of the workspace's org under
 // its parent folder, named as the folder, with its colour in the team's
-// metadata and one docs app instance (`access: team`) whose id the metadata
+// metadata and one docs app instance (granted to the team) whose id the metadata
 // keeps; `join` is everyone (Open: whoever reaches the parent is a member) or
 // invite (Restricted). Nothing is written to the registry instance.
 //

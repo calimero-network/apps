@@ -1,8 +1,9 @@
 # Recipe: direct messages (an app instance for two accounts)
 
 A DM is a room reachable by exactly two accounts: an app instance in the
-organization whose access is `{ kind: 'accounts', accounts: [a, b] }` (the
-owner, who creates it, is one of them). No team and no new contract: it reuses
+organization whose grants name the other account, `[{ kind: 'account', account: b }]`
+(`accountGrants([b])` from `@calimero-apps/connect`); the owner, who creates
+it, reaches it as its owner (core#5194: an instance's access is its grants). No team and no new contract: it reuses
 the room's.
 
 - Mark it as a DM in its **app metadata** (`{ dm: true, a, b }`) so the UI can
