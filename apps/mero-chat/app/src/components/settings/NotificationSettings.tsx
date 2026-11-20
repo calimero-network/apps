@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import useNotificationSound from "../../hooks/useNotificationSound";
-import { Button } from "@calimero-network/mero-ui";
+import { Button } from "@calimero-network/mero-design";
 
 const SettingsContainer = styled.div`
   background-color: var(--glass-surface-solid);

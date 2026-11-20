@@ -5,14 +5,17 @@
  * | v1 | here |
  * |---|---|
  * | a workspace: a namespace of the app | an **organization** (`createOrg`); its id is the "group id" |
- * | a channel: a subgroup (open or restricted) with one context in it | a **team** below chat's **app team** (core#4890) with one **app instance** of chat on it (access `team`); the instance's id is both the "subgroup" and the "context" id |
+ * | a channel: a subgroup (open or restricted) with one context in it | a **team** below chat's **app team** (core#4890) with one **app instance** of chat on it (its one grant: the team); the instance's id is both the "subgroup" and the "context" id |
  * | an open subgroup | an open team (`join: everyone`): everyone in Chat in this workspace |
  * | a restricted subgroup and its members | a closed team (`join: invite`) and its rows |
  * | a DM: a restricted subgroup of two, alias `DM_CONTEXT_…` | a closed team of two, its instance named `DM_CONTEXT_…` |
- * | a channel made before channels had teams | access `org`, chat's app team, or `accounts`: listed and opened as before; its people are managed in Calimero Home |
+ * | a channel made before channels had teams | the organization grant, chat's app team, or account grants: listed and opened as before; its people are managed in Calimero Home |
  *
- * Where chat has no app team (a legacy org, a dev bundle) a channel's team is
- * at the top of the org, and an open channel of a legacy org keeps access `org`.
+ * Who reaches an instance is its **grants** (core 1.0.0-rc.33, core#5194;
+ * `@calimero-apps/connect`'s `grants.ts`), which replaced its single `access`
+ * mode. Where chat has no app team (a legacy org, a dev bundle) a channel's
+ * team is at the top of the org, and an open channel of a legacy org keeps
+ * the organization grant.
  * | namespace members and roles | org members: `owner`/`admin` → Admin, `member` → Member, `guest` → ReadOnly |
  * | member metadata `{ name }` | org member metadata `{ name }` |
  * | a per-context member key | the account: one id everywhere |
@@ -41,6 +44,13 @@ import {
   appTeamMembers,
   createAppOrg,
   finishAppOrg,
+  grantedAccounts,
+  grantedTeam,
+  grantedTeams,
+  grantPeople,
+  grantsAnyone,
+  grantsOf,
+  grantsOrg,
   isAppOnly,
   leaveApp,
   leaveOrg,
@@ -52,8 +62,11 @@ import {
   removeFromAppTeam,
   removeFromPrivateTeam,
   type AppOrgView,
+  type Grant,
   type OrgTeamView,
+  type OrgWideAccess,
   type OtherOrg,
+  type ReadGrant,
 } from "@calimero-apps/connect";
 
 import { setOrgName as setOwnOrgName } from "@calimero-apps/names";
@@ -61,21 +74,14 @@ import { after, chatSource, getAccountId, getClient, passkey } from "./calimero"
 
 export type Visibility = "open" | "restricted";
 
-/** An app's access rule, as the node stores it. */
-export type Access =
-  | { kind: "owner" }
-  | { kind: "org" }
-  | { kind: "public" }
-  | { kind: "accounts"; accounts: string[] }
-  | { kind: "team"; team: string };
-
 /** What `GET /apps/{app}` answers that this app reads. */
 export interface AppRecord {
   appId: string;
   name: string;
   owner: string;
   org: string | null;
-  access: Access;
+  /** Who reaches it (core#5194); `[]`: its owner alone. */
+  grants: ReadGrant[];
   metadata: Record<string, unknown> | null;
 }
 
@@ -148,25 +154,6 @@ export function invalidate(id?: string): void {
 
 // ── reads ────────────────────────────────────────────────────────────────────
 
-function asAccess(value: unknown): Access {
-  const v = (value ?? {}) as { kind?: unknown; accounts?: unknown; team?: unknown };
-  switch (v.kind) {
-    case "org":
-      return { kind: "org" };
-    case "public":
-      return { kind: "public" };
-    case "accounts":
-      return {
-        kind: "accounts",
-        accounts: Array.isArray(v.accounts) ? v.accounts.filter((a): a is string => typeof a === "string") : [],
-      };
-    case "team":
-      return { kind: "team", team: String(v.team ?? "") };
-    default:
-      return { kind: "owner" };
-  }
-}
-
 export function getAppRecord(app: string): Promise<AppRecord> {
   return cached(`app:${app}`, async () => {
     const raw = (await run((c) => c.apps.get({ app }))) as Record<string, unknown>;
@@ -176,7 +163,7 @@ export function getAppRecord(app: string): Promise<AppRecord> {
       name: String(raw.name ?? ""),
       owner: String(raw.owner ?? ""),
       org: typeof raw.org === "string" ? raw.org : null,
-      access: asAccess(raw.access),
+      grants: grantsOf(raw),
       metadata,
     };
   }, APP_TTL_MS);
@@ -284,12 +271,12 @@ export async function adoptChatTeam(org: string): Promise<string | null> {
 }
 
 /**
- * The access an open channel gets in `org`: chat's app team (`orgWideAccess`).
+ * The one grant an open channel gets in `org`: chat's app team (`orgWideAccess`).
  * An org with app teams but none for chat gets one first, which only an owner
  * or admin may make. A legacy org keeps organization access: moving it onto
  * an app team is an admin's choice (Calimero Home), never forced.
  */
-async function openAccess(org: string): Promise<Access> {
+async function openAccess(org: string): Promise<OrgWideAccess> {
   const record = await getOrgRecord(org);
   const team = chatTeamId(record);
   if (team) return { kind: "team", team };
@@ -409,14 +396,16 @@ export function teamPeople(org: OrgRecord, teamId: string, depth = 0): string[] 
 
 /**
  * The team a channel or DM is on: its own team, below chat's app team (at
- * the top of the org where chat has none: a dev bundle, a legacy org). `null`
- * for a channel made before channels had teams (access `org`, `accounts`, or
- * chat's app team itself): its people are managed in Calimero Home.
+ * the top of the org where chat has none: a dev bundle, a legacy org): its
+ * one team grant. `null` for a channel made before channels had teams (the
+ * organization grant, account grants, or chat's app team itself): its people
+ * are managed in Calimero Home.
  */
 export function channelTeamOf(app: AppRecord, org: OrgRecord | null): string | null {
-  if (app.access.kind !== "team" || !app.access.team) return null;
-  if (org && app.access.team === chatTeamId(org)) return null;
-  return app.access.team;
+  const team = grantedTeam(app.grants);
+  if (!team) return null;
+  if (org && team === chatTeamId(org)) return null;
+  return team;
 }
 
 /** What a channel made before channels had teams answers to a change of its people or visibility. */
@@ -454,47 +443,52 @@ export async function channelManagedInHome(app: string): Promise<boolean> {
 }
 
 /**
- * Who reaches channel `app`: the people of its team (chat's app team, or the
- * channel's own), every org member for organization access, or its owner and
- * the listed accounts (a private channel made before channels had teams).
+ * Who reaches channel `app`, as its grants name people (`grantPeople`): the
+ * people of its team (chat's app team, or the channel's own), every org
+ * member for the organization grant, the accounts it names (a private
+ * channel made before channels had teams), and its owner. `anyone` names
+ * nobody in particular.
  */
 export async function appMembers(app: AppRecord): Promise<string[]> {
-  if (app.access.kind === "accounts") {
-    return [...new Set([app.owner, ...app.access.accounts])];
-  }
-  if (app.access.kind === "org" && app.org) {
+  const grouped = app.org && (grantsOrg(app.grants) || grantedTeams(app.grants).length > 0);
+  const org = grouped && app.org ? await getOrgRecord(app.org) : null;
+  const people = grantPeople(null, app.grants, {
     // Everyone in the org, but no guest once it has app teams.
-    return appPeople((await getOrgRecord(app.org)) as AppOrgView, null);
-  }
-  if (app.access.kind === "team" && app.org) {
-    return teamPeople(await getOrgRecord(app.org), app.access.team);
-  }
-  return [app.owner];
+    org: () => (org ? appPeople(org as AppOrgView, null) : []),
+    team: (team) => (org ? teamPeople(org, team) : []),
+  });
+  // As before grants: a group's people as the org lists them, the owner first
+  // beside named accounts, and the owner alone with nothing else.
+  if (org) return people.length ? people : [app.owner];
+  return [...new Set([app.owner, ...people])];
 }
 
-/** Open: the workspace's (its org, or chat's app team on it); restricted: the listed accounts. */
-export function visibilityOf(access: Access): Visibility {
-  return access.kind === "org" || access.kind === "public" || access.kind === "team" ? "open" : "restricted";
+/**
+ * Open: the workspace's (its org, chat's app team or a team on it, or any
+ * signed-in account); restricted: only the accounts it names (or its owner).
+ */
+export function visibilityOf(grants: readonly ReadGrant[]): Visibility {
+  return grantsOrg(grants) || grantsAnyone(grants) || grantedTeams(grants).length > 0 ? "open" : "restricted";
 }
 
 /** A channel's visibility: its own team's `join` (open: everyone in Chat), else {@link visibilityOf}. */
 export async function channelVisibility(app: AppRecord): Promise<Visibility> {
-  if (app.access.kind === "team" && app.org) {
+  if (grantedTeam(app.grants) && app.org) {
     const org = await getOrgRecord(app.org).catch(() => null);
     const team = org ? channelTeamOf(app, org) : null;
     if (team && org?.teams[team]) return org.teams[team]!.join === "everyone" ? "open" : "restricted";
   }
-  return visibilityOf(app.access);
+  return visibilityOf(app.grants);
 }
 
-/** The accounts with a row on a private channel's team (or listed on an older one). */
+/** The accounts with a row on a private channel's team (or named by account grants on an older one). */
 export async function channelRows(app: string): Promise<string[]> {
   const { app: record, record: org, team } = await channelOf(app);
   if (team) {
     const t = org?.teams[team];
     return t && t.join !== "everyone" ? Object.keys(t.members ?? {}) : [];
   }
-  return record.access.kind === "accounts" ? record.access.accounts : [];
+  return grantedAccounts(record.grants);
 }
 
 // ── writes ───────────────────────────────────────────────────────────────────
@@ -696,9 +690,9 @@ function boundSession(): Promise<boolean> {
 /**
  * Creates a channel or DM: its own team below chat's app team (open: everyone
  * in Chat; private, or a DM: the people with a row), then its chat instance
- * with that team as its access. From a pending channel (v1's subgroup) or
+ * with that team as its one grant. From a pending channel (v1's subgroup) or
  * straight into an org. The creator leads the team. An open channel of a
- * legacy org (no app team for chat) keeps organization access, as before.
+ * legacy org (no app team for chat) keeps the organization grant, as before.
  */
 export async function createChatApp(
   groupId: string,
@@ -711,8 +705,8 @@ export async function createChatApp(
   const title = (pending?.name || name || String(initializationParams.name ?? "") || "channel").trim();
   const initArgs = initArgsFrom(initializationParams);
   const visibility = pending?.visibility ?? (initArgs.contextType === "Dm" ? "restricted" : "open");
-  const create = (access: Access) =>
-    run((c) => c.apps.create({ name: title, ...appTarget(chatSource()), org, access, initArgs }).then((r) => r.appId));
+  const create = (grants: Grant[]) =>
+    run((c) => c.apps.create({ name: title, ...appTarget(chatSource()), org, grants, initArgs }).then((r) => r.appId));
 
   const parent = await channelParent(org);
   // Without Chat's team, a private channel or DM would be a team at the top
@@ -722,7 +716,7 @@ export async function createChatApp(
   }
   let appId: string;
   if (!parent && visibility === "open" && chatPackage()) {
-    appId = await create({ kind: "org" });
+    appId = await create([{ kind: "org" }]);
   } else {
     // Made closed: a member makes only a closed team below chat's (core), and
     // leads it, so may open it right after.
@@ -741,7 +735,7 @@ export async function createChatApp(
           );
         }
       }
-      appId = await create({ kind: "team", team });
+      appId = await create([{ kind: "team", team }]);
     } catch (e) {
       // Nothing on it yet: the team goes without a passkey.
       await run((c) => c.orgs.teamDelete({ org, team })).catch(() => {});

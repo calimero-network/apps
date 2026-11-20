@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Outlet, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { useToast } from "@calimero-network/mero-ui";
+import { useToast } from "@calimero-network/mero-design";
 import { CreateWorkspaceDialog, InviteDialog } from "@calimero-network/mero-react";
 import { appOnlyInviteNote } from "@calimero-apps/connect";
 import { lastUsedName } from "@calimero-apps/names";

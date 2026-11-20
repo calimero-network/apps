@@ -102,14 +102,14 @@ dependencies = [
 
 [[package]]
 name = "bytes"
-version = "1.12.1"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
 name = "calimero-app-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "calimero-bundle",
  "eyre",
@@ -122,7 +122,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-build"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "calimero-app-abi",
  "calimero-build-utils",
@@ -136,7 +136,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-engine-wasmtime"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -159,7 +159,7 @@ dependencies = [
 [[package]]
 name = "calimero-app-host"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "calimero-app-wit",
  "ciborium",
@@ -174,12 +174,12 @@ dependencies = [
 [[package]]
 name = "calimero-app-wit"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 
 [[package]]
 name = "calimero-build-utils"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "rustc_version",
  "toml",
@@ -188,7 +188,7 @@ dependencies = [
 [[package]]
 name = "calimero-bundle"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "base64",
  "bs58",
@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "base64",
  "calimero-app-engine-wasmtime",
@@ -231,7 +231,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?rev=6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd#6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd"
+source = "git+https://github.com/calimero-network/core?tag=1.0.0-rc.33#a7824633f3ecc7967cedcef8a4029f0455fce1c9"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -242,9 +242,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.11.2"
+version = "1.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
+checksum = "02f0e023adb368345ce0ca6cdfc0f24a06554468d0e8503e14a0841de79bfa69"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -744,9 +744,9 @@ checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "filetime"
-version = "0.2.29"
+version = "0.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+checksum = "e1255e7a9f1902190d4c10a75f2f7f495d3d3ce13e9ba26e6c48683a0f4dbed7"
 dependencies = [
  "cfg-if",
  "libc",
@@ -1224,9 +1224,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pin-project-lite"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+checksum = "c938015719552d665fd0553b90d96cd7ff58e83e4c061ca99e6bb78865a72752"
 
 [[package]]
 name = "postcard"
@@ -1373,9 +1373,9 @@ dependencies = [
 
 [[package]]
 name = "regalloc2"
-version = "0.15.2"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "757712e8e61590d6d4f5d563483755538b5aa13467837a3b41cd9832509a7f85"
+checksum = "34f923657880712029496c2e68bb40bef163806b2011adde559b28bbcedc82ea"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -1595,9 +1595,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "smallvec"
-version = "1.16.5"
+version = "1.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
+checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 dependencies = [
  "serde",
 ]
@@ -2532,9 +2532,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+checksum = "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa"
 
 [[package]]
 name = "zerotrie"

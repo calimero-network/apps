@@ -655,7 +655,7 @@ html, body {
 }
 
 /* ============================================================
-   Buttons (extending mero-ui)
+   Buttons (extending mero-design)
    ============================================================ */
 
 .btn-fire {
@@ -1647,7 +1647,7 @@ html, body {
 }
 
 /* ============================================================
-   Modal override for mero-ui
+   Modal override for mero-design
    ============================================================ */
 
 .modal-content {
@@ -1773,7 +1773,7 @@ html, body {
 }
 
 /* ============================================================
-   mero-ui overrides — the component library ships dark
+   mero-design overrides — the component library ships dark
    ============================================================
    `Navbar`, `Input` and friends carry their own palette, tuned for a dark
    product surface. On this light page that lands as a black bar with an
@@ -1785,7 +1785,7 @@ html, body {
    third-party widget mounted elsewhere is not restyled by accident. */
 
 /* The Navbar itself is recoloured through its `style` prop in NavBar.tsx —
-   mero-ui spreads `style` after its own base styles, so no override is needed
+   mero-design spreads `style` after its own base styles, so no override is needed
    here. Its CHILDREN still inherit the library's light-on-dark ink. */
 .app-bg nav a,
 .app-bg nav span,
@@ -2039,7 +2039,7 @@ html, body {
     flex-wrap: wrap;
   }
 
-  /* mero-ui's Input renders its own wrapper; without this the field keeps its
+  /* mero-design's Input renders its own wrapper; without this the field keeps its
      intrinsic width and the row cannot actually wrap. */
   .naval-card-body form > *:not(button),
   .naval-card-body form > div > *:not(button) {

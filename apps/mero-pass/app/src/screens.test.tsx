@@ -115,7 +115,7 @@ function fakeClient() {
         version: null,
       },
     ]),
-    getApp: vi.fn(async () => ({ access: { kind: 'org' } })),
+    getApp: vi.fn(async () => ({ grants: [{ kind: 'org' }] })),
     createOrg: vi.fn(async () => 'org9'),
     setCapabilities: vi.fn(async () => {}),
     setMemberMetadata: vi.fn(async () => {}),

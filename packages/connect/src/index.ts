@@ -122,6 +122,19 @@ export {
   type InviteToAppOptions,
 } from "./appTeams";
 export {
+  accountGrants,
+  grantPeople,
+  grantedAccounts,
+  grantedTeam,
+  grantedTeams,
+  grantsAnyone,
+  grantsOf,
+  grantsOrg,
+  type Grant,
+  type GrantPeopleSources,
+  type ReadGrant,
+} from "./grants";
+export {
   APP_CONSENT_INTENT_KEY,
   ConsentNeededError,
   ConsentNotStarted,

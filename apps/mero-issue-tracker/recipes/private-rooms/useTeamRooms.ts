@@ -30,7 +30,7 @@ export function useTeamRooms(client: Client, source: AppSource, org: string | nu
       if (!org) throw new Error('no organization');
       const join = visibility === 'public' ? 'everyone' : 'invite';
       const { teamId: team } = await client.orgs.teamCreate({ org, name, join });
-      const { appId } = await client.apps.create({ name, ...appTarget(source), org, access: { kind: 'team', team } });
+      const { appId } = await client.apps.create({ name, ...appTarget(source), org, grants: [{ kind: 'team', team }] });
       if (visibility === 'private') {
         for (const account of members) {
           await client.orgs.teamSetMember({ org, team, account }, { confirm: passkeyConfirm(passkey()) });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { TabPanel, Tabs } from "@calimero-network/mero-ui";
+import { TabPanel, Tabs } from "@calimero-network/mero-design";
 import CreateIdentityTab from "./CreateIdentityTab";
 import NotificationSettings from "../settings/NotificationSettings";
 import ContextSwitcher from "../settings/ContextSwitcher";

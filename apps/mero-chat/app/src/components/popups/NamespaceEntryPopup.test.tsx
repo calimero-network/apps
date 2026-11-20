@@ -37,7 +37,7 @@ vi.mock("../../utils/enterWorkspace", async (importOriginal) => ({
   enterWorkspace: h.enterWorkspace,
 }));
 
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   Button: ({
     children,
     onClick,

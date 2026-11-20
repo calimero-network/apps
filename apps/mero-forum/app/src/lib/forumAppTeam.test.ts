@@ -44,7 +44,7 @@ describe("a new space gets Forum's own app team", () => {
     expect(cluster.modeOf(org)).toBe("standalone");
     expect(cluster.callsOf("scopeApps")[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const forum = await createForum(cluster.client, SOURCE, org, "General", passkey);
-    expect(cluster.state.apps.get(forum)!.access).toEqual({ kind: "team", team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(forum)!.grants).toEqual([{ kind: "team", team: cluster.teamOf(org, PKG) }]);
   });
 
   it("a declined team leaves a legacy space, whose forums use organization access as before", async () => {

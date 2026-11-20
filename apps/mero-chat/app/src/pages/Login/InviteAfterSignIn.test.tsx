@@ -103,7 +103,7 @@ vi.mock("../../utils/enterWorkspace", async (importOriginal) => ({
   enterWorkspace: h.enterWorkspace,
   enterJoinedWorkspaceForName: h.enterJoinedWorkspaceForName,
 }));
-vi.mock("@calimero-network/mero-ui", () => ({
+vi.mock("@calimero-network/mero-design", () => ({
   Button: ({
     children,
     onClick,

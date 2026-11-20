@@ -83,6 +83,12 @@ account, nothing to install, no permissions to grant.
   When no package is reported for the instance, a package `source` says "not listed in the node's release report yet" with "Try again", and only a raw bundle `source` (a string) says the app "runs a local bundle".
   `subject` is what the review covers, in words that follow "for", and is optional.
   The review adds the node's check of the instance's code (`checkAppCode`): "attested by this node" only on a match for this card's own release; a match for another release or hash is shown as different code, and its "Only the workspace's owners control it." replaces "Only you control it." as the viewer may have joined later.
+- `<WorkspaceUpdates appId={...} subject="the repository web" />` is a workspace's "Updates" settings: the release its instance runs, the release an upgrade would move it to now, and who approves it, from core's `GET /apps/{app}/update` (core#5192; `readAppUpdate` in `appUpdate.ts`).
+  `available` is the deployment's offer for an instance created from a deployment ("Offered by the deployment…"), else the newest newer release the upgrade would take; "None" when there is none.
+  Someone who may approve (`mayApprove`: since core#5192 an owner or admin of the workspace's organization) gets "Review and update", which opens the node's consent page for the upgrade (`startUpgrade`, as the in-app prompt does); the way back is the prompt's (`watchUpgrades`), which reads the decision and loads the new release.
+  Everyone else sees the same facts read-only, with who approves (`approvers`: the organization's owner and admins, the cluster's operator, or on a cluster below 1.0.0-rc.32 the owner or whoever manages its apps).
+  A refusal (`403`, `409 OUTSIDE_DEPLOYMENT`, `409 RELEASE_DEADLINE`) is said in plain words; a failed read offers "Try again".
+  The route is sent through the client's transport until a published mero-js generates `client.apps.update` (the TODO in `appUpdate.ts`); a node without it (`404`, before core#5192) is answered from the version report, under the rule it applies.
 - `useResolvedSource(client, accountId, base)` returns `{ source, pending }`: the `AppSource` new instances are created from.
   It reads the package's newest release once per client and account (`resolveSource` in `@calimero-apps/connect`) and gives `base` at that version.
   `pending` is true only while that read runs, and only for a package with no version; a raw bundle or a named version is never pending.

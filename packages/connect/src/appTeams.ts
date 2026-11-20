@@ -3,11 +3,11 @@
  *
  * Each app installed in an organization gets its own **app team** (core: a
  * top-level team whose `metadata.app.package` names the package; one per
- * package per org), and its instances use `{ kind: "team" }` access on it. An
+ * package per org), and its instances have a `{ kind: "team" }` grant on it. An
  * in-app invite names the app team, so it lets the person into this app and
  * no other. The organization's mode is derived by the node, never stored:
  *
- * - `legacy`: no app team; the org's apps use organization access (everyone in
+ * - `legacy`: no app team; the org's apps have the organization grant (everyone in
  *   the org reaches them), as every org did before app teams.
  * - `standalone`: every app team is open (`join: "everyone"`): the org belongs
  *   to one app and everyone in it has that app. Members may invite (the team's

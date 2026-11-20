@@ -16,14 +16,11 @@ publish = false
 # core's engine (tests/common/mod.rs), not the crate linked natively.
 crate-type = ["cdylib"]
 
-# TEMPORARY: core is pinned by rev to core#5195's head (public links as grants,
-# `#[app::public]` for link visitors, `env::Caller::Visitor`, WIT
-# calimero:app@0.5.6), which no core release carries yet. Back to
-# `tag = <component-core-tag>` (root Cargo.toml) for every core crate below once
-# the release with core#5195 is out; until then scripts/check-component-pins.py
-# fails on this crate. A standalone crate cannot inherit `[workspace.dependencies]`.
+# Core at `component-core-tag` (root Cargo.toml), the same tag for every core
+# crate; scripts/check-component-pins.py asserts it. A standalone crate cannot
+# inherit `[workspace.dependencies]`.
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", rev = "6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.33" }
 serde = { version = "1", features = ["derive"] }
 # Form and response ids are random bytes from the host, rendered as hex.
 hex = "0.4"
@@ -34,8 +31,8 @@ ed25519-dalek = { version = "2", default-features = false }
 # The harness (`TestApp`, `run_scenario`) and the builder the tests build this
 # crate with, for `cargo test` on the host only.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", rev = "6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", rev = "6a8099f29ed0ec4f6e525ab51bef5c4e9285e2cd" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.33", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.33" }
 serde_json = "1"
 # Signs captcha passes in the tests, as the verifier does.
 ed25519-dalek = { version = "2", default-features = false }
@@ -57,9 +54,7 @@ category = "productivity"
 tags = ["forms", "surveys", "leads", "crm", "productivity"]
 github = "https://github.com/calimero-network/apps"
 # `component-min-runtime-version` in the root Cargo.toml: a node compares it
-# with its own release. TEMPORARY: rc.33, the first release with public links
-# (core#5195, `Feature::PublicLinks`) and WIT calimero:app@0.5.6; the root's
-# `component-min-runtime-version` moves there with the core bump.
+# with its own release.
 min-runtime-version = "1.0.0-rc.33"
 # The listing's link, and an origin the node may send a person back to from
 # its consent page. NOT where the production frontend runs: a Cloud node trusts

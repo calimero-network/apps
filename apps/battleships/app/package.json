@@ -23,7 +23,7 @@
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:component",
     "@calimero-network/mero-react": "catalog:component",
-    "@calimero-network/mero-ui": "catalog:",
+    "@calimero-network/mero-design": "catalog:",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "react": "catalog:",
     "react-dom": "catalog:",

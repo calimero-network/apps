@@ -10,7 +10,7 @@ import {
   setContextMemberIdentity,
 } from "../constants/config";
 import { timestampToDate } from "../utils/time";
-import { Button } from "@calimero-network/mero-ui";
+import { Button } from "@calimero-network/mero-design";
 
 export const MessageJoinWrapper = styled.div`
   height: 100%;

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useToast } from '@calimero-network/mero-ui';
+import { useToast } from '@calimero-network/mero-design';
 import { tokens as t, HEALTH_COLOR } from '../../theme';
 import { APP_ROUTE } from '../../config';
 import LostReasonModal from '../../components/LostReasonModal';

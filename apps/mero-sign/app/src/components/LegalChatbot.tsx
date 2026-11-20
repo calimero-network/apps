@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@calimero-network/mero-ui';
+import { Button } from '@calimero-network/mero-design';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X } from 'lucide-react';
 import { generateQueryEmbedding } from '../services/embeddingService';
@@ -10,7 +10,7 @@ import {
   spacing,
   colors,
   radius,
-} from '@calimero-network/mero-ui';
+} from '@calimero-network/mero-design';
 import { useTheme } from '../contexts/ThemeContext';
 
 /**
