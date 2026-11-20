@@ -22,13 +22,13 @@
  *              packages, package, installPackage (NO_REGISTRY: dev cluster)
  *   orgs       createOrg, getOrg, setOrgMetadata, teams (open, invite-only,
  *              moved), updateTeam, setCapabilities, invite, B redeems
- *   apps       createApp (bundle, package, team), listApps, getApp,
+ *   apps       createApp (bundle, package, team grant), listApps, getApp,
  *              setAppMetadata, appStorage, appAbi, aliases
  *   calls      one write and read-back per storage kind as A; B reads A's
  *              writes and writes its own; idempotency, stale views, the
  *              passkey step-up, typed errors and a trap
- *   access     outsider, anonymous, public access, accounts access, team
- *              access, API keys (read-only refused a write)
+ *   access     outsider, anonymous, grants (team, an account, `anyone`:
+ *              signed-in only), API keys (read-only refused a write)
  *   members    setMember (promote, demote), team rows and capabilities,
  *              member metadata
  *   live       events and presence, each account hearing the other
@@ -54,7 +54,7 @@ import { OK, appError, assert, check, eventually as waitFor, need, short, sleep,
 import { PACKAGE, contract } from "./contract";
 import { publisher, signedMpk, variant } from "./mpk";
 import type { Row, Who } from "./types";
-import { listAppInfos } from "@calimero-apps/connect";
+import { accountGrants, createApp, listAppInfos, setGrants } from "@calimero-apps/connect";
 
 /** What the matrix runs on. The page and the cluster run each make one. */
 export interface MatrixEnv {
@@ -374,9 +374,9 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   const forRun = await row(A, APPS, "createApp (a package release, for the org run)", OK, () =>
     A.client.apps.create({ name: `run-${tag}`, package: pkg, version: "0.0.0", org: orgId() }).then((r) => r.appId), (a) => a);
   const inOpen = await row(A, APPS, "createApp (the open team's)", OK, () =>
-    A.client.apps.create({ name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(open, "the open team") } }).then((r) => r.appId), (a) => a);
+    createApp(A.client, { name: `open-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(open, "the open team") }] }).then((r) => r.appId), (a) => a);
   const inClosed = await row(A, APPS, "createApp (the invite-only team's)", OK, () =>
-    A.client.apps.create({ name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), access: { kind: "team", team: need(closed, "the invite-only team") } }).then((r) => r.appId), (a) => a);
+    createApp(A.client, { name: `closed-${tag}`, bundle: need(bundle, "a bundle"), org: orgId(), grants: [{ kind: "team", team: need(closed, "the invite-only team") }] }).then((r) => r.appId), (a) => a);
   // Since core#5193 (1.0.0-rc.32) there are no personal organizations: an
   // instance naming no `org` goes to its creator's only organization (here,
   // the one B joins). A's own app asks for an organization of its own with
@@ -613,24 +613,31 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   await row(C, ACCESS, "A's own app (an outsider)", "NOT_FOUND", () =>
     C.client.apps.view({ app: need(own, "A's own app"), method: "get", args: { key: "k" } }),
   );
-  await row(A, ACCESS, "setAccess (accounts: the outsider)", OK, () =>
-    A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "accounts", accounts: [need(C.account, "the outsider's account")] } }));
-  // An `accounts` list in an ordinary organization reaches only its members
-  // (core#5193); listing outsiders comes back with guests.
-  await row(C, ACCESS, "A's own app (an account it names, not a member)", "NOT_FOUND", () =>
+  // An instance's access is its grants (core#5194, 1.0.0-rc.33).
+  await row(A, ACCESS, "setGrants (an account: the outsider)", OK, () =>
+    setGrants(A.client, need(own, "A's own app"), accountGrants([need(C.account, "the outsider's account")])));
+  // An account grant naming someone outside the organization makes them a
+  // guest, admitted only where the release says `guests: allowed` and the
+  // organization allows guests; a raw bundle allows none.
+  await row(C, ACCESS, "A's own app (an account it names, not a member: no guests)", "NOT_FOUND", () =>
     C.client.apps.view({ app: need(own, "A's own app"), method: "myAccount", args: {} }));
-  await row(A, ACCESS, "setAccess (public)", OK, () =>
-    A.client.apps.access({ app: need(own, "A's own app"), access: { kind: "public" } }),
+  await row(A, ACCESS, "setGrants (anyone)", OK, () =>
+    setGrants(A.client, need(own, "A's own app"), [{ kind: "anyone" }]),
   );
-  await row("anonymous", ACCESS, "a public method of a public app (no session)", OK, async () => {
+  await row(C, ACCESS, "an `anyone` app (a signed-in outsider)", OK, async () => {
     await contract(A.client, need(own, "A's own app")).set("open", "to anyone");
     const r = await eventually(
-      () => anonymous.apps.view({ app: need(own, "A's own app"), method: "publicGet", args: { key: "open" } }),
+      () => C.client.apps.view({ app: need(own, "A's own app"), method: "publicGet", args: { key: "open" } }),
       (r) => r.result === "to anyone",
-      "the public read",
+      "the signed-in outsider's read",
     );
     return r;
   }, (r) => r.result);
+  // `anyone` is any SIGNED-IN account: before grants, `public` access let a
+  // caller without a session read a public method. Signed-out visitors now
+  // come in only through public links (core#5195).
+  await row("anonymous", ACCESS, "a public method of an `anyone` app (no session)", "UNAUTHENTICATED", () =>
+    anonymous.apps.view({ app: need(own, "A's own app"), method: "publicGet", args: { key: "open" } }));
   await row("anonymous", ACCESS, "a method that is not public (no session)", "UNAUTHENTICATED", () =>
     anonymous.apps.view({ app: need(own, "A's own app"), method: "get", args: { key: "open" } }));
   const KEYS = "API keys";
