@@ -832,10 +832,13 @@
       "CreateLinkArgs": {
         "description": "The arguments of `createLink`, by name.",
         "properties": {
-          "formId": {
-            "type": "string"
+          "expiresAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
           },
-          "grantId": {
+          "formId": {
             "type": "string"
           },
           "label": {
@@ -848,8 +851,8 @@
         "required": [
           "formId",
           "link",
-          "grantId",
-          "label"
+          "label",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -1565,14 +1568,8 @@
       },
       "LinkFormArgs": {
         "description": "The arguments of `linkForm`, by name.",
-        "properties": {
-          "link": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "link"
-        ],
+        "properties": {},
+        "required": [],
         "type": "object"
       },
       "LinkFormRequest": {
@@ -1595,9 +1592,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "args"
-        ],
+        "required": [],
         "type": "object"
       },
       "LinkFormResponse": {
@@ -1675,10 +1670,13 @@
           "createdBy": {
             "type": "string"
           },
-          "formId": {
-            "type": "string"
+          "expiresAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
           },
-          "grantId": {
+          "formId": {
             "type": "string"
           },
           "id": {
@@ -1710,7 +1708,7 @@
           "id",
           "formId",
           "label",
-          "grantId",
+          "expiresAt",
           "createdAt",
           "createdBy",
           "responses",
@@ -2941,13 +2939,9 @@
                 "type": "null"
               }
             ]
-          },
-          "link": {
-            "type": "string"
           }
         },
         "required": [
-          "link",
           "answers"
         ],
         "type": "object"
@@ -3718,7 +3712,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Records a public link for `formId`: `link` is the SHA-256 (hex) of the\nAPI key's token, `grantId` the key's id. Team only."
+        "x-calimero-publisher-description": "Binds a public link of this instance to `formId`: `link` is the link's\nkey (hex), as core answered it when the teammate made the link\n(`POST /apps/{app}/public-links`), and `expiresAt` the expiry they gave\nit there (ms, 0 for none), kept so the team sees it. Team only.\n\nCore admits the link's visitors to the public methods while the link\nlives; this binding is which form they answer. A link is bound once."
       }
     },
     "/apps/{app}/methods/deleteForm": {
@@ -3785,7 +3779,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Deletes a form that has no responses, with its public links. A form\nwith responses is closed instead, so nothing anyone sent disappears.\nA form with more than 1,000 public links is refused whole: delete\nsome with `deleteLink` first. Team only."
+        "x-calimero-publisher-description": "Deletes a form that has no responses and no public links. A form with\nresponses is closed instead, so nothing anyone sent disappears; a form\nwith links is refused until they are deleted (`deleteLink`, and the\nlink revoked at core), so no link of the instance outlives its form.\nTeam only."
       }
     },
     "/apps/{app}/methods/deleteLink": {
@@ -3852,7 +3846,7 @@
           "kind": "call",
           "public": false
         },
-        "x-calimero-publisher-description": "Stops a public link and returns what it was, so the app can revoke its\nAPI key. Team only."
+        "x-calimero-publisher-description": "Unbinds a public link and returns what it was; its visitors are refused\nfrom now on. The app then revokes the link at core\n(`DELETE /apps/{app}/public-links/{link}`). Team only."
       }
     },
     "/apps/{app}/methods/fieldKinds": {
@@ -4125,7 +4119,7 @@
     },
     "/apps/{app}/methods/linkForm": {
       "post": {
-        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"linkForm\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"linkForm\"`.\n\nPublic: callers who are not signed in may call it.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
         "operationId": "linkForm",
         "parameters": [
           {
@@ -4178,6 +4172,12 @@
             "$ref": "#/components/responses/Unavailable"
           }
         },
+        "security": [
+          {},
+          {
+            "session": []
+          }
+        ],
         "summary": "view `linkForm`",
         "tags": [
           "view"
@@ -4185,9 +4185,9 @@
         "x-calimero-method": {
           "confirm": false,
           "kind": "view",
-          "public": false
+          "public": true
         },
-        "x-calimero-publisher-description": "The form a public link is for, as its visitor sees it. One of the two\nmethods a link's API key names."
+        "x-calimero-publisher-description": "The form the caller's public link is bound to, as its visitor sees it.\nPublic: a link's visitors only (`Caller::Visitor`); the link is the\ncaller's, never an argument."
       }
     },
     "/apps/{app}/methods/listFormKeys": {
@@ -5398,7 +5398,7 @@
     },
     "/apps/{app}/methods/submitViaLink": {
       "post": {
-        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"submitViaLink\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"submitViaLink\"`.\n\nPublic: callers who are not signed in may call it.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
         "operationId": "submitViaLink",
         "parameters": [
           {
@@ -5451,6 +5451,12 @@
             "$ref": "#/components/responses/Unavailable"
           }
         },
+        "security": [
+          {},
+          {
+            "session": []
+          }
+        ],
         "summary": "call `submitViaLink`",
         "tags": [
           "call"
@@ -5458,9 +5464,9 @@
         "x-calimero-method": {
           "confirm": false,
           "kind": "call",
-          "public": false
+          "public": true
         },
-        "x-calimero-publisher-description": "Stores a response that came through a public link and returns its id.\nThe other method a link's API key names.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, `captcha` is a pass\nthe form's verifier signed for this form and link, unexpired and\nunused. `captchaToken` was v1's Turnstile token for a node-checked\nform; it is ignored."
+        "x-calimero-publisher-description": "Stores a response to the form the caller's public link is bound to and\nreturns its id. Public: a link's visitors only.\n\nRefused unless the form is open and public, the link is under its\nhourly cap, and, when the form asks for a captcha, `captcha` is a pass\nthe form's verifier signed for this form and link, unexpired and\nunused. `captchaToken` was v1's Turnstile token for a node-checked\nform; it is ignored. The response names the visitor by its key."
       }
     },
     "/apps/{app}/methods/updateForm": {

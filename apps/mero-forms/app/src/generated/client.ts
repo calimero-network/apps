@@ -111,7 +111,7 @@ export interface LinkView {
   id: string;
   formId: string;
   label: string;
-  grantId: string;
+  expiresAt: string;
   createdAt: string;
   createdBy: string;
   responses: number;
@@ -156,8 +156,8 @@ export interface CreateFormArgs {
 export interface CreateLinkArgs {
   formId: string;
   link: string;
-  grantId: string;
   label: string;
+  expiresAt: string;
 }
 
 /** The arguments of `deleteForm`. */
@@ -183,11 +183,6 @@ export interface GetFormArgs {
 /** The arguments of `getResponse`. */
 export interface GetResponseArgs {
   id: string;
-}
-
-/** The arguments of `linkForm`. */
-export interface LinkFormArgs {
-  link: string;
 }
 
 /** The arguments of `listLinks`. */
@@ -275,7 +270,6 @@ export interface SubmitResponseArgs {
 
 /** The arguments of `submitViaLink`. */
 export interface SubmitViaLinkArgs {
-  link: string;
   answers: AnswerInput[];
   captcha?: CaptchaPass | null;
   captchaToken?: string | null;
@@ -436,8 +430,8 @@ export interface MeroFormsApi {
   getForm(args: GetFormArgs, options?: ViewOptions): Promise<FormView>;
   /** view `getResponse`. */
   getResponse(args: GetResponseArgs, options?: ViewOptions): Promise<ResponseView>;
-  /** view `linkForm`. */
-  linkForm(args: LinkFormArgs, options?: ViewOptions): Promise<LinkFormView>;
+  /** view `linkForm`; public. */
+  linkForm(options?: ViewOptions): Promise<LinkFormView>;
   /** view `listFormKeys`. */
   listFormKeys(options?: ViewOptions): Promise<FormKeyView[]>;
   /** view `listForms`. */
@@ -474,7 +468,7 @@ export interface MeroFormsApi {
   setWorkspaceName(args: SetWorkspaceNameArgs, options?: CallOptions): Promise<null>;
   /** call `submitResponse`. */
   submitResponse(args: SubmitResponseArgs, options?: CallOptions): Promise<string>;
-  /** call `submitViaLink`. */
+  /** call `submitViaLink`; public. */
   submitViaLink(args: SubmitViaLinkArgs, options?: CallOptions): Promise<string>;
   /** call `updateForm`. */
   updateForm(args: UpdateFormArgs, options?: CallOptions): Promise<FormView>;
@@ -515,8 +509,8 @@ export interface MeroFormsRawApi {
   getForm(args: GetFormArgs, options?: ViewOptions): Promise<ViewAnswer<FormView>>;
   /** view `getResponse`. */
   getResponse(args: GetResponseArgs, options?: ViewOptions): Promise<ViewAnswer<ResponseView>>;
-  /** view `linkForm`. */
-  linkForm(args: LinkFormArgs, options?: ViewOptions): Promise<ViewAnswer<LinkFormView>>;
+  /** view `linkForm`; public. */
+  linkForm(options?: ViewOptions): Promise<ViewAnswer<LinkFormView>>;
   /** view `listFormKeys`. */
   listFormKeys(options?: ViewOptions): Promise<ViewAnswer<FormKeyView[]>>;
   /** view `listForms`. */
@@ -553,7 +547,7 @@ export interface MeroFormsRawApi {
   setWorkspaceName(args: SetWorkspaceNameArgs, options?: CallOptions): Promise<CallAnswer<null>>;
   /** call `submitResponse`. */
   submitResponse(args: SubmitResponseArgs, options?: CallOptions): Promise<CallAnswer<string>>;
-  /** call `submitViaLink`. */
+  /** call `submitViaLink`; public. */
   submitViaLink(args: SubmitViaLinkArgs, options?: CallOptions): Promise<CallAnswer<string>>;
   /** call `updateForm`. */
   updateForm(args: UpdateFormArgs, options?: CallOptions): Promise<CallAnswer<FormView>>;
@@ -593,7 +587,7 @@ export class MeroFormsClient<T extends AppCallTransport = AppTransport> implemen
       forgetFormKey: (args, options = {}) => this.#call<null>('forgetFormKey', args, options),
       getForm: (args, options = {}) => this.#view<FormView>('getForm', args, options),
       getResponse: (args, options = {}) => this.#view<ResponseView>('getResponse', args, options),
-      linkForm: (args, options = {}) => this.#view<LinkFormView>('linkForm', args, options),
+      linkForm: (options = {}) => this.#view<LinkFormView>('linkForm', {}, options),
       listFormKeys: (options = {}) => this.#view<FormKeyView[]>('listFormKeys', {}, options),
       listForms: (options = {}) => this.#view<FormSummary[]>('listForms', {}, options),
       listLinks: (args, options = {}) => this.#view<LinkView[]>('listLinks', args, options),
@@ -711,9 +705,9 @@ export class MeroFormsClient<T extends AppCallTransport = AppTransport> implemen
     return (await this.#view<ResponseView>('getResponse', args, options)).result;
   }
 
-  /** view `linkForm`. */
-  async linkForm(args: LinkFormArgs, options: ViewOptions = {}): Promise<LinkFormView> {
-    return (await this.#view<LinkFormView>('linkForm', args, options)).result;
+  /** view `linkForm`; public. */
+  async linkForm(options: ViewOptions = {}): Promise<LinkFormView> {
+    return (await this.#view<LinkFormView>('linkForm', {}, options)).result;
   }
 
   /** view `listFormKeys`. */
@@ -806,7 +800,7 @@ export class MeroFormsClient<T extends AppCallTransport = AppTransport> implemen
     return (await this.#call<string>('submitResponse', args, options)).result;
   }
 
-  /** call `submitViaLink`. */
+  /** call `submitViaLink`; public. */
   async submitViaLink(args: SubmitViaLinkArgs, options: CallOptions = {}): Promise<string> {
     return (await this.#call<string>('submitViaLink', args, options)).result;
   }

@@ -3,20 +3,24 @@ import { type LinkFormView, toLinkForm, fromAnswers, fromCaptchaPass, formsClien
 import { FieldInput } from "./FormFill";
 import { fetchCaptchaConfig, mountCaptcha, requestPass } from "./lib/captcha";
 import { missingRequired, toAnswers, type Draft } from "./lib/fields";
-import { newNonce, parsePublicLink, publicRefusal, sha256Hex } from "./lib/publicLink";
+import type { Visitor } from "@calimero-network/mero-js";
+import { visitorSeed } from "./lib/coreLinks";
+import { newNonce, parsePublicLink, publicRefusal } from "./lib/publicLink";
 import { useSessionApi } from "./sessionContext";
 
 /**
  * A form opened from its public link: no sign-in, no account of the
  * visitor's own.
  *
- * The link's fragment names the workspace (an app instance) and an API key
- * (see `lib/publicLink.ts`). This page makes a client of its own, never the
- * page's signed-in one, that authenticates with that key, and calls
- * `linkForm` to show the questions and `submitViaLink` to send the answers.
- * The key names nothing else, and the contract takes a response only while
- * the form is public, under the link's hourly cap, and with a captcha pass
- * this deployment's verifier signed when the form asks for one.
+ * The link's fragment names the workspace (an app instance) and a public
+ * link's token (see `lib/publicLink.ts`). This page makes a client of its
+ * own, never the page's signed-in one, that calls as the link's anonymous
+ * visitor with this browser's own key (`lib/coreLinks.ts`), and calls the
+ * workspace's two public methods: `linkForm` to show the questions of the
+ * form the link is bound to and `submitViaLink` to send the answers. Core
+ * lets a visitor call nothing else, and the contract takes a response only
+ * while the form is public, under the link's hourly cap, and with a captcha
+ * pass this deployment's verifier signed when the form asks for one.
  */
 export function PublicForm() {
   // Read once, on the first render: the fragment is the whole input.
@@ -28,7 +32,7 @@ export function PublicForm() {
   const unconfigured =
     api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
   const [forms, setForms] = useState<MeroFormsClient | null>(null);
-  const [linkId, setLinkId] = useState<string | null>(null);
+  const [visitor, setVisitor] = useState<Visitor | null>(null);
   const [form, setForm] = useState<LinkFormView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({});
@@ -47,13 +51,13 @@ export function PublicForm() {
     let live = true;
     (async () => {
       const client = await deps.makeClient(where);
-      client.useApiKey(target.token);
+      // mero-js signs a fresh visitor credential on every request.
+      const v = await client.useVisitor({ link: target.token, seed: visitorSeed() });
       const f = formsClient(client, target.app);
-      const link = await sha256Hex(target.token);
-      const view = toLinkForm(await f.linkForm({ link }));
+      const view = toLinkForm(await f.linkForm());
       if (!live) return;
       setForms(f);
-      setLinkId(link);
+      setVisitor(v);
       setForm(view);
       document.title = `${view.title} · Hyperfeed Forms`;
       if (view.captcha && view.accepting) {
@@ -82,7 +86,7 @@ export function PublicForm() {
   }, [siteKey, nonce, sent]);
 
   async function submit() {
-    if (!target || !form || !linkId || !forms) return;
+    if (!target || !form || !visitor || !forms) return;
     const missing = missingRequired(form, draft);
     if (missing.length) {
       setError(`Still needed: ${missing.join(", ")}`);
@@ -98,10 +102,9 @@ export function PublicForm() {
       // The contract takes a pass the verifier signed for this form, link and nonce.
       const pass =
         form.captcha && captchaToken
-          ? await requestPass({ token: captchaToken, formId: form.form_id, link: linkId, nonce })
+          ? await requestPass({ token: captchaToken, formId: form.form_id, link: visitor.link, nonce })
           : null;
       await forms.submitViaLink({
-        link: linkId,
         answers: fromAnswers(toAnswers(form, draft)),
         captcha: fromCaptchaPass(pass),
         captchaToken: null,

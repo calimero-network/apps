@@ -106,7 +106,8 @@ export interface LinkView {
   id: string;
   form_id: string;
   label: string;
-  grant_id: string;
+  /** When it stops working (ms); 0: until it is deleted. */
+  expires_at: number;
   created_at: number;
   created_by: string;
   responses: number;
@@ -248,7 +249,7 @@ const toLinkView = (l: Raw): LinkView => ({
   id: str(l.id),
   form_id: str(l.formId),
   label: str(l.label),
-  grant_id: str(l.grantId),
+  expires_at: int(l.expiresAt),
   created_at: int(l.createdAt),
   created_by: str(l.createdBy),
   responses: int(l.responses),

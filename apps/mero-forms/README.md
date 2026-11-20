@@ -83,19 +83,40 @@ A teammate makes one from the form's **Connect** tab ("Public links"); the
 visitor opens `…/f#a=<workspace>&t=<token>` and sees the form alone
 (`app/src/PublicForm.tsx`).
 
-**A link is an API key, not a member's key.** Making one does two things, as
-Hyperfeed Calendar's booking links do:
+**A link is one of core's public links of the workspace**: a
+`link` grant of the app instance that core keeps, beside its member and named
+grants. Making one does two things:
 
-1. the teammate's client creates an API key of their account limited to this
-   workspace and to `linkForm` and `submitViaLink` (a passkey step-up);
-2. the contract records the link under the SHA-256 of the key (`createLink`),
-   with the form it is for, the key's id and a label.
+1. the teammate's client makes the link at core
+   (`POST /apps/{app}/public-links { label, expiresAt?, ratePerMinute }`,
+   approved with their passkey; only someone who may change the workspace's
+   access may), which answers the link's key and its token once;
+2. the contract binds the link's key to this form (`createLink`), with a
+   label and the same expiry.
+
+Core keeps only the token's public key, and admits the token's holders as
+**anonymous visitors**: each browser signs every request with a key of its
+own (mero-js `useVisitor({ link, seed })`, the seed in local storage), and
+the app sees `Caller::Visitor { link, key }`. A visitor may call only the
+methods marked `#[app::public]`, and here only two are: `linkForm` and
+`submitViaLink`. Neither takes a link or a form: both answer the form the
+caller's link is bound to, so a link for one form cannot answer another, and
+a link the team never bound (or has deleted) answers nothing. A response
+names its visitor (`submittedBy: visitor:<key>`), not the teammate who made
+the link. Core refuses a revoked or expired link, and more than
+`ratePerMinute` calls (20 here) a minute from one visitor; the contract
+refuses a link past the expiry it keeps too.
 
 The URL's fragment carries the workspace and the token. A browser never sends
 the fragment to the server that serves the page, so the token reaches only
-the cluster. The contract opens a link only for its own key, so one link's
-token cannot use another link, and a link's key is never the teammate it
-belongs to.
+the cluster.
+
+Public links, visitors and `#[app::public]` for them need core 1.0.0-rc.33
+(WIT `calimero:app@0.5.6`; below that cluster version the node answers
+`409 FEATURE_NOT_ACTIVE`). `app/src/lib/coreLinks.ts` makes, lists and revokes
+links with mero-js's generated `client.apps.publicLinkCreate` /
+`publicLinkList` / `publicLinkRevoke`, and the public form calls as the visitor
+with `client.useVisitor({ link: token, seed })`.
 
 **What the team controls, enforced by the contract:**
 
@@ -115,9 +136,12 @@ belongs to.
   and `CAPTCHA_SIGNING_SEED` (32 random bytes in hex). A page the cluster
   serves from the bundle can only reach the cluster (its CSP), so a captcha
   needs the verifier reachable from where the public page runs.
-- **Deleting a link** removes its record, which stops it at once, and revokes
-  its API key when you made it. A link a teammate made keeps a key on their
-  account that opens nothing, until they revoke it.
+- **Deleting a link** removes its binding, which stops it at once, and
+  revokes it at core (a passkey step; its creator or whoever manages the
+  workspace's access). A form with links cannot be deleted until its links
+  are, so no link outlives its form (core keeps at most 16 per workspace).
+- **An expiry**, optional, chosen when the link is made: core and the
+  contract both stop it then.
 
 ## Sending to Hyperfeed CRM
 
@@ -156,7 +180,7 @@ pipeline still on the v1 runtime cannot be reached from a 1.0 client.
 | `triage: UnorderedMap<id, ResponseState>` | Archived, and the CRM deal a response became |
 | `settings: UnorderedMap<key, String>` | The workspace's name |
 | `formKeys: UnorderedMap<apiKeyId, FormKey>` | Which API keys are form keys, the form each may answer, and a label |
-| `links`, `formLinks`, `linkKeys` | Each public link by the SHA-256 of its key, a form's links, and a link by its key's id |
+| `links`, `formLinks` | Each public link by its key (core's name for it), with its form, label and expiry; a form's links |
 | `captchaSeen`, `captchaExpiry` | Captcha passes already spent, until they expire |
 | `admins: Set<account>`, `team: Set<account>` | The admins (the instance's owner) and the rest of the team |
 
@@ -182,8 +206,8 @@ Events carry ids only, never answers. Errors are `Invalid`, `NotFound`,
 | `workspaceName()` / `setWorkspaceName(name)` | anyone / team | The workspace's name |
 | `registerFormKey(account, formId, label)` / `forgetFormKey(account)` / `listFormKeys()` | admin | The form key register (`account` is the API key's id), with each key's response count |
 | `setFormPublic(formId, public)` / `setLinkCap(formId, perHour)` / `setCaptchaKey(formId, key)` | team | Whether links take responses, how many per hour, and the verifier's key (or empty) |
-| `createLink(formId, link, grantId, label)` / `deleteLink(link)` / `listLinks(formId)` | team | The public link register, with each link's counts |
-| `linkForm(link)` / `submitViaLink(link, answers, captcha, captchaToken)` | a link's key | The two calls a public link may make |
+| `createLink(formId, link, label, expiresAt)` / `deleteLink(link)` / `listLinks(formId)` | team | Bind a core public link to a form, unbind it, list them with each link's counts |
+| `linkForm()` / `submitViaLink(answers, captcha, captchaToken)` | a link's visitor (`#[app::public]`) | The form the caller's link is bound to; a response to it. The only public methods |
 | `setCaptchaSecret(siteKey, secret)` / `clearCaptchaSecret()` / `captchaSettings()` | admin / admin / team | v1's team-held Turnstile keys: refused here (see below) |
 | `amITeam()` / `amIAdmin()` / `myAccount()` | anyone | Identity |
 
@@ -198,9 +222,9 @@ Events carry ids only, never answers. Errors are `Invalid`, `NotFound`,
 | The team | `AccessControl` + `SharedStorage` writer sets, enforced by every node | `admins` / `team` sets, checked by each method against `env::caller()` |
 | Who reads responses | every member node held them; `list_responses` only refused | only the team: the cluster runs the contract, and no method answers them to anyone else |
 | Form key | an account with a certified device and no node, joined to the namespace, writing through a relay by delegated execution | an API key of an admin's account, scoped to `submitResponse` and `getForm`, bound to the form by its id; no relay, no warrant, no namespace membership |
-| `submittedBy` | the form key's account, or the node that held a link's grant | the form key's id, the account, or (through a link) the teammate whose key it is |
-| Public link | a node access grant (`/grant-calls`) on a teammate's node, which visitors' browsers had to reach | an API key of the teammate's account; visitors reach the cluster. No node needs to be public, and a Cloud account can make one |
-| A link's key | could call either link method for any link | opens only its own link |
+| `submittedBy` | the form key's account, or the node that held a link's grant | the form key's id, the account, or (through a link) `visitor:<the visitor's key>` |
+| Public link | a node access grant (`/grant-calls`) on a teammate's node, which visitors' browsers had to reach | a core public link of the instance (a `link` grant); visitors reach the cluster as anonymous callers of its `#[app::public]` methods. No node needs to be public |
+| A link | could call either link method for any link | answers only the form it is bound to; the form is never an argument |
 | Hourly cap | a sliding hour, by scanning the responses | the clock hour, from stored counts |
 | Captcha: verifier pass | checked with the host's `ed25519_verify` | checked in the contract (ed25519-dalek) |
 | Captcha: `turnstile` (node asks Cloudflare) and team keys sealed to a TEE | `env::http_request`, `env::seal_outbound_secret` | **not supported**: the component SDK at 1.0.0-rc.7 has neither outbound HTTP nor sealed secrets (outbound HTTP lands in core after rc.7). `setCaptchaKey(…, "turnstile")` and `setCaptchaSecret` answer `Unsupported`; `captchaSettings` says no TEE is available; `captchaToken` is ignored |
@@ -270,7 +294,8 @@ app/src/FormFill.tsx        the form as a respondent sees it
 app/src/Responses.tsx       summary, table, one response, Send to CRM
 app/src/FormConnect.tsx     form keys
 app/src/PublicLinks.tsx     public links: Public, the cap, the captcha, make and delete
-app/src/PublicForm.tsx      the form opened from a public link (`/f#…`)
+app/src/PublicForm.tsx      the form opened from a public link (`/f#…`), as its visitor
+app/src/lib/coreLinks.ts    core's public links (mero-js's generated routes) and the visitor seed
 app/api/captcha.ts          the captcha verifier (a Vercel function)
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
 app/src/useCrm.ts           finding pipelines and sending a response

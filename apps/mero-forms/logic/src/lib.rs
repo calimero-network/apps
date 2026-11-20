@@ -16,9 +16,12 @@
 //!   key id (`registerFormKey`). Inside the contract its caller is
 //!   `Caller::ApiKey { id, .. }`, so a registered key answers only its one form
 //!   and never counts as the admin it acts for.
-//! - **A public link**: a core API key of a teammate's account, limited to
-//!   this app and to `linkForm` and `submitViaLink`, recorded under the SHA-256
-//!   of its token (`createLink`). A link's key opens only its own link.
+//! - **A public link**: one of core's public links of this instance (a `link`
+//!   grant, made with a teammate's passkey), bound here to one form under the
+//!   link's key (`createLink`). Its visitors call as `Caller::Visitor { link,
+//!   key }` and reach only the two `#[app::public]` methods, `linkForm` and
+//!   `submitViaLink`; the form they answer is the one their link is bound to,
+//!   never an argument, so a link for one form cannot answer another.
 //!
 //! # Who may write what
 //!
@@ -35,7 +38,7 @@
 //! | `triage: SharedStorage<UnorderedMap<id, ResponseState>>` | `triage: UnorderedMap<id, ResponseState>`; the team only |
 //! | `settings: SharedStorage<UnorderedMap<key, LwwRegister<String>>>` | `settings: UnorderedMap<key, String>`; the team only |
 //! | `form_keys: SharedStorage<UnorderedMap<account, FormKey>>` | `formKeys: UnorderedMap<apiKeyId, FormKey>`; the admins only |
-//! | `links: SharedStorage<UnorderedMap<sha256(token), Link>>` | `links: UnorderedMap<sha256(token), LinkRow>`, `formLinks: Set<(form, link)>`, `linkKeys: UnorderedMap<apiKeyId, link>`; the team only |
+//! | `links: SharedStorage<UnorderedMap<sha256(token), Link>>` | `links: UnorderedMap<linkKey, LinkRow>` (core's key of the link's token), `formLinks: Set<(form, link)>`; the team only |
 //! | `captcha_seen: SharedStorage<UnorderedMap<nonce, expiry>>` | `captchaSeen: UnorderedMap<nonce, expiry>` + `captchaExpiry: Set<(expiry, nonce)>` to drop spent passes |
 //! | `roles: AccessControl` (admins + `team` role) | `admins: Set<account>`, `team: Set<account>` |
 //! | counts by scanning every response | stored counts, kept with each write: `formStats`, `linkStats`, `senderStats` |
@@ -69,10 +72,6 @@ use serde::{Deserialize, Serialize};
 
 /// Rows one storage read returns: a page of a collection.
 const ROWS: u32 = 1_000;
-/// Public links one `deleteForm` removes at most (one page): each is four
-/// entries (link, form link, key, stats), eight writes of at most ~600 bytes
-/// in all, so 1,000 stay inside a run's 10,000 writes and 1 MiB.
-const MAX_DELETE_LINKS: u32 = 1_000;
 
 /// The kinds of field a form can ask for.
 pub const FIELD_KINDS: [&str; 9] = [
@@ -111,9 +110,9 @@ const MAX_ID: usize = 100;
 /// The longest account (or API key) id the team or the key register holds.
 const MAX_ACCOUNT: usize = 256;
 
-/// Public links.
+/// Public links: a link is named by its token's Ed25519 public key, in hex
+/// (core's `publicLinkKey`).
 const LINK_ID_HEX: usize = 64;
-const MAX_GRANT_ID: usize = 128;
 const DEFAULT_LINK_CAP: u32 = 30;
 const MAX_LINK_CAP: u32 = 10_000;
 /// One hour, in milliseconds: the link cap's window.
@@ -253,13 +252,16 @@ pub struct FormRow {
     pub updated_at: u64,
 }
 
-/// A public link, as the team made it.
+/// A public link, as the team bound it to a form. Core keeps the link itself
+/// (a `link` grant of the instance) and judges its visitors; this is which
+/// form they answer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LinkRow {
     pub form_id: String,
     pub label: String,
-    /// The API key behind it, of `created_by`'s account.
-    pub grant_id: String,
+    /// When the link stops working (ms since the Unix epoch), as the teammate
+    /// made it at core; 0: until it is deleted.
+    pub expires_at: u64,
     pub created_at: u64,
     pub created_by: String,
 }
@@ -359,10 +361,13 @@ pub struct CaptchaSettings {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkView {
+    /// The link's key: core's name for it.
     pub id: String,
     pub form_id: String,
     pub label: String,
-    pub grant_id: String,
+    /// When it stops working (ms); 0: until it is deleted.
+    #[serde(with = "calimero_sdk::json::u64_str")]
+    pub expires_at: u64,
     #[serde(with = "calimero_sdk::json::u64_str")]
     pub created_at: u64,
     pub created_by: String,
@@ -454,12 +459,10 @@ pub struct MeroForms {
     form_keys: UnorderedMap<String, FormKey>,
     /// What each sender (account or form key) has sent.
     sender_stats: UnorderedMap<String, SendStats>,
-    /// Public links by the SHA-256 (hex) of their API key.
+    /// Public links by their key (core's name for the link).
     links: UnorderedMap<String, LinkRow>,
     /// `(formId, linkId)`: a form's links.
     form_links: Set<(String, String)>,
-    /// A link's id by its API key's id, so a link's key is never the team.
-    link_keys: UnorderedMap<String, String>,
     /// What each link has sent.
     link_stats: UnorderedMap<String, SendStats>,
     /// Captcha passes already spent, by nonce, until they expire (ms).
@@ -556,9 +559,21 @@ fn who() -> app::Result<Who> {
             id: key_id,
             account,
         }),
+        // A link's visitor reaches only the public methods, which ask for it
+        // with `visitor()`; the node refuses it every other method first.
         Caller::Public | Caller::System | Caller::App(_) | Caller::Visitor { .. } => {
             Err(AppError::login_required())
         }
+    }
+}
+
+/// The public link a visitor came through (its key) and the visitor's own
+/// key, or `Forbidden` for any other caller: the link methods answer only a
+/// link's visitors.
+fn visitor() -> app::Result<(String, String)> {
+    match env::caller() {
+        Caller::Visitor { link, key } => Ok((link.trim().to_lowercase(), key)),
+        _ => Err(forbidden("open this form through its public link")),
     }
 }
 
@@ -989,10 +1004,11 @@ impl MeroForms {
         })
     }
 
-    /// Deletes a form that has no responses, with its public links. A form
-    /// with responses is closed instead, so nothing anyone sent disappears.
-    /// A form with more than 1,000 public links is refused whole: delete
-    /// some with `deleteLink` first. Team only.
+    /// Deletes a form that has no responses and no public links. A form with
+    /// responses is closed instead, so nothing anyone sent disappears; a form
+    /// with links is refused until they are deleted (`deleteLink`, and the
+    /// link revoked at core), so no link of the instance outlives its form.
+    /// Team only.
     pub fn delete_form(&mut self, form_id: String) -> app::Result<()> {
         self.only_team()?;
         let _ = self.form(&form_id)?;
@@ -1001,23 +1017,14 @@ impl MeroForms {
                 "this form has responses; close it instead of deleting it",
             ));
         }
-        // Every link, or none: more than one page (what a run removes) is
-        // refused before anything is written, so no link outlives its form.
-        let page = self.form_links.prefix(
+        let links = self.form_links.prefix(
             &[KeyPart::Str(form_id.clone())],
-            FindOpts::default().limit(MAX_DELETE_LINKS),
+            FindOpts::default().limit(1),
         )?;
-        if page.next.is_some() {
-            return Err(refused(format!(
-                "this form has more than {MAX_DELETE_LINKS} public links; delete some with deleteLink first"
-            )));
-        }
-        for (form, link) in page.items {
-            let _ = self.form_links.remove(&(form, link.clone()))?;
-            if let Some(row) = self.links.remove(&link)? {
-                let _ = self.link_keys.remove(&row.grant_id)?;
-            }
-            let _ = self.link_stats.remove(&link)?;
+        if !links.items.is_empty() {
+            return Err(refused(
+                "this form has public links; delete them first (Connect, Public links)",
+            ));
         }
         let _ = self.forms.remove(&form_id)?;
         let _ = self.form_stats.remove(&form_id)?;
@@ -1029,12 +1036,7 @@ impl MeroForms {
     /// a website may read the questions it is about to answer.
     #[app::view]
     pub fn get_form(&self, form_id: String) -> app::Result<FormView> {
-        let caller = who()?;
-        if let Who::Key { id, .. } = &caller {
-            if self.link_keys.contains(id)? {
-                return Err(forbidden("a public link reads its form with linkForm"));
-            }
-        }
+        let _ = who()?;
         let form = self.form(&form_id)?;
         Ok(form_view(form_id, &form))
     }
@@ -1092,8 +1094,6 @@ impl MeroForms {
                         return Err(forbidden("this form key is for another form"));
                     }
                     id
-                } else if self.link_keys.contains(&id)? {
-                    return Err(forbidden("a public link answers with submitViaLink"));
                 } else {
                     account
                 }
@@ -1218,51 +1218,50 @@ impl MeroForms {
         })
     }
 
-    /// Records a public link for `formId`: `link` is the SHA-256 (hex) of the
-    /// API key's token, `grantId` the key's id. Team only.
+    /// Binds a public link of this instance to `formId`: `link` is the link's
+    /// key (hex), as core answered it when the teammate made the link
+    /// (`POST /apps/{app}/public-links`), and `expiresAt` the expiry they gave
+    /// it there (ms, 0 for none), kept so the team sees it. Team only.
+    ///
+    /// Core admits the link's visitors to the public methods while the link
+    /// lives; this binding is which form they answer. A link is bound once.
     pub fn create_link(
         &mut self,
         form_id: String,
         link: String,
-        grant_id: String,
         label: String,
+        expires_at: u64,
     ) -> app::Result<LinkView> {
         let me = self.only_team()?;
         let link = link.trim().to_lowercase();
         if link.len() != LINK_ID_HEX || decode_fixed::<32>(&link).is_none() {
-            return Err(invalid("a link id is the SHA-256 of its token, in hex"));
+            return Err(invalid("a link id is the link's key, 32 bytes of hex"));
         }
-        let grant_id = grant_id.trim().to_owned();
-        check("grant id", &grant_id, MAX_GRANT_ID, true)?;
         let label = label.trim().to_owned();
         check("label", &label, MAX_KEY_LABEL, false)?;
         let _ = self.form(&form_id)?;
         if self.links.contains(&link)? {
             return Err(refused("this link already exists"));
         }
-        if self.link_keys.contains(&grant_id)? || self.form_keys.contains(&grant_id)? {
-            return Err(refused("this key is already in use"));
+        let now = env::time_now();
+        if expires_at != 0 && expires_at <= now {
+            return Err(invalid("the link's expiry is in the past"));
         }
         let row = LinkRow {
             form_id: form_id.clone(),
             label,
-            grant_id: grant_id.clone(),
-            created_at: env::time_now(),
+            expires_at,
+            created_at: now,
             created_by: me,
         };
         let _ = self.links.insert(&link, &row)?;
         let _ = self.form_links.insert(&(form_id, link.clone()))?;
-        let _ = self.link_keys.insert(&grant_id, &link)?;
-        Ok(link_view(
-            link,
-            &row,
-            &SendStats::default(),
-            env::time_now(),
-        ))
+        Ok(link_view(link, &row, &SendStats::default(), now))
     }
 
-    /// Stops a public link and returns what it was, so the app can revoke its
-    /// API key. Team only.
+    /// Unbinds a public link and returns what it was; its visitors are refused
+    /// from now on. The app then revokes the link at core
+    /// (`DELETE /apps/{app}/public-links/{link}`). Team only.
     pub fn delete_link(&mut self, link: String) -> app::Result<LinkView> {
         self.only_team()?;
         let link = link.trim().to_lowercase();
@@ -1273,7 +1272,6 @@ impl MeroForms {
         let _ = self
             .form_links
             .remove(&(row.form_id.clone(), link.clone()))?;
-        let _ = self.link_keys.remove(&row.grant_id)?;
         let stats = self.link_stats.remove(&link)?.unwrap_or_default();
         Ok(link_view(link, &row, &stats, env::time_now()))
     }
@@ -1298,10 +1296,13 @@ impl MeroForms {
         Ok(views)
     }
 
-    /// The form a public link is for, as its visitor sees it. One of the two
-    /// methods a link's API key names.
+    /// The form the caller's public link is bound to, as its visitor sees it.
+    /// Public: a link's visitors only (`Caller::Visitor`); the link is the
+    /// caller's, never an argument.
     #[app::view]
-    pub fn link_form(&self, link: String) -> app::Result<LinkFormView> {
+    #[app::public]
+    pub fn link_form(&self) -> app::Result<LinkFormView> {
+        let (link, _) = visitor()?;
         let (form_id, _) = self.link(&link)?;
         let form = self.form(&form_id)?;
         Ok(LinkFormView {
@@ -1316,23 +1317,23 @@ impl MeroForms {
         })
     }
 
-    /// Stores a response that came through a public link and returns its id.
-    /// The other method a link's API key names.
+    /// Stores a response to the form the caller's public link is bound to and
+    /// returns its id. Public: a link's visitors only.
     ///
     /// Refused unless the form is open and public, the link is under its
     /// hourly cap, and, when the form asks for a captcha, `captcha` is a pass
     /// the form's verifier signed for this form and link, unexpired and
     /// unused. `captchaToken` was v1's Turnstile token for a node-checked
-    /// form; it is ignored.
+    /// form; it is ignored. The response names the visitor by its key.
+    #[app::public]
     pub fn submit_via_link(
         &mut self,
-        link: String,
         answers: Vec<AnswerInput>,
         captcha: Option<CaptchaPass>,
         captcha_token: Option<String>,
     ) -> app::Result<String> {
         let _ = captcha_token;
-        let link = link.trim().to_lowercase();
+        let (link, visitor_key) = visitor()?;
         let (form_id, label) = self.link(&link)?;
         let form = self.form(&form_id)?;
         if !form.public {
@@ -1357,7 +1358,7 @@ impl MeroForms {
         } else {
             format!("public link · {label}")
         };
-        let sender = who()?.account().to_owned();
+        let sender = format!("visitor:{visitor_key}");
         self.store_response(&form_id, &form, answers, source, link, sender)
     }
 
@@ -1393,7 +1394,7 @@ impl MeroForms {
     pub fn add_team_member(&mut self, who: String) -> app::Result<()> {
         self.only_admin()?;
         let who = clean_account("who", &who)?;
-        if self.form_keys.contains(&who)? || self.link_keys.contains(&who)? {
+        if self.form_keys.contains(&who)? {
             return Err(refused("a form key cannot join the team"));
         }
         let _ = self.team.insert(&who)?;
@@ -1486,9 +1487,6 @@ impl MeroForms {
         if self.is_team(&account)? {
             return Err(refused("a teammate cannot be a form key"));
         }
-        if self.link_keys.contains(&account)? {
-            return Err(refused("this key is already in use"));
-        }
         let _ = self.form(&form_id)?;
         let key = FormKey {
             label,
@@ -1570,7 +1568,7 @@ fn link_view(id: String, row: &LinkRow, stats: &SendStats, now: u64) -> LinkView
         id,
         form_id: row.form_id.clone(),
         label: row.label.clone(),
-        grant_id: row.grant_id.clone(),
+        expires_at: row.expires_at,
         created_at: row.created_at,
         created_by: row.created_by.clone(),
         responses: stats.responses,
@@ -1580,12 +1578,12 @@ fn link_view(id: String, row: &LinkRow, stats: &SendStats, now: u64) -> LinkView
 }
 
 impl MeroForms {
-    /// Whether the caller is a registered form key or a public link's key:
-    /// such a key never acts as the account it belongs to.
+    /// Whether the caller is a registered form key: such a key never acts as
+    /// the account it belongs to.
     fn is_key(&self, caller: &Who) -> app::Result<bool> {
         Ok(match caller {
             Who::Account(_) => false,
-            Who::Key { id, .. } => self.form_keys.contains(id)? || self.link_keys.contains(id)?,
+            Who::Key { id, .. } => self.form_keys.contains(id)?,
         })
     }
 
@@ -1672,20 +1670,16 @@ impl MeroForms {
         Ok(response_view(id, response, Some(state)))
     }
 
-    /// The form a link is for, and its label. A public link's API key opens
-    /// only its own link.
+    /// The form a link is bound to, and its label: refused for a link the
+    /// team never bound or has deleted, and for one past its expiry (core
+    /// refuses it too; this keeps the two in step on the leader's clock).
     fn link(&self, link: &str) -> app::Result<(String, String)> {
-        let link = link.trim().to_lowercase();
         let row = self
             .links
-            .get(&link)?
+            .get(&link.to_owned())?
             .ok_or_else(|| refused("this link no longer works"))?;
-        if let Who::Key { id, .. } = who()? {
-            if self.form_keys.contains(&id)?
-                || (self.link_keys.contains(&id)? && row.grant_id != id)
-            {
-                return Err(refused("this link no longer works"));
-            }
+        if row.expires_at != 0 && row.expires_at <= env::time_now() {
+            return Err(refused("this link no longer works"));
         }
         Ok((row.form_id, row.label))
     }

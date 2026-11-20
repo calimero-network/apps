@@ -62,9 +62,7 @@
   "as": "@anonymous",
   "op": "view",
   "method": "linkForm",
-  "args": {
-   "link": "abababababababababababababababababababababababababababababababab"
-  },
+  "args": {},
   "expect": {
    "refused": "UNAUTHENTICATED"
   }

@@ -67,7 +67,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const path = usePathname();
   const [signingIn, setSigningIn] = useState(false);
   // A form opened from its public link: whoever opened it, signed in or not,
-  // sees only the form, answered with the key the link carries.
+  // sees only the form, answered as the link's anonymous visitor.
   if (path.replace(/\/+$/, "") === PUBLIC_PATH) return <PublicForm />;
   if (api.session.status === "connecting") {
     return (

@@ -431,16 +431,20 @@
   "args": {
    "formId": "$form",
    "link": "abababababababababababababababababababababababababababababababab",
-   "grantId": "key-link",
-   "label": "newsletter"
+   "label": "newsletter",
+   "expiresAt": "0"
   }
  },
  {
   "as": "cy",
   "op": "view",
   "method": "linkForm",
-  "args": {
-   "link": "abababababababababababababababababababababababababababababababab"
+  "args": {},
+  "expect": {
+   "error": "Forbidden",
+   "fields": {
+    "message": "open this form through its public link"
+   }
   }
  },
  {
@@ -448,7 +452,6 @@
   "op": "call",
   "method": "submitViaLink",
   "args": {
-   "link": "abababababababababababababababababababababababababababababababab",
    "answers": [
     {
      "fieldId": "name",
@@ -473,9 +476,9 @@
    "captchaToken": null
   },
   "expect": {
-   "error": "Refused",
+   "error": "Forbidden",
    "fields": {
-    "message": "this form is not taking responses from links"
+    "message": "open this form through its public link"
    }
   }
  },
@@ -510,73 +513,6 @@
   "args": {
    "formId": "$form",
    "perHour": 1
-  }
- },
- {
-  "as": "cy",
-  "op": "call",
-  "method": "submitViaLink",
-  "args": {
-   "link": "abababababababababababababababababababababababababababababababab",
-   "answers": [
-    {
-     "fieldId": "name",
-     "values": [
-      "Visitor"
-     ]
-    },
-    {
-     "fieldId": "email",
-     "values": [
-      "ada@example.com"
-     ]
-    },
-    {
-     "fieldId": "topic",
-     "values": [
-      "Cloud"
-     ]
-    }
-   ],
-   "captcha": null,
-   "captchaToken": null
-  },
-  "save": "r2"
- },
- {
-  "as": "cy",
-  "op": "call",
-  "method": "submitViaLink",
-  "args": {
-   "link": "abababababababababababababababababababababababababababababababab",
-   "answers": [
-    {
-     "fieldId": "name",
-     "values": [
-      "Again"
-     ]
-    },
-    {
-     "fieldId": "email",
-     "values": [
-      "ada@example.com"
-     ]
-    },
-    {
-     "fieldId": "topic",
-     "values": [
-      "Cloud"
-     ]
-    }
-   ],
-   "captcha": null,
-   "captchaToken": null
-  },
-  "expect": {
-   "error": "Refused",
-   "fields": {
-    "message": "this link has taken as many responses as it may this hour; try again later"
-   }
   }
  },
  {
@@ -652,13 +588,11 @@
   "as": "cy",
   "op": "view",
   "method": "linkForm",
-  "args": {
-   "link": "abababababababababababababababababababababababababababababababab"
-  },
+  "args": {},
   "expect": {
-   "error": "Refused",
+   "error": "Forbidden",
    "fields": {
-    "message": "this link no longer works"
+    "message": "open this form through its public link"
    }
   }
  },
