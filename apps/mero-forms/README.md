@@ -112,7 +112,7 @@ the fragment to the server that serves the page, so the token reaches only
 the cluster.
 
 **Not released yet.** Public links, visitors and `#[app::public]` for them
-come with core#5195 (first in 1.0.0-rc.32, WIT `calimero:app@0.5.6`). Until
+come with core#5195 (first in 1.0.0-rc.33, WIT `calimero:app@0.5.6`). Until
 that release, `logic/Cargo.toml` pins core by the PR's commit (so
 `scripts/check-component-pins.py` fails on this crate), and
 `app/src/lib/coreLinks.ts` calls the link routes untyped and signs the

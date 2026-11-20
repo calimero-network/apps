@@ -1,10 +1,15 @@
 /**
  * Core's public links (core#5195), the one place this app calls them.
  *
- * A public link is a grant of the workspace (app instance) that core keeps:
- * whoever may change the instance's access makes one with their passkey
+ * An instance's access is one list of grants, and a public link is one of
+ * them: a `link` grant (`{ kind: "link", link, label?, expiresAt?,
+ * ratePerMinute, createdBy, createdAt }`, among the `grants` of
+ * `GET /apps/{app}`). It has routes of its own, the only way to make or
+ * revoke one (`POST /apps/{app}/access` keeps an instance's links as they
+ * are): whoever may change the instance's access makes one with their passkey
  * (`POST /apps/{app}/public-links`, answered `{ link, token }` once), lists
- * them (`GET`) and revokes one (`DELETE /apps/{app}/public-links/{link}`).
+ * them (`GET`, never a token) and revokes one
+ * (`DELETE /apps/{app}/public-links/{link}`; its creator may too).
  * Core keeps only the token's public key (`link`), and admits the token's
  * holders as anonymous visitors (`Caller::Visitor { link, key }`) to the
  * instance's `#[app::public]` methods while the link lives: not revoked, not
@@ -15,8 +20,9 @@
  * local storage, so a visitor stays the same one across visits.
  *
  * TODO(core#5195): the published mero-js (^36) has neither the link routes nor
- * `useVisitor`. Once the release with core#5195 is out and the catalog takes
- * it:
+ * `useVisitor`. Once the release with core#5195 is out (1.0.0-rc.33: below
+ * that cluster version the node answers `409 FEATURE_NOT_ACTIVE`) and the
+ * catalog takes it:
  * - `createPublicLink` / `listPublicLinks` / `revokePublicLink` become
  *   `client.apps.publicLinkCreate` / `publicLinkList` / `publicLinkRevoke`
  *   (generated, `{ confirm }` per request) and the untyped route client goes;

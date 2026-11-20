@@ -277,10 +277,13 @@ catalog:
 # core 1.0.0-rc.31 (core#5102) no longer serves /sealed/v2, so 35.x answers
 # `Sealed request refused: HTTP 404` there. mero-react 11.9.0 still asks for
 # ^35.6.0; the root `pnpm.overrides` moves its copy to this catalog's.
+# 1.0.0-rc.32 (core#5199): mero-js and mero-react are released from core with
+# its version, so they move with `component-core-tag`. mero-react 1.0.0-rc.32
+# depends on mero-js 1.0.0-rc.32 exactly.
 catalogs:
   component:
-    "@calimero-network/mero-js": ^36.0.0
-    "@calimero-network/mero-react": ^11.9.0
+    "@calimero-network/mero-js": 1.0.0-rc.32
+    "@calimero-network/mero-react": 1.0.0-rc.32
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
