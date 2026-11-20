@@ -33,6 +33,7 @@ import { passkeyConfirm, type CalimeroClient, type OrgMode, type PasskeyProvider
 
 import { NoAppTeamError, appTeamMembers, appTeamOf, appTeams, createAppTeam, inviteToApp } from "./appTeams";
 import { goToConsent, isFrontendBound, type ConsentClient, type ConsentOptions, type MaybeMe } from "./consent";
+import type { Grant } from "./grants";
 import { joinedOrg, type OrgAccessView, type OrgTeamView } from "./invite";
 import { markOrgFor } from "./orgs";
 import type { AppSource } from "./target";
@@ -266,11 +267,14 @@ export class AppTeamAdminError extends Error {
   }
 }
 
-/** The access of an org-wide instance: the app's team, or (no app team) the whole org. */
-export type OrgWideAccess = { kind: "team"; team: string } | { kind: "org" };
+/**
+ * The one grant of an org-wide instance ({@link ./grants}): the app's team,
+ * or (no app team) the whole org. An instance's grants are `[access]`.
+ */
+export type OrgWideAccess = Extract<Grant, { kind: "team" | "org" }>;
 
 /**
- * The `access` for a new org-wide instance of `source` in `org`, which is
+ * The way in for a new org-wide instance of `source` in `org`, which is
  * also how the app is added to an existing org: its app team where it has
  * one. An org whose apps have teams but none for this one gets it first, in
  * the org's mode (open unless shared), which only an owner or admin may do
@@ -300,9 +304,11 @@ export async function orgWideAccess(
 
 /**
  * `createApp`'s options for a new org-wide instance ({@link orgWideAccess}):
- * `{ org, access }` on the app's team, and `{ org }` alone where that is
- * organization access, exactly what an app sent before app teams (core makes
- * an org instance `org` access by default), so a legacy org is unchanged.
+ * `{ org, grants: [team] }` on the app's team, and `{ org }` alone where that
+ * is organization access, exactly what an app sent before app teams (core
+ * grants an instance the organization when it is given no `grants`), so a
+ * legacy org is unchanged. Spread into `client.apps.create` or
+ * {@link createApp}.
  */
 export async function orgInstanceOptions(
   client: Pick<CalimeroClient, "session"> & ClientRoutes<{ orgs: "get" | "appTeamsScope" }>,
@@ -310,9 +316,9 @@ export async function orgInstanceOptions(
   source: AppSource | null | undefined,
   passkey: PasskeyLike,
   appName: string,
-): Promise<{ org: string; access?: OrgWideAccess }> {
+): Promise<{ org: string; grants?: Grant[] }> {
   const access = await orgWideAccess(client, org, source, passkey, appName);
-  return access.kind === "team" ? { org, access } : { org };
+  return access.kind === "team" ? { org, grants: [access] } : { org };
 }
 
 // ── invites ─────────────────────────────────────────────────────────────────

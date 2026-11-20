@@ -81,7 +81,7 @@ type Calls = "session" | "getApp" | "appsReportAll" | "getOrg" | "me" | "request
 function fakeClient(over: Partial<Record<Calls, unknown>> = {}) {
   const m = {
     session: { accountId: ME },
-    getApp: vi.fn(async (app: string) => ({ appId: app, owner: "acct-boss", org: "org-1", access: { kind: "org" } })),
+    getApp: vi.fn(async (app: string) => ({ appId: app, owner: "acct-boss", org: "org-1", grants: [{ kind: "org" }] })),
     appsReportAll: vi.fn(async () => report([reported({ app: "app-1" })])),
     getOrg: vi.fn(async () => org("member")),
     me: vi.fn(async () => ({ accountId: ME, orgs: [{ orgId: "org-1", role: "member" }] })),
@@ -211,12 +211,12 @@ describe("upgradeOffer", () => {
 
   it("the instance's own owner may, in an organization or on their account", async () => {
     const orgApp = fakeClient({
-      getApp: vi.fn(async () => ({ appId: "app-1", owner: ME, org: "org-1", access: { kind: "org" } })),
+      getApp: vi.fn(async () => ({ appId: "app-1", owner: ME, org: "org-1", grants: [{ kind: "org" }] })),
     });
     expect((await upgradeOffer(orgApp, "app-1"))?.canUpgrade).toBe(true);
     // An account's report lists its own apps only (core's `scope_report`).
     const own = fakeClient({
-      getApp: vi.fn(async () => ({ appId: "app-1", owner: ME, org: null, access: { kind: "owner" } })),
+      getApp: vi.fn(async () => ({ appId: "app-1", owner: ME, org: null, grants: [] })),
       appsReportAll: vi.fn(async () =>
         report([reported({ app: "app-1", scope: { kind: "account" } })], { scope: { kind: "account" } }),
       ),
