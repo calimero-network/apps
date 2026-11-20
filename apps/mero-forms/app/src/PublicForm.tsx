@@ -3,7 +3,8 @@ import { type LinkFormView, toLinkForm, fromAnswers, fromCaptchaPass, formsClien
 import { FieldInput } from "./FormFill";
 import { fetchCaptchaConfig, mountCaptcha, requestPass } from "./lib/captcha";
 import { missingRequired, toAnswers, type Draft } from "./lib/fields";
-import { startVisitor, visitorSeed, type VisitorSession } from "./lib/coreLinks";
+import type { Visitor } from "@calimero-network/mero-js";
+import { visitorSeed } from "./lib/coreLinks";
 import { newNonce, parsePublicLink, publicRefusal } from "./lib/publicLink";
 import { useSessionApi } from "./sessionContext";
 
@@ -31,7 +32,7 @@ export function PublicForm() {
   const unconfigured =
     api.session.status === "unconfigured" || api.session.status === "listing" ? api.session.message : null;
   const [forms, setForms] = useState<MeroFormsClient | null>(null);
-  const [visitor, setVisitor] = useState<VisitorSession | null>(null);
+  const [visitor, setVisitor] = useState<Visitor | null>(null);
   const [form, setForm] = useState<LinkFormView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({});
@@ -50,9 +51,9 @@ export function PublicForm() {
     let live = true;
     (async () => {
       const client = await deps.makeClient(where);
-      const v = await startVisitor(client, target.token, visitorSeed());
+      // mero-js signs a fresh visitor credential on every request.
+      const v = await client.useVisitor({ link: target.token, seed: visitorSeed() });
       const f = formsClient(client, target.app);
-      await v.fresh();
       const view = toLinkForm(await f.linkForm());
       if (!live) return;
       setForms(f);
@@ -103,7 +104,6 @@ export function PublicForm() {
         form.captcha && captchaToken
           ? await requestPass({ token: captchaToken, formId: form.form_id, link: visitor.link, nonce })
           : null;
-      await visitor.fresh();
       await forms.submitViaLink({
         answers: fromAnswers(toAnswers(form, draft)),
         captcha: fromCaptchaPass(pass),

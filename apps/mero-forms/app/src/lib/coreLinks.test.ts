@@ -1,17 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CalimeroClient } from "@calimero-network/mero-js";
-import {
-  createPublicLink,
-  LocalVisitor,
-  publicLinkKey,
-  revokePublicLink,
-  startVisitor,
-  visitorSeed,
-} from "./coreLinks";
+import { createRouteClient, createRoutes, publicLinkKey, Visitor } from "@calimero-network/mero-js";
+import { createPublicLink, listPublicLinks, revokePublicLink, visitorSeed } from "./coreLinks";
 
-// core#5195's shared vector (`calimero_client::visitor`, `system::tests`, mero-js
-// `visitor.test.ts`): Ed25519 signs deterministically, so the credential is the
-// same byte for byte.
+// core's shared visitor vector (`calimero_client::visitor`, `system::tests`,
+// mero-js `visitor.test.ts`). The app no longer signs a visitor's credential
+// itself; this pins the mero-js it takes to the credential core expects, byte
+// for byte (Ed25519 signs deterministically).
 const LINK = "d4205f1ac7bb3fe43278131b6e621ebf952f0a5f51a38505327572d863c46c42";
 const KEY = "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
 const BEARER =
@@ -26,7 +20,7 @@ interface Sent {
   body: Record<string, unknown> | undefined;
 }
 
-/** A client whose transport answers from `reply`, recording what it was sent. */
+/** mero-js's generated `client.apps` over a transport that answers from `reply`, recording what it was sent. */
 function fakeClient(reply: (sent: Sent, n: number) => Response) {
   const sent: Sent[] = [];
   const transport = {
@@ -37,38 +31,17 @@ function fakeClient(reply: (sent: Sent, n: number) => Response) {
       return reply(s, sent.length);
     }),
   };
-  const client = { transport, useApiKey: vi.fn() } as unknown as CalimeroClient & { useApiKey: ReturnType<typeof vi.fn> };
-  return { client, sent };
+  const routes = createRoutes(createRouteClient(transport as unknown as Parameters<typeof createRouteClient>[0]));
+  return { client: { apps: routes.apps }, sent };
 }
 
 describe("a link's visitor", () => {
-  it("names the link and itself and signs the credential core expects", async () => {
+  it("is mero-js's, naming the link and itself and signing the credential core expects", async () => {
     expect(await publicLinkKey("pl_token")).toBe(LINK);
-    const v = await LocalVisitor.create("pl_token", new Uint8Array(32).fill(9));
+    const v = await Visitor.create("pl_token", new Uint8Array(32).fill(9));
     expect(v.link).toBe(LINK);
     expect(v.publicKey).toBe(KEY);
     expect(await v.bearer(1000)).toBe(BEARER);
-  });
-
-  it("signs a fresh credential before each request where mero-js cannot", async () => {
-    const { client } = fakeClient(() => json(200, {}));
-    const v = await startVisitor(client, "pl_token", new Uint8Array(32).fill(9));
-    expect(v.link).toBe(LINK);
-    expect(v.publicKey).toBe(KEY);
-    expect(client.useApiKey).toHaveBeenCalledTimes(1);
-    expect(client.useApiKey.mock.calls[0]?.[0]).toMatch(new RegExp(`^vis1\\.pl_token\\.${KEY}\\.\\d+\\.[0-9a-f]{128}$`));
-    await v.fresh();
-    expect(client.useApiKey).toHaveBeenCalledTimes(2);
-  });
-
-  it("leaves it to mero-js once mero-js has useVisitor", async () => {
-    const { client } = fakeClient(() => json(200, {}));
-    const useVisitor = vi.fn().mockResolvedValue({ link: LINK, publicKey: KEY });
-    const v = await startVisitor(Object.assign(client, { useVisitor }), "pl_token", new Uint8Array(32).fill(9));
-    expect(useVisitor).toHaveBeenCalledWith({ link: "pl_token", seed: new Uint8Array(32).fill(9) });
-    await v.fresh();
-    expect(client.useApiKey).not.toHaveBeenCalled();
-    expect(v.link).toBe(LINK);
   });
 
   it("keeps one seed per browser, and works without storage", () => {
@@ -90,7 +63,7 @@ describe("a link's visitor", () => {
   });
 });
 
-describe("making and revoking a link at core", () => {
+describe("making, listing and revoking a link at core", () => {
   it("asks the passkey for the node's challenge and answers the link and its token", async () => {
     const { client, sent } = fakeClient((_, n) =>
       n === 1
@@ -114,6 +87,21 @@ describe("making and revoking a link at core", () => {
       json(403, { error: "FORBIDDEN", message: "only whoever may change the instance's access makes its public links" }),
     );
     await expect(createPublicLink(client, "app-1", {}, vi.fn())).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("lists the links core keeps", async () => {
+    const row = {
+      link: LINK,
+      label: "Forms · Contact",
+      expiresAt: null,
+      expired: false,
+      ratePerMinute: 20,
+      createdBy: "acct",
+      createdAt: 1,
+    };
+    const { client, sent } = fakeClient(() => json(200, { links: [row] }));
+    expect(await listPublicLinks(client, "app-1")).toEqual([row]);
+    expect(sent[0]).toMatchObject({ method: "GET", path: "apps/app-1/public-links" });
   });
 
   it("revokes a link, and takes one already gone as revoked", async () => {

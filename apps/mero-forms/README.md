@@ -83,7 +83,7 @@ A teammate makes one from the form's **Connect** tab ("Public links"); the
 visitor opens `…/f#a=<workspace>&t=<token>` and sees the form alone
 (`app/src/PublicForm.tsx`).
 
-**A link is one of core's public links of the workspace** (core#5195): a
+**A link is one of core's public links of the workspace**: a
 `link` grant of the app instance that core keeps, beside its member and named
 grants. Making one does two things:
 
@@ -111,14 +111,12 @@ The URL's fragment carries the workspace and the token. A browser never sends
 the fragment to the server that serves the page, so the token reaches only
 the cluster.
 
-**Not released yet.** Public links, visitors and `#[app::public]` for them
-come with core#5195 (first in 1.0.0-rc.33, WIT `calimero:app@0.5.6`). Until
-that release, `logic/Cargo.toml` pins core by the PR's commit (so
-`scripts/check-component-pins.py` fails on this crate), and
-`app/src/lib/coreLinks.ts` calls the link routes untyped and signs the
-visitor's credential itself, since the published mero-js has neither; its
-TODO says what becomes the generated `client.apps.publicLink*` and
-`client.useVisitor`.
+Public links, visitors and `#[app::public]` for them need core 1.0.0-rc.33
+(WIT `calimero:app@0.5.6`; below that cluster version the node answers
+`409 FEATURE_NOT_ACTIVE`). `app/src/lib/coreLinks.ts` makes, lists and revokes
+links with mero-js's generated `client.apps.publicLinkCreate` /
+`publicLinkList` / `publicLinkRevoke`, and the public form calls as the visitor
+with `client.useVisitor({ link: token, seed })`.
 
 **What the team controls, enforced by the contract:**
 
@@ -297,7 +295,7 @@ app/src/Responses.tsx       summary, table, one response, Send to CRM
 app/src/FormConnect.tsx     form keys
 app/src/PublicLinks.tsx     public links: Public, the cap, the captcha, make and delete
 app/src/PublicForm.tsx      the form opened from a public link (`/f#…`), as its visitor
-app/src/lib/coreLinks.ts    core's public links and visitors (until mero-js ships them; TODO core#5195)
+app/src/lib/coreLinks.ts    core's public links (mero-js's generated routes) and the visitor seed
 app/api/captcha.ts          the captcha verifier (a Vercel function)
 app/src/CrmSettings.tsx     the CRM pipeline, stage and field mapping
 app/src/useCrm.ts           finding pipelines and sending a response
