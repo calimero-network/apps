@@ -10,6 +10,7 @@ import IssueDetailPage from "./pages/app/IssueDetailPage";
 import BoardPage from "./pages/app/BoardPage";
 import MembersPage from "./pages/app/MembersPage";
 import TrustPage from "./pages/app/TrustPage";
+import UpdatesPage from "./pages/app/UpdatesPage";
 import InvitationHost from "./components/InvitationHost";
 import SignInModal from "./components/SignInModal";
 import { AppThemeProvider } from "./theme";
@@ -100,6 +101,7 @@ export default function App({ deps }: { deps?: SessionDeps } = {}) {
                   <Route path="board" element={<BoardPage />} />
                   <Route path="members" element={<MembersPage />} />
                   <Route path="trust" element={<TrustPage />} />
+                  <Route path="updates" element={<UpdatesPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

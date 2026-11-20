@@ -59,6 +59,15 @@ export function IconShield(): React.ReactElement {
   );
 }
 
+export function IconUpdate(): React.ReactElement {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+      <path d="M12.3 7.5a4.8 4.8 0 1 1-1.4-3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M11.4 1.9v2.6H8.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconSearch(): React.ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">

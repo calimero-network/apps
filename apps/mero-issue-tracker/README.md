@@ -88,7 +88,9 @@ meroctl local dev apps/mero-issue-tracker # the same with core's meroctl (1.0.0-
 `pnpm dev:local` prints how to get it when it is missing. In the browser:
 **create an account** (a passkey), **create a workspace** (name it, then review
 the app's release), **add a repository**, file issues; the header's shield and
-the sidebar's **Trust** page show what the node and the app's release check out as.
+the sidebar's **Trust** page show what the node and the app's release check out as,
+and its **Updates** page whether a newer release is available for the open
+repository (an owner or admin of the workspace approves it on the node's consent page).
 **Invite** someone from the Members page; a second browser profile
 with its own passkey opening that link is a second member.
 
@@ -157,7 +159,7 @@ light/dark theme. Behind them:
   types are `unknown`), a passkey sign-in dialog as the landing page's
   connect action, and the invitation prompt after sign-in;
 - **URLs**: the app still lives at `/issue-tracker` (`/issue-tracker/board`,
-  `/issue-tracker/issues/:id`, `/issue-tracker/members`, `/issue-tracker/trust`); an invitation is
+  `/issue-tracker/issues/:id`, `/issue-tracker/members`, `/issue-tracker/trust`, `/issue-tracker/updates`); an invitation is
   `/?invite=<token>`.
 
 `mobile/`, the native iOS and Android apps, moves to Calimero 1.0 in its own PR,
