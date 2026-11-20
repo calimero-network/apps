@@ -38,16 +38,19 @@ describe("a new team gets Hyperfeed Pixart's own app team", () => {
     expect(cluster.modeOf(org)).toBe("standalone");
     expect(cluster.callsOf("scopeApps")[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const app = await add(cluster, org);
-    expect(cluster.state.apps.get(app)!.access).toEqual({ kind: "team", team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(app)!.grants).toEqual([{ kind: "team", team: cluster.teamOf(org, PKG) }]);
   });
 
-  it("a declined team leaves a legacy org, whose projects use organization access as before", async () => {
+  it("a declined team leaves a legacy org, whose projects have the organization grant as before", async () => {
     const cluster = orgCluster();
     cluster.state.declined.add("scopeApps");
     const { groupId: org } = await createTeam(cluster.client, "Acme", passkey, SOURCE);
     expect(cluster.modeOf(org)).toBe("legacy");
     await add(cluster, org);
-    expect((cluster.callsOf("createApp")[0]![2] as { access?: unknown }).access).toBeUndefined();
+    // No grants: core grants the organization (and never `access`, which core refuses).
+    const sent = cluster.callsOf("createApp")[0]![2] as Record<string, unknown>;
+    expect(sent).not.toHaveProperty("grants");
+    expect(sent).not.toHaveProperty("access");
   });
 
   it("a raw dev bundle has no package: no team is asked for", async () => {

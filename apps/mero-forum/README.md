@@ -39,7 +39,7 @@ through `@calimero-apps/connect`'s org-app module
 
 - A new organization made here gets Hyperfeed Forum's team at once, **open**
   (`standalone`: everyone in the org has the app). New forums use
-  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  a `{ kind: "team" }` grant on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
   invite gives Hyperfeed Forum only (the dialog says so) and only its people are shown.

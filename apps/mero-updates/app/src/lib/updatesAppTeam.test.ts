@@ -45,7 +45,7 @@ describe("a new company gets Hyperfeed Updates' own app team", () => {
     expect(cluster.modeOf(org)).toBe("standalone");
     expect(cluster.callsOf("scopeApps")[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const audience = await createAudience(cluster.client, SOURCE, org, "Everyone", passkey);
-    expect(cluster.state.apps.get(audience)!.access).toEqual({ kind: "team", team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(audience)!.grants).toEqual([{ kind: "team", team: cluster.teamOf(org, PKG) }]);
   });
 
   it("a declined team leaves a legacy company, whose audiences use organization access as before", async () => {

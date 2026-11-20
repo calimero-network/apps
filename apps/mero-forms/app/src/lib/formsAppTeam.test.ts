@@ -30,7 +30,7 @@ describe("a new workspace in a new org", () => {
     const { appId, org } = await createWorkspace(cluster.client, SOURCE, "Sales", null, passkey);
     expect(cluster.modeOf(org)).toBe("standalone");
     expect(cluster.callsOf("scopeApps")[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
-    expect(cluster.state.apps.get(appId)!.access).toEqual({ kind: "team", team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(appId)!.grants).toEqual([{ kind: "team", team: cluster.teamOf(org, PKG) }]);
   });
 
   it("a declined team leaves a legacy org, whose workspace uses organization access as before", async () => {
@@ -82,7 +82,7 @@ describe("adding Forms to an organization whose apps have teams", () => {
     const org = cluster.addOrg({ mode: "standalone", role: "admin" });
     const { appId } = await createWorkspace(cluster.client, SOURCE, "Sales", org, passkey);
     expect(cluster.callsOf("scopeApps")[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
-    expect(cluster.state.apps.get(appId)!.access).toEqual({ kind: "team", team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(appId)!.grants).toEqual([{ kind: "team", team: cluster.teamOf(org, PKG) }]);
   });
 
   it("an admin of an org that keeps its apps apart: made closed", async () => {

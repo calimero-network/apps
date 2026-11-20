@@ -39,7 +39,7 @@ describe("a new workspace gets Hyperfeed Sign's own app team", () => {
     expect(cluster.modeOf(org)).toBe('standalone');
     expect(cluster.callsOf('scopeApps')[0]![2]).toEqual({ apps: [{ package: PKG }], shared: false });
     const app = await agreement(cluster, org);
-    expect(cluster.state.apps.get(app)!.access).toEqual({ kind: 'team', team: cluster.teamOf(org, PKG) });
+    expect(cluster.state.apps.get(app)!.grants).toEqual([{ kind: 'team', team: cluster.teamOf(org, PKG) }]);
   });
 
   it('a declined team leaves a legacy workspace, whose agreements use organization access as before', async () => {

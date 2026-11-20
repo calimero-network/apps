@@ -63,7 +63,7 @@ through `@calimero-apps/connect`'s org-app module
 
 - A new organization made here gets Hyperfeed Pixart's team at once, **open**
   (`standalone`: everyone in the org has the app). New projects use
-  `{ kind: "team" }` access on it, invites name it (`appInvite`), and the
+  a `{ kind: "team" }` grant on it, invites name it (`appInvite`), and the
   people shown are its people (`appPeople`).
 - Once an admin keeps the org's apps apart in Calimero Home (`shared`), an
   invite gives Hyperfeed Pixart only (the dialog says so) and only its people are shown.
