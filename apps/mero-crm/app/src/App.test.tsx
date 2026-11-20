@@ -242,7 +242,7 @@ describe('App', () => {
     expect(shieldApp).toHaveBeenCalledWith('app-1', 'bundle-hash');
   });
 
-  it('shows the open pipeline\'s trust view in settings', async () => {
+  it('shows the open pipeline\'s trust view and its updates in settings', async () => {
     const client = fakeClient({ signedIn: true });
     storeSession();
     writeActiveNs('org-1');
@@ -250,6 +250,7 @@ describe('App', () => {
     render(<App deps={deps(client)} />);
 
     expect(await screen.findByTestId('trust-settings', {}, SLOW)).toBeTruthy();
+    expect(screen.getByTestId('updates-settings')).toBeTruthy();
   });
 
   it('signs in with a passkey from the landing page', async () => {

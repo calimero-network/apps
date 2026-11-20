@@ -763,4 +763,25 @@ describe('the node shield', () => {
     expect(await screen.findByText('The release this app runs could not be read.', {}, SLOW)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
+
+  it('opens the updates page from the sidebar: the open repo\'s release, the one available, read-only for a member', async () => {
+    const client = openWorkspace();
+    const json = vi.fn(async () => ({
+      app: 'app-1',
+      running: { package: 'com.calimero.mero-issue-tracker', version: '1.3.0' },
+      available: { package: 'com.calimero.mero-issue-tracker', version: '1.4.0', source: 'release' },
+      mayApprove: false,
+      approvers: 'owner-and-admins',
+    }));
+    Object.assign(client, { transport: { json } });
+    fireEvent.click(await screen.findByTestId('nav-updates', {}, SLOW));
+    expect((await screen.findByTestId('updates-available', {}, SLOW)).textContent).toContain('com.calimero.mero-issue-tracker v1.4.0');
+    expect(window.location.pathname).toBe('/issue-tracker/updates');
+    expect(screen.getByTestId('nav-updates').getAttribute('aria-current')).toBe('page');
+    expect(json).toHaveBeenCalledWith('GET', 'apps/app-1/update');
+    expect(screen.getAllByRole('heading', { name: 'Updates' })).toHaveLength(1);
+    expect(screen.getByText(/for the repository web/)).toBeTruthy();
+    expect(screen.getByTestId('updates-readonly').textContent).toContain('Only an owner or admin');
+    expect(screen.queryByRole('button', { name: 'Review and update' })).toBeNull();
+  });
 });

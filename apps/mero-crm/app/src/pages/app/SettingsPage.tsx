@@ -7,6 +7,7 @@ import { Button, Input, Label, Page, Panel, Row, Select, Tabs } from '../../comp
 import { useSignOut } from '../../auth/signOut';
 import { useSignedIn } from '../../sessionContext';
 import TrustPanel from '../../components/TrustPanel';
+import UpdatesPanel from '../../components/UpdatesPanel';
 import { ACTIVITY_KINDS, ACTIVITY_LABEL } from '../../utils/crm';
 import { describeError } from '../../utils/errors';
 import type { StageView } from '../../hooks/useCrm';
@@ -14,7 +15,7 @@ import { useAppCtx } from './appContext';
 
 /** Pipeline setup: stages, the automations that keep deals moving, and the
  *  two knobs (currency, rotting threshold), shared by everyone on the pipeline;
- *  the trust view of the release it runs; then this browser's own appearance
+ *  the trust view of the release it runs and its updates; then this browser's own appearance
  *  and the way out. */
 export default function SettingsPage(): React.ReactElement {
   const { data, ws } = useAppCtx();
@@ -106,6 +107,10 @@ export default function SettingsPage(): React.ReactElement {
 
       {ws.activePipeline && (
         <TrustPanel appId={ws.activePipeline} source={source} pipeline={ws.pipelines.find((p) => p.contextId === ws.activePipeline)?.name} />
+      )}
+
+      {ws.activePipeline && (
+        <UpdatesPanel appId={ws.activePipeline} pipeline={ws.pipelines.find((p) => p.contextId === ws.activePipeline)?.name} />
       )}
 
       <Account />

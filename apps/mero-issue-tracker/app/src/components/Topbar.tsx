@@ -49,6 +49,8 @@ export default function Topbar({
     title = 'Members';
   } else if (loc.pathname === `${APP_ROUTE}/trust`) {
     title = null; // the page's own card is titled Trust
+  } else if (loc.pathname === `${APP_ROUTE}/updates`) {
+    title = null; // the page's own card is titled Updates
   } else if (loc.search.includes('assignee=me')) {
     title = 'My Issues';
   }

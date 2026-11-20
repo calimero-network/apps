@@ -107,6 +107,7 @@ describe("upgradeOffer", () => {
     expect(await upgradeOffer(client, "app-1")).toEqual({
       app: "app-1",
       name: "Team store",
+      package: PKG,
       current: "1.0.0",
       latest: "1.2.0",
       reachable: true,

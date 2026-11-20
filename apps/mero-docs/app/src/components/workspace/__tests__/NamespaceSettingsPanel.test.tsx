@@ -48,11 +48,23 @@ vi.mock('../WorkspaceExitPanel', () => ({ WorkspaceExitPanel: () => null }));
 vi.mock('../WorkspaceTrustPanel', () => ({
   WorkspaceTrustPanel: () => <div data-testid="trust-panel" />,
 }));
+vi.mock('../WorkspaceUpdatesPanel', () => ({
+  WorkspaceUpdatesPanel: () => <div data-testid="updates-panel" />,
+}));
 
 describe('NamespaceSettingsPanel', () => {
   it('includes the workspace Trust section', () => {
     render(<NamespaceSettingsPanel />);
     expect(screen.getByTestId('trust-panel')).toBeTruthy();
+  });
+
+  it('includes the workspace Updates section after Trust', () => {
+    render(<NamespaceSettingsPanel />);
+    const trust = screen.getByTestId('trust-panel');
+    expect(
+      trust.compareDocumentPosition(screen.getByTestId('updates-panel')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('offers the theme toggle that the narrow header drops', () => {
