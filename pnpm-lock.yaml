@@ -7,11 +7,11 @@ settings:
 catalogs:
   component:
     '@calimero-network/mero-js':
-      specifier: ^36.0.0
-      version: 36.0.0
+      specifier: 1.0.0-rc.32
+      version: 1.0.0-rc.32
     '@calimero-network/mero-react':
-      specifier: ^11.9.0
-      version: 11.9.0
+      specifier: 1.0.0-rc.32
+      version: 1.0.0-rc.32
   default:
     '@calimero-network/mero-icons':
       specifier: ^0.0.5
@@ -110,7 +110,7 @@ catalogs:
 overrides:
   base-x@2.0.6: 3.0.11
   '@calimero-network/mero-react@10>@calimero-network/mero-js': 26.11.0
-  '@calimero-network/mero-react@11>@calimero-network/mero-js': ^36.0.0
+  '@calimero-network/mero-react@11>@calimero-network/mero-js': 1.0.0-rc.32
 
 importers:
 
@@ -145,10 +145,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -224,7 +224,7 @@ importers:
         version: link:../../../packages/connect
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -343,10 +343,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@fontsource/ibm-plex-mono':
         specifier: ^5
         version: 5.3.0
@@ -428,10 +428,10 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -513,10 +513,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -598,10 +598,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -713,10 +713,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -882,10 +882,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -976,10 +976,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1073,10 +1073,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1185,10 +1185,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: ^0.3.6
         version: 0.3.7(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1378,10 +1378,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1466,10 +1466,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1551,10 +1551,10 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1642,10 +1642,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1736,10 +1736,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1824,10 +1824,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       fflate:
         specifier: 'catalog:'
         version: 0.8.3
@@ -1924,13 +1924,13 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-pass':
         specifier: workspace:*
         version: link:../../../packages/mero-pass
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2024,10 +2024,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2127,10 +2127,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2227,10 +2227,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2405,10 +2405,10 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2490,10 +2490,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.2(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2590,10 +2590,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2678,10 +2678,10 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
@@ -2769,10 +2769,10 @@ importers:
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2824,7 +2824,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       bootstrap:
         specifier: ^5.3.7
         version: 5.3.8(@popperjs/core@2.11.8)
@@ -2888,7 +2888,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -2913,7 +2913,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -2931,7 +2931,7 @@ importers:
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)
@@ -3038,7 +3038,7 @@ importers:
     dependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -3112,11 +3112,11 @@ importers:
         version: link:../connect
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 36.0.0
+        version: 1.0.0-rc.32
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3957,22 +3957,22 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
+  '@calimero-network/mero-js@1.0.0-rc.32':
+    resolution: {integrity: sha512-C3oIsermzL6dqJq4G8A3jvlrogXpGX8qSorEBSFiTlCwdkKpDxczj3Ehb60/ICsSpmltA7HG69cCJ5NcvrIx9Q==}
+    engines: {node: '>=18.0.0'}
+
   '@calimero-network/mero-js@26.11.0':
     resolution: {integrity: sha512-LMc1xxszexp78gpdmzfb8lyDvIWQlL9eQhN/I6rDq/GXDgNcpBT4YU96YMVqZQecbRLZRHv5lSK+xEoaryUyQg==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-js@36.0.0':
-    resolution: {integrity: sha512-wWTdVRPIFyx0I1UBWzId9ptFaqGmK2OX7rrfYRYMakWK7LoEd9Z3TDtOXCEFWQTms3jRXEh4RGNsvqy2srpUag==}
-    engines: {node: '>=18.0.0'}
-
-  '@calimero-network/mero-react@10.3.0':
-    resolution: {integrity: sha512-5kJhMti14hgy7x0px7n8IzFHXhDlLmeVEPe8H11PvsrmjlAfYxAU2gPpxetTXj5kzmJTm48Pgt9MhI+mV+yPKw==}
+  '@calimero-network/mero-react@1.0.0-rc.32':
+    resolution: {integrity: sha512-3CgD+NoE//rHaopThpR5QsC4xGTzA+48hthTQvi7j+0myxvvUZ+P38oTORjl0jd+RXAU/UNiEOT9MtXltYmrKg==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@calimero-network/mero-react@11.9.0':
-    resolution: {integrity: sha512-9jkVxnQiF0d11fD1CSwegDz0Olq5IP2kBUkwK1k0XEWE2DM5+W4EG47b4Ni53+jc623YIqfADnL41wpU9IvXMg==}
+  '@calimero-network/mero-react@10.3.0':
+    resolution: {integrity: sha512-5kJhMti14hgy7x0px7n8IzFHXhDlLmeVEPe8H11PvsrmjlAfYxAU2gPpxetTXj5kzmJTm48Pgt9MhI+mV+yPKw==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -11813,13 +11813,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@calimero-network/mero-js@26.11.0':
-    dependencies:
-      '@phala/dcap-qvl': 0.5.3
-    transitivePeerDependencies:
-      - encoding
-
-  '@calimero-network/mero-js@36.0.0':
+  '@calimero-network/mero-js@1.0.0-rc.32':
     dependencies:
       '@noble/hashes': 2.4.0
       '@phala/dcap-qvl': 0.5.3
@@ -11827,17 +11821,23 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@calimero-network/mero-react@10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@calimero-network/mero-js@26.11.0':
     dependencies:
-      '@calimero-network/mero-js': 26.11.0
+      '@phala/dcap-qvl': 0.5.3
+    transitivePeerDependencies:
+      - encoding
+
+  '@calimero-network/mero-react@1.0.0-rc.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@calimero-network/mero-js': 1.0.0-rc.32
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
       - encoding
 
-  '@calimero-network/mero-react@11.9.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@calimero-network/mero-react@10.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@calimero-network/mero-js': 36.0.0
+      '@calimero-network/mero-js': 26.11.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:

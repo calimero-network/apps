@@ -380,7 +380,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
   // Since core#5193 (1.0.0-rc.32) there are no personal organizations: an
   // instance naming no `org` goes to its creator's only organization (here,
   // the one B joins). A's own app asks for an organization of its own with
-  // `newOrg`, which mero-js 36 does not type yet but sends as a body field.
+  // `newOrg`.
   const own = await row(
     A,
     APPS,
@@ -388,7 +388,7 @@ export async function runMatrix(env: MatrixEnv): Promise<Row[]> {
     OK,
     () =>
       A.client.apps
-        .create({ name: `own-${tag}`, bundle: need(bundle, "a bundle"), newOrg: { name: `own-${tag}` } } as Parameters<typeof A.client.apps.create>[0])
+        .create({ name: `own-${tag}`, bundle: need(bundle, "a bundle"), newOrg: { name: `own-${tag}` } })
         .then((r) => r.appId),
     (a) => a,
   );
