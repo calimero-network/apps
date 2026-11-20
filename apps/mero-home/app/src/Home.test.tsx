@@ -401,7 +401,7 @@ describe("Moving apps and merging organizations", () => {
     fake.client.postConfirmed.mockImplementation(async (path: string, body: { toOrg: string }) => {
       const app = path.split("/")[1]!;
       moved.add(app);
-      return { appId: app, from: BETA, org: body.toOrg, access: { kind: "org" }, created: false, added: [], revokedInvites: 0 };
+      return { appId: app, from: BETA, org: body.toOrg, grants: [{ kind: "org" }], created: false, added: [], revokedInvites: 0 };
     });
     fake.client.appsReportAll.mockImplementation(async () => ({
       apps: [

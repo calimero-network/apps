@@ -13,12 +13,12 @@ instance whose access is that team:
 
 ```
 organization (workspace)
-├── team "general"  everyone → app instance, access { kind: 'team', team }
-└── team "founders" invite   → app instance, access { kind: 'team', team }
+├── team "general"  everyone → app instance, grants [{ kind: 'team', team }]
+└── team "founders" invite   → app instance, grants [{ kind: 'team', team }]
 ```
 
 1. `client.orgs.teamCreate({ org, name, join })` → `{ teamId }`
-2. `client.apps.create({ name, ...appTarget(source), org, access: { kind: 'team', team: teamId } })`
+2. `createApp(client, { name, ...appTarget(source), org, grants: [{ kind: 'team', team: teamId }] })` (`@calimero-apps/connect`)
 3. private only: `client.orgs.teamSetMember({ org, team: teamId, account }, { confirm: passkeyConfirm(passkey) })` per member
 
 `listAppInfos(client, { package })` (`client.apps.list`) lists only the rooms the caller reaches, so the room

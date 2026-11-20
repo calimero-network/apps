@@ -6,8 +6,8 @@
 // | the namespace's root group                  | the organization itself (group id = org id)                 |
 // | folder subgroup, Open / Restricted          | a **team**, `join: everyone` / `join: invite`               |
 // | subgroup metadata `{ name, data.color }`    | the team's `name` and `metadata.color`                      |
-// | the folder's docs context                   | an app instance with `access: team`, id in `metadata.docsApp` |
-// | the registry context                        | an org-access app instance, id in org `metadata.registryApp` |
+// | the folder's docs context                   | an app instance granted to the team (`grants: [team]`), id in `metadata.docsApp` |
+// | the registry context                        | an app instance granted to Docs' app team or the org, id in org `metadata.registryApp` |
 // | group role Admin / Member / ReadOnly        | org: owner+admin / member / guest; team row: lead / member / readOnly |
 // | capability bits (`MemberCapabilities`)      | the same bits (`ORG_CAPABILITIES`), org-wide or per team row |
 // | member metadata `{ name }`                  | org member metadata `{ name }`                              |
@@ -30,7 +30,7 @@
 //
 // Docs has its own **app team** in the org (core#4890), through
 // `@calimero-apps/connect`'s org-app module: a new workspace's team is open,
-// the registry instance uses team access on it, invites name it, and the
+// the registry instance is granted to it, invites name it, and the
 // workspace's member list is its people. Once an admin keeps the org's apps
 // apart in Calimero Home (`shared`), an invite gives Docs only, and Remove and
 // Leave take someone out of Docs, not out of the org. App teams (Docs' and
@@ -53,6 +53,7 @@ import {
   appPeople,
   appTarget,
   appTeamIdIn,
+  createApp,
   finishAppOrg,
   isAppOnly,
   leaveApp,
@@ -613,9 +614,9 @@ export class OrgAdmin {
   }
 
   /**
-   * The app instance for a folder (`access: team`) or a workspace's registry
-   * (`access: org`), recorded in the team's or org's metadata so every member
-   * finds the same one.
+   * The app instance for a folder (its one grant: the folder's team) or a
+   * workspace's registry (Docs' app team, else the organization), recorded in
+   * the team's or org's metadata so every member finds the same one.
    */
   async createContext(input: CreateContextInput): Promise<{ contextId: string }> {
     const { org, team } = await this.locate(input.groupId);
@@ -625,7 +626,7 @@ export class OrgAdmin {
     const access = team
       ? { kind: 'team' as const, team }
       : await orgWideAccess(this.client, org, this.source, this.passkey, PRODUCT_NAME);
-    const contextId = (await this.client.apps.create({ name, ...appTarget(this.source), org, access })).appId;
+    const contextId = (await createApp(this.client, { name, ...appTarget(this.source), org, grants: [access] })).appId;
     await this.setGroupMetadata(input.groupId, {
       data: { [team ? DOCS_APP_KEY : REGISTRY_APP_KEY]: contextId },
     });

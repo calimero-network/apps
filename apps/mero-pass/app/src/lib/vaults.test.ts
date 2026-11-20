@@ -88,7 +88,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     ),
     listApps: vi.fn(async () => apps),
     getApp: vi.fn(async (id: string) => ({
-      access: id === 'prod1' ? { kind: 'team', team: 't1' } : { kind: 'org' },
+      grants: id === 'prod1' ? [{ kind: 'team', team: 't1' }] : [{ kind: 'org' }],
     })),
     createOrg: vi.fn(async () => 'org9'),
     setCapabilities: vi.fn(async () => {}),
@@ -245,7 +245,7 @@ describe('teams and vaults on orgs and app instances', () => {
     expect(client.createTeam).toHaveBeenCalledWith('org1', 'Prod', 'invite');
     expect(client.createApp).toHaveBeenLastCalledWith('Prod', 'b', {
       org: 'org1',
-      access: { kind: 'team', team: 'team9' },
+      grants: [{ kind: 'team', team: 'team9' }],
     });
   });
 

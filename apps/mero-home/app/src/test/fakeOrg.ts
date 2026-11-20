@@ -187,7 +187,7 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
         appId: app,
         from: app.startsWith("beta") ? BETA : ORG,
         org: body.toOrg,
-        access: { kind: "org" },
+        grants: [{ kind: "org" }],
         created: false,
         added: body.bringMembers ? ["acct-dan"] : [],
         revokedInvites: 0,

@@ -19,12 +19,12 @@ Method names and argument names are camelCase, and arguments are a JSON object w
 
 - A workspace is an organization.
   Its name is the organization's name; members' display names are organization member metadata `{"name": "..."}`.
-- The workspace has exactly one registry: an app instance of package `com.calimero.mero-drive-docs` in the organization with the default (organization) access.
+- The workspace has exactly one registry: an app instance of package `com.calimero.mero-drive-docs` in the organization with the default grants (`[{"kind": "org"}]`: every member), or Docs' app team's grant where the organization has one.
   Its app id is kept in the organization's metadata as `registryApp`.
   Never create a second one: the web app would have to guess which is real.
 - A folder is a team of the organization; a subfolder is a team whose `parent` is the folder's team.
   An open folder is a team with `join: everyone`, a restricted folder one with `join: invite`.
-- Every folder has exactly one documents instance, created with access `{"kind": "team", "team": "<team id>"}`.
+- Every folder has exactly one documents instance, created with the grants `[{"kind": "team", "team": "<team id>"}]` (core 1.0.0-rc.33; the single `access` mode before it is refused).
   Its app id is kept in the team's metadata as `docsApp`, beside `color` (`#rrggbb`).
   One instance per folder, never one per document.
 - Folder roles are team rows: Manager is `lead`, Editor is `member`, Viewer is `readOnly`.
@@ -50,7 +50,7 @@ Method names and argument names are camelCase, and arguments are a JSON object w
 ### Create a folder
 
 1. Create a team with the folder's name, `join` set to `everyone` (open) or `invite` (restricted) and, for a subfolder, `parent` set to the parent folder's team.
-2. Create an app of the package in the organization with access `{"kind": "team", "team": "<team id>"}` and the folder's name.
+2. Create an app of the package in the organization with `grants` `[{"kind": "team", "team": "<team id>"}]` and the folder's name.
 3. Update the team's metadata to `{"docsApp": "<app id>", "color": "#3b82f6"}`.
 
 Nothing is written to the registry.
