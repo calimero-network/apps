@@ -6,7 +6,7 @@ set -euo pipefail
 mpk=${1:?usage: publish-bundle.sh <path.mpk>}
 : "${CALIMERO_API_KEY:?CALIMERO_API_KEY is not set}"
 : "${CALIMERO_REGISTRY_URL:?CALIMERO_REGISTRY_URL is not set}"
-api="${CALIMERO_REGISTRY_URL%/}/api/v2/bundles"
+api="${CALIMERO_REGISTRY_URL%/}/api/bundles"
 auth=(-H "Authorization: Bearer $CALIMERO_API_KEY")
 
 grant=$(curl --fail-with-body -sS -X POST "${auth[@]}" "$api/upload-url")

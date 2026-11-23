@@ -125,7 +125,7 @@ jobs:
           # would reset the lineage to the floor and sign BELOW what is already
           # out there. Only a well-formed answer is allowed to decide.
           if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
-              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+              "https://apps.calimero.network/api/bundles?package=$PACKAGE"); then
             echo "::error::could not reach the registry to resolve the next version"
             exit 1
           fi
@@ -171,7 +171,7 @@ jobs:
           # concurrent release landed) — either way, stop rather than fail deep in
           # the publish step after signing.
           code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
-            "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION" || echo "000")
+            "https://apps.calimero.network/api/bundles/$PACKAGE/$VERSION" || echo "000")
           case "$code" in
             404) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
             200) echo "::error::$PACKAGE $VERSION is already published — version resolution disagrees with the registry"; exit 1 ;;
@@ -344,7 +344,7 @@ jobs:
           # release instead, and only treat a well-formed empty list as a first
           # publish.
           if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
-              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+              "https://apps.calimero.network/api/bundles?package=$PACKAGE"); then
             echo "::error::could not reach the registry to verify the signer — refusing to publish blind"
             exit 1
           fi
