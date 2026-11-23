@@ -36,7 +36,7 @@ subprojects {
 // Calls the Calimero SDK deprecates fail the build.
 // ---------------------------------------------------------------------------
 //
-// kotlin-sdk 0.4 deprecates the CalimeroClient methods its generated facade replaces
+// The Kotlin SDK deprecates the CalimeroClient methods its generated facade replaces
 // (`client.orgs`, `client.apps`, `client.consent`, ...), and 1.0 removes them. A call to one fails
 // this app's Kotlin compiles, main and tests, so none come back. Kotlin 2.0 cannot raise one
 // warning to an error (`-Xwarning-level` arrives in Kotlin 2.2), and `allWarningsAsErrors` would

@@ -12,9 +12,9 @@ let package = Package(
         .library(name: "MerrariaCore", targets: ["MerrariaCore"]),
     ],
     dependencies: [
-        // swift-sdk v4.1.0 (Calimero 1.0). Keep it equal to the exactVersion
-        // in ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
+        // MeroKit from a calimero-network/core release (Calimero 1.0). Keep it equal to the
+        // exactVersion in ../project.yml.
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.35"),
     ],
     targets: [
         // Sources/MerrariaCore/Generated/MerrariaClient.swift is generated from the component ABI
@@ -22,14 +22,14 @@ let package = Package(
         // method lists in Contract/MerrariaContract.swift against it.
         .target(
             name: "MerrariaCore",
-            dependencies: [.product(name: "MeroKit", package: "swift-sdk")]
+            dependencies: [.product(name: "MeroKit", package: "core")]
         ),
         .testTarget(
             name: "MerrariaCoreTests",
             dependencies: [
                 "MerrariaCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]
         ),
     ]

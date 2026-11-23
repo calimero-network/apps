@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// An invitation link: swift-sdk's ``OrgInvitation``, the payload every Calimero 1.0 app shares,
+/// An invitation link: MeroKit's ``OrgInvitation``, the payload every Calimero 1.0 app shares,
 /// so a link minted here opens in any client of the package. (Kotlin `ModelsInvitation`.)
 ///
 /// - payload: `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`

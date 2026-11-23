@@ -130,7 +130,7 @@ final class InvitationTests: XCTestCase {
         XCTAssertEqual(PixartFormat.errorText(LoginRequired("expired")), "Your session ended. Sign in again.")
     }
 
-    /// The link payload (swift-sdk's `OrgInvitation`) for an org invite token.
+    /// The link payload (MeroKit's `OrgInvitation`) for an org invite token.
     static let payloadJSON = #"{"invitation":"inv_abc","namespaceId":"aaaa","name":"Studio"}"#
 
     func testTheLinkPayloadParses() throws {

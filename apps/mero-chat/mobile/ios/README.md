@@ -3,7 +3,7 @@
 A native SwiftUI client for [Mero Chat](../../) on the same contract as the web
 app (`com.calimero.chat`, the component ABI in
 [`logic/res/abi.json`](../../logic/res/abi.json), web port #730), built on
-[MeroKit / MeroKitUI](https://github.com/calimero-network/swift-sdk).
+[MeroKit / MeroKitUI](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift).
 
 ## On Calimero 1.0
 
@@ -69,7 +69,7 @@ stable `index`, with `get_messages_from(start)` filling any gap after a burst.
 `https://links.calimero.network/com.calimero.chat/join?invitation=<token>`, the
 token being `base58(deflate(json))` of
 `{"invitation":"inv_…","namespaceId":"…","name":"…"}` (the SDK's
-`OrgInvitation`, the same payload kotlin-sdk writes). The invite token
+`OrgInvitation`, the same payload mero-kotlin writes). The invite token
 is a bearer secret: anyone with the link can join until it expires. The web
 app's own link (`https://<its origin>/?invite=inv_…`) and a bare `inv_…` token
 open too: the node names the org when the token is redeemed. Pre-1.0 links
@@ -176,20 +176,19 @@ this.
 
 ### The SDK pin
 
-`project.yml` pins the package to the swift-sdk's `v0.6.0` release (its
-Calimero 1.0 client, at core `1.0.0-rc.10` parity: the two-prompt sign-up,
-sign-up policy and invites, package origins).
+`project.yml` pins MeroKit to a commit (`revision:`) that carries
+`MeroClient.servedPageConsent`. It moves to the Swift SDK published from
+calimero-network/core with the next core release, in the same form as the other apps:
 
 ```yaml
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.6.0
+    url: https://github.com/calimero-network/core
+    exactVersion: <core release>
 ```
 
-To bump it, change `exactVersion`, run `xcodegen generate`, and let Xcode
-re-resolve packages (File → Packages → Reset Package Caches if it holds on to
-the old one).
+After a change, run `xcodegen generate` and let Xcode re-resolve packages
+(File → Packages → Reset Package Caches if it holds on to the old one).
 
 ## Live tests (a real 1.0 node)
 

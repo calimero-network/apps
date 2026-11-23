@@ -1,8 +1,9 @@
 # Native iOS Battleships (apps/battleships/mobile/ios): test the logic package
-# (BattleshipsCore: generated clients, commit-reveal, view models) with
-# `swift test` on macOS, then generate the Xcode project from project.yml and
-# build the app for the iOS Simulator. The swift-sdk is resolved from GitHub at
-# the revision project.yml and BattleshipsCore/Package.swift pin.
+# (BattleshipsCore: generated clients, commit-reveal, view models) with `swift
+# test` on macOS, then generate the Xcode project from project.yml and build the
+# app for the iOS Simulator. The Swift SDK is resolved from
+# calimero-network/core at the revision project.yml and
+# BattleshipsCore/Package.swift pin.
 name: Battleships iOS
 
 on:
@@ -50,7 +51,7 @@ jobs:
         run: xcodegen generate
 
       # Pick an available iPhone simulator by name (image-agnostic), as the
-      # swift-sdk's own UI workflow does.
+      # Swift SDK's own UI workflow does.
       - name: Pick a simulator
         id: sim
         run: |

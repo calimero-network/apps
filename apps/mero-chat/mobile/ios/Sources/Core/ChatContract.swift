@@ -12,9 +12,9 @@ protocol ChatContract: Sendable {
     func execute(contextId: String, method: String, args: JSONValue) async throws -> JSONValue?
 }
 
-/// ``ChatContract`` over the swift-sdk's `ContextContract`: on 1.0
-/// `CloudContextContract`, so `query` is `POST /apps/{app}/views` and
-/// `execute` is `POST /apps/{app}/intents`, both over the sealed channel.
+/// ``ChatContract`` over MeroKit's `ContextContract`: on 1.0
+/// `CloudContextContract`, so `query` is `POST /apps/{app}/views` and `execute`
+/// is `POST /apps/{app}/intents`, both over the sealed channel.
 struct AppChatContract: ChatContract {
     let inner: any ContextContract
 

@@ -7,14 +7,14 @@ engine** (`../app/src/game`, unchanged) running in a WebView, bundled into the a
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/KombatCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI + WKWebView, iOS 16+, XcodeGen | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release, in `ios/project.yml` and `ios/KombatCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3 + WebView, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Maven Central), `meroSdk` in `android/gradle/libs.versions.toml` |
 | Game page | `web/` | TypeScript, built with the web app's Vite | the web app's engine, imported as is |
 
 **Both apps run on Calimero 1.0** and call the contract's component ABI (`../logic/res/abi.json`
-after apps#711). The SDK pins are releases: swift-sdk `v0.5.0` and kotlin-sdk `0.4.0`.
+after apps#711). The SDK pins are releases: mero-swift (core's release) and mero-kotlin (core's release, Maven Central).
 Bumping is one line per platform (iOS: both `exactVersion` / `exact:` values; Android:
-`kotlin-sdk.ref`, the new tag's commit).
+`meroSdk` in `gradle/libs.versions.toml`.
 
 ## Calimero 1.0
 
@@ -131,7 +131,6 @@ swift test --package-path KombatCore           # bridge, pad mapping, view model
 brew install xcodegen && xcodegen generate && open MeroKombat.xcodeproj
 
 cd ../android
-./scripts/fetch-sdk.sh                         # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

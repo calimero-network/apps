@@ -1,9 +1,8 @@
 # The native Android Mero PixArt app (apps/mero-pixart/mobile/android).
 #
-# Mirrors the Calimero Kotlin SDK's own CI (kotlin-sdk/.github/workflows/ci.yml): ktlint + detekt,
-# JVM unit tests, Android Lint, assembleDebug. The SDK is not on a registry yet, so the app builds
-# it from source: scripts/fetch-sdk.sh checks out the commit pinned in kotlin-sdk.ref and
-# settings.gradle.kts includes it as a composite build.
+# Mirrors the Calimero Kotlin SDK's own CI (sdk-mero-kotlin.yml in calimero-network/core): ktlint
+# + detekt, JVM unit tests, Android Lint, assembleDebug. The SDK (network.calimero:mero-kotlin)
+# comes from Maven Central at the version in gradle/libs.versions.toml.
 
 name: Mero PixArt Android
 
@@ -43,12 +42,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Before the SDK checkout below, which carries a wrapper of its own.
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
-      - name: Fetch the pinned Kotlin SDK
-        run: ./scripts/fetch-sdk.sh
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

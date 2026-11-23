@@ -6,11 +6,11 @@ copy, icons (SF Symbols / Material, mapped) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (Calimero 1.0) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Calimero 1.0) |
 
-**SDK pins.** Both pin the SDKs' Calimero 1.0 releases: `ios/Core/Package.swift` and
-`ios/project.yml`, `android/kotlin-sdk.ref` (the release tag's commit).
+**SDK pins.** Both pin the SDKs' Calimero 1.0 releases: `ios/UpdatesCore/Package.swift` and
+`ios/project.yml`, `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## How the apps reach Calimero
 
@@ -48,7 +48,7 @@ anything.
 `app/src/lib/updatesClient.ts` does, through `UpdatesClient`, generated from it by core's
 `meroctl app codegen`: camelCase methods and arguments, an unset parameter left out, the
 `u64` argument `since` as a decimal string. The screens keep the v1 types (snake_case fields,
-numbers), and `ComponentWire` (iOS `Core/Sources/UpdatesCore/ComponentWire.swift`, Android
+numbers), and `ComponentWire` (iOS `UpdatesCore/Sources/UpdatesCore/ComponentWire.swift`, Android
 `core/ComponentWire.kt`) converts between them and the client's JSON:
 
 - out: a record argument's keys become camelCase (`UpdateInput {category_id}` → `{categoryId}`);
@@ -125,7 +125,7 @@ plain text, as on the web.
 
 ## The contract client
 
-`UpdatesClient` (`ios/Core/Sources/UpdatesCore/Generated/UpdatesClient.swift`,
+`UpdatesClient` (`ios/UpdatesCore/Sources/UpdatesCore/Generated/UpdatesClient.swift`,
 `android/app/src/main/kotlin/network/calimero/updates/generated/client/UpdatesClient.kt`) is
 generated from `../logic/res/abi.json`: run `scripts/mobile-codegen.sh` at the repo root after a
 contract change and update `ComponentWire`'s method table and the wire tests (CI's `Mobile clients`

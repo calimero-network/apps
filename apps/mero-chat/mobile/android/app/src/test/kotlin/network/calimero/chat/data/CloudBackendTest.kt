@@ -19,9 +19,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The chat layer over kotlin-sdk's app backend, through the generated `ChatClient` and the component
- * ABI's wire (`logic/res/abi.json`), as the web's `meroChat.ts` sends and reads it. (Swift
- * `CloudBackendTests`, `ComponentChatContractTests`.)
+ * The chat layer over mero-kotlin's app backend, through the generated `ChatClient` and the
+ * component ABI's wire (`logic/res/abi.json`), as the web's `meroChat.ts` sends and reads it.
+ * (Swift `CloudBackendTests`, `ComponentChatContractTests`.)
  */
 class CloudBackendTest {
     private val org = "aa".repeat(32)

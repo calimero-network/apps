@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// A workspace invitation on Calimero 1.0: an org invite token in the
-/// swift-sdk's link payload (`OrgInvitation`, shared with kotlin-sdk):
+/// A workspace invitation on Calimero 1.0: an org invite token in MeroKit's link payload
+/// (`OrgInvitation`, shared with the Kotlin SDK):
 ///
 /// - payload: JSON `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?: "…", "name"?: "<workspace>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)

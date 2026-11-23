@@ -22,7 +22,7 @@ data class TeamInvitation(
 
 /**
  * Team invitations on Calimero 1.0: an org invite token in the SDK's link payload ([OrgInvitation],
- * shared with swift-sdk and the iOS app), the team's name in its `name`:
+ * shared with the Swift SDK and the iOS app), the team's name in its `name`:
  *
  * - payload `{"invitation": "inv_…", "namespaceId": "<org>", "contextId"?: "…", "name"?: "<team>"}`,
  * - token `base58(deflate(payload))` ([InviteCodec]),

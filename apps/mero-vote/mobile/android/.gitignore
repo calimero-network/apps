@@ -1,6 +1,3 @@
-# The kotlin-sdk checkout scripts/fetch-sdk.sh makes (pinned by kotlin-sdk.ref).
-.sdk/
-
 .gradle/
 .kotlin/
 build/

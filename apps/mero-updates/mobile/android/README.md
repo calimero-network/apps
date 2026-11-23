@@ -9,7 +9,6 @@ no node; see [`../README.md`](../README.md) for the 1.0 model.
 ## Build
 
 ```bash
-./scripts/fetch-sdk.sh          # kotlin-sdk at the SHA in kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lintDebug assembleDebug
 ```
 
@@ -23,9 +22,9 @@ consent page returns to `mero-updates://consent`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `4.0.0` by its release commit (the Calimero 1.0 release: `CalimeroClient`, `MeroAppSession`, `CalimeroAppBackend`,
-mero-testkit's `InMemoryAppBackend`). For a new release, set it to that tag's commit.
-`settings.gradle.kts` includes the checkout as a composite build.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.
 
 ## Layout
 

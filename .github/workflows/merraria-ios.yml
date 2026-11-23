@@ -1,8 +1,8 @@
 # Native iOS Merraria (apps/merraria/mobile/ios): test the non-UI layer (MerrariaCore, a local
 # SwiftPM package: generated contract client, world list, game bridge, touch mapping, bundled-game
-# check) on macOS, then generate
-# the Xcode project from project.yml and build the app for the iOS Simulator. The swift-sdk is
-# resolved from GitHub at the revision project.yml and MerrariaCore/Package.swift pin.
+# check) on macOS, then generate the Xcode project from project.yml and build the app for the iOS
+# Simulator. The Swift SDK is resolved from calimero-network/core at the revision project.yml and
+# MerrariaCore/Package.swift pin.
 name: Merraria iOS
 
 on:

@@ -157,7 +157,7 @@ class ModelTest {
             assertEquals("a", (model.image.value as FakeRaster).label)
         }
 
-    /** The link payload (kotlin-sdk's `OrgInvitation`) for an org invite token. */
+    /** The link payload (mero-kotlin's `OrgInvitation`) for an org invite token. */
     private val payloadJson = """{"invitation":"inv_abc","namespaceId":"aaaa","name":"Studio"}"""
 
     @Test

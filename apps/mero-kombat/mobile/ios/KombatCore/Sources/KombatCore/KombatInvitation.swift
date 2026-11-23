@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// An invitation to one arena: swift-sdk's ``OrgInvitation`` (the link payload every Calimero 1.0
-/// app shares):
+/// An invitation to one arena: MeroKit's ``OrgInvitation`` (the link payload every Calimero 1.0 app
+/// shares):
 ///
 /// - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId": "…"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)

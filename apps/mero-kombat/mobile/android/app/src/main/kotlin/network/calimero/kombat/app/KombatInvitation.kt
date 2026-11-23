@@ -5,8 +5,8 @@ import com.calimero.mero.invite.InviteCodec
 import com.calimero.mero.invite.InviteLink
 
 /**
- * An invitation to one arena: kotlin-sdk's [OrgInvitation] (the link payload every Calimero 1.0 app
- * shares):
+ * An invitation to one arena: mero-kotlin's [OrgInvitation] (the link payload every Calimero 1.0
+ * app shares):
  *
  * - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId": "…"}`
  * - token: `base58(deflate(payload))` ([InviteCodec])

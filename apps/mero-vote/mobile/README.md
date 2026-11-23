@@ -7,12 +7,12 @@ web client does.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | swift-sdk `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | kotlin-sdk `0.4.0`, composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | mero-swift (core's release) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | mero-kotlin (core's release, Maven Central) |
 
 Both pins are SDK releases. To bump them, change `exactVersion:` in `ios/project.yml` and `exact:` in
 `ios/VoteCore/Package.swift` to the new release (and refresh `ios/VoteCore/Package.resolved`), and set
-`android/kotlin-sdk.ref` to the new kotlin-sdk tag's commit.
+`meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## How the apps reach Calimero
 
@@ -182,7 +182,6 @@ Android:
 
 ```sh
 cd android
-./scripts/fetch-sdk.sh                   # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

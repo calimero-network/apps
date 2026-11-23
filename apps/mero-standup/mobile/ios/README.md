@@ -4,7 +4,7 @@ SwiftUI, iOS 16+. See [../README.md](../README.md) for what the app does. This i
 on **Calimero 1.0** (below), as does its Android twin (`../android`).
 
 ```
-Core/                          local Swift package StandupCore (no UI): `swift test` on macOS
+StandupCore/                          local Swift package StandupCore (no UI): `swift test` on macOS
   Sources/StandupCore/
     StandupTypes.swift             the contract's answer types; Generated/StandupClient.swift is the client
     Days, People, Drafts, Digest, RichText, StandupInvitation, Support
@@ -18,7 +18,7 @@ project.yml                    XcodeGen spec (the .xcodeproj is not committed)
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it over
 the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
-verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
+verified). MeroKit's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ to `mero-standup://consent`.
 
 ### The contract client
 
-`Core/Sources/StandupCore/Generated/StandupClient.swift` is generated from the component contract's
+`StandupCore/Sources/StandupCore/Generated/StandupClient.swift` is generated from the component contract's
 ABI (`scripts/mobile-codegen.sh` at the repo root); `StandupTypes.swift` keeps the answer types it
 answers as JSON until the logic derives `AbiType`, the twin of the web app's `app/src/standup.ts`
 and Android's `contract/StandupContract.kt`: camelCase
@@ -78,8 +78,8 @@ open MeroStandup.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `v4.1.0` (`exactVersion` / `exact:`), its
-Calimero 1.0 release. Bump both together.
+`project.yml` and `StandupCore/Package.swift` pin the Swift SDK (MeroKit) to a calimero-network/core
+release (`exactVersion` / `exact:`). Bump both together.
 
 ## Configuration
 

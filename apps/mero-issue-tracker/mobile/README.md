@@ -7,11 +7,11 @@ Symbols, mapped one to one) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `0.4.0` (not on Maven Central) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) from core's release |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) from core's release (Maven Central) |
 
-The pins are the SDKs' Calimero 1.0 releases (`ios/project.yml`, `ios/Core/Package.swift`,
-`ios/Core/Package.resolved`, `android/kotlin-sdk.ref`).
+The pins are the SDKs' Calimero 1.0 releases (`ios/project.yml`, `ios/IssueTrackerCore/Package.swift`,
+`ios/IssueTrackerCore/Package.resolved`, `meroSdk` in `android/gradle/libs.versions.toml`).
 
 ## On Calimero 1.0
 
@@ -39,7 +39,7 @@ web app's `app/src/tracker.ts` does:
 
 The typed clients are generated from `../logic/res/abi.json` by core's `meroctl app codegen`
 (`scripts/mobile-codegen.sh` at the repo root; CI's `Mobile clients` workflow fails on a stale one):
-`ios/Core/Sources/IssueTrackerCore/Generated/IssueTrackerClient.swift` and
+`ios/IssueTrackerCore/Sources/IssueTrackerCore/Generated/IssueTrackerClient.swift` and
 `android/app/src/main/kotlin/network/calimero/issues/generated/IssueTrackerClient.kt`. Until the
 logic derives `AbiType`, the ABI names the answer types without their shape, so the client answers
 their JSON and `Contract/IssueTrackerContract.swift` / `contract/IssueTrackerContract.kt` read it,

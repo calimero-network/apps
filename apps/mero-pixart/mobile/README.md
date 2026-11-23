@@ -6,11 +6,11 @@ and the matching Material icons) and behaviour.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`. **Calimero 1.0.** |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (Calimero 1.0), composite build from `android/kotlin-sdk.ref`. **Calimero 1.0.** |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release. **Calimero 1.0.** |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Calimero 1.0), `meroSdk` in `android/gradle/libs.versions.toml`. **Calimero 1.0.** |
 
 **Both apps run on Calimero 1.0**, with the same screens and flows. On iOS the pin lives in `ios/project.yml` and `ios/PixartCore/Package.swift` (keep them
-equal); on Android, `android/kotlin-sdk.ref`.
+equal); on Android, `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## Calimero 1.0
 
@@ -31,7 +31,7 @@ equal); on Android, `android/kotlin-sdk.ref`.
 - **Words**: a PixArt team is a Calimero **organization**; a project is one of its Calimero
   **teams**, holding one **app instance** of `com.calimero.mero-pixart`.
 - **Invitations** are org invite tokens (`POST /orgs/{org}/invites`, redeemed with
-  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is swift-sdk's
+  `POST /invites/{token}/redeem`). The link keeps its URL; its payload is MeroKit's
   `OrgInvitation`, `{"invitation": "inv_…", "namespaceId": "<team>", "name": "<team name>"}`, the
   shape every 1.0 client of the package reads (iOS, Android and the ported web app). Pre-1.0 signed
   invitations are refused. Minting one is a passkey step-up (on Android the Activity's
@@ -135,7 +135,6 @@ Android (JDK 17, Android SDK 34):
 
 ```bash
 cd android
-./scripts/fetch-sdk.sh                 # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

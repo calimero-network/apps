@@ -14,25 +14,25 @@ let package = Package(
         .library(name: "DocsCore", targets: ["DocsCore"]),
     ],
     dependencies: [
-        // swift-sdk release v4.1.0 (Calimero 1.0).
-        // Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
+        // MeroKit from a calimero-network/core release (Calimero 1.0). Keep it equal to
+        // ../project.yml.
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.35"),
     ],
     targets: [
         .target(
             name: "DocsCore",
             dependencies: [
-                .product(name: "MeroKit", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
                 // `CalimeroAppBackend`: folders are read from the org snapshot (`DocsDirectory`).
-                .product(name: "MeroKitUI", package: "swift-sdk"),
+                .product(name: "MeroKitUI", package: "core"),
             ]
         ),
         .testTarget(
             name: "DocsCoreTests",
             dependencies: [
                 "DocsCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]
         ),
     ]

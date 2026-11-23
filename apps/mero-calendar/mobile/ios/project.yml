@@ -4,11 +4,11 @@
 #   xcodegen generate          # writes MeroCalendar.xcodeproj (not committed)
 #   open MeroCalendar.xcodeproj
 #
-# Everything that is not SwiftUI (the generated contract client, the calendar
-# layer and the view models) is the local package in Core/, which `swift test`
-# checks on macOS. The swift-sdk is pinned to its v4.1.0 release
-# (`exactVersion`). Keep it equal to the one in Core/Package.swift (and
-# Core/Package.resolved).
+# Everything that is not SwiftUI (the generated contract client, the calendar layer and the
+# view models) is the local package in CalendarCore/, which `swift test` checks on macOS. The
+# Swift SDK (MeroKit, from calimero-network/core) is pinned to a core release
+# (`exactVersion`). Keep it equal to the one in CalendarCore/Package.swift (and
+# CalendarCore/Package.resolved).
 name: MeroCalendar
 
 options:
@@ -19,10 +19,10 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   CalendarCore:
-    path: Core
+    path: CalendarCore
 
 targets:
   MeroCalendar:

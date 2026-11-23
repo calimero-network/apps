@@ -7,11 +7,11 @@ Material Symbols on Android).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/Core` | swift-sdk `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | `android/` | Compose + Material3, minSdk 26 | kotlin-sdk `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build |
+| iOS | `ios/` | SwiftUI, iOS 16+; non-UI code in the local package `ios/CrmCore` | mero-swift `MeroKit` + `MeroKitUI` from core's release |
+| Android | `android/` | Compose + Material3, minSdk 26 | mero-kotlin `mero-core` + `mero-compose` from core's release (Maven Central) |
 
 **The SDK pins** are set in `ios/project.yml` and
-`ios/Core/Package.swift` (keep them equal), and `android/kotlin-sdk.ref`.
+`ios/CrmCore/Package.swift` (keep them equal), and `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## How the apps reach Calimero
 
@@ -50,7 +50,7 @@ and arguments in camelCase (`createDeal`, `dealId`, `expectedClose`), every u64 
 both ways (`value`, `expectedClose`, `dueAt` in; `value`, `expected_close`, `due_at`, `created_at`
 … out), answers in v1's snake_case fields, and a refusal as `422 APP_ERROR {code, fields}`
 (`NotFound {what, id}`, `Invalid {message}`, `Forbidden {message}`). Both apps call it through
-`CrmClient` (iOS `ios/Core/Sources/CrmGenerated/CrmClient.swift`, Android
+`CrmClient` (iOS `ios/CrmCore/Sources/CrmGenerated/CrmClient.swift`, Android
 `android/.../generated/CrmClient.kt`) over `contract.bound(to: appId)`: views with `query`, calls
 with `execute`. The client keeps v1's Swift / Kotlin surface, so the view models did not change;
 `ContractSurfaceTests` / `ContractSurfaceTest` pin its method names, parameters and number
@@ -136,7 +136,6 @@ xcodebuild build -project MeroCRM.xcodeproj -scheme MeroCRM -destination 'generi
 
 # Android
 cd android
-./scripts/fetch-sdk.sh                  # kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
@@ -146,7 +145,7 @@ each path-filtered to its folder.
 
 ## The contract client
 
-`CrmClient` (Swift `ios/Core/Sources/CrmGenerated/`, Kotlin
+`CrmClient` (Swift `ios/CrmCore/Sources/CrmGenerated/`, Kotlin
 `android/.../crm/generated/client/`) is generated from `../logic/res/abi.json` by core's
 `meroctl app codegen`. After a contract change run `scripts/mobile-codegen.sh` at the repo root,
 commit, and update the method table in `ContractSurfaceTests` / `ContractSurfaceTest`; CI's

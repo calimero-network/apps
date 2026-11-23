@@ -11,12 +11,12 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (`android/kotlin-sdk.ref`) |
+| iOS | `ios/` | SwiftUI, iOS 16+, AVFoundation + VideoToolbox | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, CameraX + MediaCodec | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (`meroSdk` in `android/gradle/libs.versions.toml`) |
 
 **SDK pins.** Both pin their SDK's Calimero 1.0 release (iOS in
-`ios/Core/Package.swift` and `ios/project.yml`, Android in `android/kotlin-sdk.ref`, set to the
-release tag's commit).
+`ios/StreamCore/Package.swift` and `ios/project.yml`, Android in `meroSdk` in
+`android/gradle/libs.versions.toml`).
 
 ## Calimero 1.0
 
@@ -139,7 +139,6 @@ cd ios/Core && swift test
 cd ios && xcodegen generate && open MeroStream.xcodeproj
 
 # Android
-cd android && ./scripts/fetch-sdk.sh
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

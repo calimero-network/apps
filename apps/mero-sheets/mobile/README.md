@@ -8,11 +8,11 @@ change a single cell's value.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `v0.5.0` (Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `0.4.0` (Calimero 1.0) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI + Swift Charts, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) from core's release (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Compose + Material3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) from core's release (Calimero 1.0) |
 
 The pins are SDK releases; bump them together in
-`ios/project.yml` + `ios/Core/Package.swift` and `android/kotlin-sdk.ref`.
+`ios/project.yml` + `ios/SheetsCore/Package.swift` and `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## How the apps reach Calimero
 
@@ -140,7 +140,7 @@ Left out, and why:
 
 ## The contract clients
 
-The clients (`ios/Core/Sources/SheetsCore/Generated/SheetsClient.swift`,
+The clients (`ios/SheetsCore/Sources/SheetsCore/Generated/SheetsClient.swift`,
 `android/.../generated/client/SheetsClient.kt`) are generated from the component contract's ABI
 (`../logic/res/abi.json`) by core's `meroctl app codegen`: run `scripts/mobile-codegen.sh` at the
 repo root after a contract change (CI's `Mobile clients` workflow fails on a stale client). Method

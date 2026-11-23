@@ -10,8 +10,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 /**
- * An invitation to one world: kotlin-sdk's [OrgInvitation] (the link payload every Calimero 1.0 app
- * shares), plus the world's team when it has one:
+ * An invitation to one world: mero-kotlin's [OrgInvitation] (the link payload every Calimero 1.0
+ * app shares), plus the world's team when it has one:
  *
  * - payload: JSON `{"invitation": "inv_…", "namespaceId": "…", "contextId"?: "…", "name"?: "…", "groupId"?: "…"}`
  * - token: `base58(deflate(payload))` ([InviteCodec])

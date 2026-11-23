@@ -7,6 +7,6 @@ DerivedData/
 build/
 xcuserdata/
 .swiftpm/
-Core/.build/
+IssueTrackerCore/.build/
 *.xcresult
 xcodebuild*.log

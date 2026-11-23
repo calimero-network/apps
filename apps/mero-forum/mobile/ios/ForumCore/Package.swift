@@ -3,7 +3,7 @@
 // with `swift test` (no simulator): the typed contract client, the
 // invitation codec, formatting, and the view models the SwiftUI screens bind.
 //
-// The swift-sdk pin must match the one in ../project.yml (one version for both).
+// The MeroKit pin must match the one in ../project.yml (one version for both).
 import PackageDescription
 
 let package = Package(
@@ -16,23 +16,23 @@ let package = Package(
         .library(name: "ForumCore", targets: ["ForumCore"]),
     ],
     dependencies: [
-        // swift-sdk release v4.1.0 (Calimero 1.0).
+        // MeroKit from a calimero-network/core release (Calimero 1.0).
         .package(
-            url: "https://github.com/calimero-network/swift-sdk",
-            exact: "4.1.0"),
+            url: "https://github.com/calimero-network/core",
+            exact: "1.0.0-rc.35"),
     ],
     targets: [
         .target(
             name: "ForumCore",
             dependencies: [
-                .product(name: "MeroKit", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
             ]),
         .testTarget(
             name: "ForumCoreTests",
             dependencies: [
                 "ForumCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]),
     ]
 )

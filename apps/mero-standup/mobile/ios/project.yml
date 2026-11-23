@@ -4,11 +4,11 @@
 #   xcodegen generate          # writes MeroStandup.xcodeproj (not committed)
 #   open MeroStandup.xcodeproj
 #
-# Everything that is not a view (the generated contract client, the helpers and
-# the view models) is the local Swift package in Core/, tested with
-# `swift test` on macOS. The swift-sdk is pinned to its v4.1.0
-# release (Calimero 1.0); bump `exactVersion` for a new release. Keep it equal
-# to the version in Core/Package.swift.
+# Everything that is not a view (the generated contract client, the helpers and the view
+# models) is the local Swift package in StandupCore/, tested with `swift test` on macOS. The
+# Swift SDK (MeroKit, from calimero-network/core) is pinned to a core release (Calimero
+# 1.0); bump `exactVersion` for a new release. Keep it equal to the version in
+# StandupCore/Package.swift.
 name: MeroStandup
 
 options:
@@ -19,10 +19,10 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   StandupCore:
-    path: Core
+    path: StandupCore
 
 targets:
   MeroStandup:

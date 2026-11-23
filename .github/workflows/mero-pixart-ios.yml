@@ -1,7 +1,8 @@
 # Native iOS Mero PixArt (apps/mero-pixart/mobile/ios): test the PixartCore package
 # (generated client, compositor, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The swift-sdk is
-# resolved from GitHub at the revision project.yml and PixartCore/Package.swift pin.
+# project from project.yml and build the app for the iOS Simulator. The Swift SDK is
+# resolved from calimero-network/core at the revision project.yml and
+# PixartCore/Package.swift pin.
 name: Mero PixArt iOS
 
 on:

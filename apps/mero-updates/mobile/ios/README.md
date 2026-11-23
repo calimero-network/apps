@@ -4,7 +4,7 @@ SwiftUI, iOS 16+. See [../README.md](../README.md) for what the app does and how
 Calimero.
 
 ```
-Core/                          local Swift package UpdatesCore (no UI): `swift test` on macOS
+UpdatesCore/                          local Swift package UpdatesCore (no UI): `swift test` on macOS
   Sources/UpdatesCore/
     Generated/UpdatesClient.swift   generated from ../logic/res/abi.json — do not edit
     Format, Composer, UpdatesInvitation, Support     helpers ported from the web's lib/
@@ -26,7 +26,7 @@ open MeroUpdates.xcodeproj
 
 ## SDK pin
 
-`project.yml` and `Core/Package.swift` pin swift-sdk `v4.1.0`, its Calimero 1.0 release
+`project.yml` and `UpdatesCore/Package.swift` pin the Swift SDK (MeroKit) to a calimero-network/core release
 (`exactVersion` / `exact:`). Move both together when bumping to a newer release.
 
 ## Configuration

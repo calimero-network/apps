@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Writes each native app's typed contract client from its committed ABI
-# (`apps/<app>/logic/res/abi.json`) with core's `meroctl app codegen`:
-# `<Name>Client.swift` over swift-sdk's MeroKit for iOS, `<Name>Client.kt` over
-# kotlin-sdk's mero-core for Android. `--check` (CI: .github/workflows/mobile-clients.yml)
-# regenerates them and fails when a committed client differs or is missing.
+# (`apps/<app>/logic/res/abi.json`) with core's `meroctl app codegen`: `<Name>Client.swift`
+# over the Swift SDK's MeroKit for iOS, `<Name>Client.kt` over the Kotlin SDK's mero-core
+# for Android. `--check` (CI: .github/workflows/mobile-clients.yml) regenerates them and
+# fails when a committed client differs or is missing.
 #
 #   scripts/mobile-codegen.sh            # regenerate every client below
 #   scripts/mobile-codegen.sh --check    # regenerate, then fail on any difference
@@ -36,7 +36,7 @@ CLIENTS=(
   "mero-blocks|kotlin|apps/mero-blocks/mobile/android/app/src/main/kotlin/network/calimero/blocks/generated|blocks|network.calimero.blocks.generated"
   "battleships|swift|apps/battleships/mobile/ios/BattleshipsCore/Sources/BattleshipsCore/Generated|battleships|"
   "battleships|kotlin|apps/battleships/mobile/android/app/src/main/kotlin/network/calimero/battleships/generated|battleships|network.calimero.battleships.generated"
-  "mero-crm|swift|apps/mero-crm/mobile/ios/Core/Sources/CrmGenerated|crm|"
+  "mero-crm|swift|apps/mero-crm/mobile/ios/CrmCore/Sources/CrmGenerated|crm|"
   "mero-crm|kotlin|apps/mero-crm/mobile/android/app/src/main/kotlin/network/calimero/crm/generated/client|crm|network.calimero.crm.generated.client"
   "mero-design|swift|apps/mero-design/mobile/ios/DesignCore/Sources/DesignCore/Generated|design|"
   "mero-design|kotlin|apps/mero-design/mobile/android/app/src/main/kotlin/network/calimero/design/generated/client|design|network.calimero.design.generated.client"
@@ -48,21 +48,21 @@ CLIENTS=(
   "mero-pixart|kotlin|apps/mero-pixart/mobile/android/app/src/main/kotlin/network/calimero/pixart/generated/client|pixart|network.calimero.pixart.generated.client"
   "mero-sign|swift|apps/mero-sign/mobile/ios/SignCore/Sources/SignCore/Generated|sign|"
   "mero-sign|kotlin|apps/mero-sign/mobile/android/app/src/main/kotlin/network/calimero/sign/generated/client|sign|network.calimero.sign.generated.client"
-  "mero-updates|swift|apps/mero-updates/mobile/ios/Core/Sources/UpdatesCore/Generated|updates|"
+  "mero-updates|swift|apps/mero-updates/mobile/ios/UpdatesCore/Sources/UpdatesCore/Generated|updates|"
   "mero-updates|kotlin|apps/mero-updates/mobile/android/app/src/main/kotlin/network/calimero/updates/generated/client|updates|network.calimero.updates.generated.client"
   "mero-vote|swift|apps/mero-vote/mobile/ios/VoteCore/Sources/VoteCore/Generated|vote|"
   "mero-vote|kotlin|apps/mero-vote/mobile/android/app/src/main/kotlin/network/calimero/vote/generated/client|vote|network.calimero.vote.generated.client"
-  "mero-sheets|swift|apps/mero-sheets/mobile/ios/Core/Sources/SheetsCore/Generated|sheets|"
+  "mero-sheets|swift|apps/mero-sheets/mobile/ios/SheetsCore/Sources/SheetsCore/Generated|sheets|"
   "mero-sheets|kotlin|apps/mero-sheets/mobile/android/app/src/main/kotlin/network/calimero/sheets/generated/client|sheets|network.calimero.sheets.generated.client"
-  "mero-stream|swift|apps/mero-stream/mobile/ios/Core/Sources/StreamCore/Generated|stream|"
+  "mero-stream|swift|apps/mero-stream/mobile/ios/StreamCore/Sources/StreamCore/Generated|stream|"
   "mero-stream|kotlin|apps/mero-stream/mobile/android/app/src/main/kotlin/network/calimero/stream/generated|stream|network.calimero.stream.generated"
   "mero-forum|swift|apps/mero-forum/mobile/ios/ForumCore/Sources/ForumCore/Generated|forum|"
   "mero-forum|kotlin|apps/mero-forum/mobile/android/app/src/main/kotlin/network/calimero/forum/generated|forum|network.calimero.forum.generated"
-  "mero-issue-tracker|swift|apps/mero-issue-tracker/mobile/ios/Core/Sources/IssueTrackerCore/Generated|issue-tracker|"
+  "mero-issue-tracker|swift|apps/mero-issue-tracker/mobile/ios/IssueTrackerCore/Sources/IssueTrackerCore/Generated|issue-tracker|"
   "mero-issue-tracker|kotlin|apps/mero-issue-tracker/mobile/android/app/src/main/kotlin/network/calimero/issues/generated|issue-tracker|network.calimero.issues.generated"
-  "mero-standup|swift|apps/mero-standup/mobile/ios/Core/Sources/StandupCore/Generated|standup|"
+  "mero-standup|swift|apps/mero-standup/mobile/ios/StandupCore/Sources/StandupCore/Generated|standup|"
   "mero-standup|kotlin|apps/mero-standup/mobile/android/app/src/main/kotlin/network/calimero/standup/generated|standup|network.calimero.standup.generated"
-  "mero-calendar|swift|apps/mero-calendar/mobile/ios/Core/Sources/CalendarContract/Generated|calendar|"
+  "mero-calendar|swift|apps/mero-calendar/mobile/ios/CalendarCore/Sources/CalendarContract/Generated|calendar|"
   "mero-calendar|kotlin|apps/mero-calendar/mobile/android/app/src/main/kotlin/network/calimero/calendar/generated|calendar|network.calimero.calendar.generated"
   "mero-docs|swift|apps/mero-docs/mobile/ios/DocsCore/Sources/DocsCore/Generated|docs|"
   "mero-docs|kotlin|apps/mero-docs/mobile/android/app/src/main/kotlin/network/calimero/docs/generated|docs|network.calimero.docs.generated"

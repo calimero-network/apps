@@ -446,7 +446,7 @@ checking on any future one: merobox scenarios landing at a path CI never globs
 
 - [core](https://github.com/calimero-network/core) — the node (`merod`), the Rust SDK and `meroctl` (app build, pack, codegen, the local cluster); its docs are at [calimero-network.github.io/core](https://calimero-network.github.io/core/)
 - [mero-js](https://github.com/calimero-network/mero-js) — the JS/TS client (`CalimeroClient`); [mero-react](https://github.com/calimero-network/mero-react) only in the conformance app's 0.x rig
-- [swift-sdk](https://github.com/calimero-network/swift-sdk) · [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) — native mobile SDKs
+- [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) · [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) — native mobile SDKs
 - [design-system](https://github.com/calimero-network/design-system) — shared UI primitives
 - [app-registry](https://github.com/calimero-network/app-registry) — signed app distribution ([apps.calimero.network](https://apps.calimero.network/))
 

@@ -1,7 +1,8 @@
 # Native iOS Mero Models (apps/mero-models/mobile/ios): test the ModelsCore package
 # (generated client, invitation format, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The swift-sdk is
-# resolved from GitHub at the revision project.yml and ModelsCore/Package.swift pin.
+# project from project.yml and build the app for the iOS Simulator. The Swift SDK is
+# resolved from calimero-network/core at the revision project.yml and
+# ModelsCore/Package.swift pin.
 name: Mero Models iOS
 
 on:

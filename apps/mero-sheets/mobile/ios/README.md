@@ -5,7 +5,7 @@ SwiftUI, iOS 16+. See [`../README.md`](../README.md) for the screens, features a
 | Path | What |
 | --- | --- |
 | `project.yml` | XcodeGen spec (`MeroSheets.xcodeproj` is generated, not committed) |
-| `Core/` | SwiftPM package `SheetsCore`: the generated client, `WorkspaceModel`, `SpreadsheetModel`, the grid layout (row and column order, formula display, number formats), charts, invitations, and their tests |
+| `SheetsCore/` | SwiftPM package `SheetsCore`: the generated client, `WorkspaceModel`, `SpreadsheetModel`, the grid layout (row and column order, formula display, number formats), charts, invitations, and their tests |
 | `Sources/App/` | The SwiftUI app |
 
 ```bash
@@ -20,5 +20,5 @@ passkey needs the `webcredentials:<rp-id>` associated domain. The node's consent
 `mero-sheets://consent` (set `SheetsCallbackHost` for a verified https return); invitation links
 arrive on `calimero://com.calimero.mero-sheets/join?invitation=…`.
 
-The swift-sdk is pinned to its `v4.1.0` release (`exactVersion` / `exact:`) in `project.yml`, `Core/Package.swift` and
-`Core/Package.resolved`; keep them equal.
+The Swift SDK (MeroKit) is pinned to a calimero-network/core release (`exactVersion` / `exact:`) in `project.yml`, `SheetsCore/Package.swift` and
+`SheetsCore/Package.resolved`; keep them equal.

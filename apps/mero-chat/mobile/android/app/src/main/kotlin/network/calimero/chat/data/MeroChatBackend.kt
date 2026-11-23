@@ -11,8 +11,9 @@ import kotlinx.serialization.json.JsonObject
 import network.calimero.chat.generated.client.ChatClient
 
 /**
- * [ChatBackend] over kotlin-sdk's app layer ([MeroAppBackend]: in the app `CalimeroAppBackend` over a
- * `CalimeroClient`, in tests mero-testkit's `InMemoryAppBackend`). (Swift `CloudChatBackend`.)
+ * [ChatBackend] over mero-kotlin's app layer ([MeroAppBackend]: in the app `CalimeroAppBackend`
+ * over a `CalimeroClient`, in tests mero-testkit's `InMemoryAppBackend`). (Swift
+ * `CloudChatBackend`.)
  *
  * - contract calls: the generated [ChatClient] over the backend's contract, bound to the app
  *   instance (views and calls on `/apps/{app}`, sealed);

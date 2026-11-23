@@ -3,7 +3,7 @@
 // (no simulator): the typed contract client, the board and its commit-reveal, the invitation
 // codec and the view models the SwiftUI screens bind.
 //
-// The swift-sdk pin must match the one in ../project.yml (one version for both).
+// The MeroKit pin must match the one in ../project.yml (one version for both).
 import PackageDescription
 
 let package = Package(
@@ -16,24 +16,24 @@ let package = Package(
         .library(name: "BattleshipsCore", targets: ["BattleshipsCore"]),
     ],
     dependencies: [
-        // swift-sdk release v4.1.0 (Calimero 1.0).
-        // Keep it identical to ../project.yml.
+        // MeroKit from a calimero-network/core release (Calimero 1.0). Keep it identical to
+        // ../project.yml.
         .package(
-            url: "https://github.com/calimero-network/swift-sdk",
-            exact: "4.1.0"),
+            url: "https://github.com/calimero-network/core",
+            exact: "1.0.0-rc.35"),
     ],
     targets: [
         .target(
             name: "BattleshipsCore",
             dependencies: [
-                .product(name: "MeroKit", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
             ]),
         .testTarget(
             name: "BattleshipsCoreTests",
             dependencies: [
                 "BattleshipsCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]),
     ]
 )

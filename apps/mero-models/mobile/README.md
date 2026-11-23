@@ -7,14 +7,14 @@ same code.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (Calimero 1.0), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release (Calimero 1.0) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Calimero 1.0), `meroSdk` in `android/gradle/libs.versions.toml` |
 | Viewport | `viewer/` | three.js 0.185 + the web studio's drawing code, bundled into one local file | |
 
 **Both apps run on Calimero 1.0** and call the scene's component contract as `../logic/res/abi.json`
-declares it (the web port, #729). The SDKs are pinned to releases (swift-sdk
-v0.5.0, kotlin-sdk 0.4.0). On iOS the pin lives in `ios/project.yml` and
-`ios/ModelsCore/Package.swift` (keep them equal); on Android, `android/kotlin-sdk.ref`.
+declares it (the web port, #729). The SDKs are pinned to core
+releases (mero-swift and mero-kotlin). On iOS the pin lives in `ios/project.yml` and
+`ios/ModelsCore/Package.swift` (keep them equal); on Android, `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## Calimero 1.0
 
@@ -156,7 +156,6 @@ Android (JDK 17, Android SDK 34):
 
 ```bash
 cd android
-./scripts/fetch-sdk.sh                 # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
