@@ -15,6 +15,9 @@ vi.mock("./sessionContext", () => ({
   useSignedIn: () => ({ client: signedIn.client, after: afterRequest }),
 }));
 const afterRequest = () => {};
+// The safety-net poll ticks on the wall clock's 30s marks; one landing inside a
+// test would read as an extra re-read.
+vi.mock("./lib/visibleInterval", () => ({ visibleInterval: () => () => {} }));
 
 /** A stream whose events the test pushes, ended by its abort signal. */
 function eventStream() {
