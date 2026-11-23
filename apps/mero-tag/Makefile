@@ -1,5 +1,5 @@
 .PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
-        app-gen app-build app-run app-test test clean
+        web-build app-gen app-build app-run app-test test clean
 
 APP_DIR    := app/MeroTag
 XCODEPROJ  := $(APP_DIR)/MeroTag.xcodeproj
@@ -12,13 +12,16 @@ help:
 	@echo "  Mero Tag — make targets"
 	@echo ""
 	@echo "  Setup"
-	@echo "    setup        Check prereqs, install mero-component, bundle the contract"
-	@echo "    tools        Install mero-component (calimero-network/apps' component bundler)"
+	@echo "    setup        Check prereqs, install meroctl, bundle the contract"
+	@echo "    tools        Install meroctl (core's, at the release ci/core-version names)"
 	@echo ""
 	@echo "  Contract (Rust, a calimero:app component)"
 	@echo "    logic-build  Build logic/ → logic/res/mero_tag.wasm + logic/res/abi.json"
 	@echo "    logic-bundle Package the dev-signed .mpk a merod local cluster accepts"
 	@echo "    logic-test   cargo test (pure helpers + the TestApp harness on core's engine)"
+	@echo ""
+	@echo "  Served page (web/: the iOS app's Calimero Cloud sign-in)"
+	@echo "    web-build    Build web/dist, which the release bundle carries"
 	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
 	@echo "    app-gen      Generate MeroTag.xcodeproj from project.yml"
@@ -39,27 +42,34 @@ help:
 setup:
 	@bash scripts/setup.sh
 
-# `mero-component` builds the contract into a `calimero:app` component and packs
-# the signed .mpk, with core's own builder, bundle format and signer. It is the
-# apps repo's tool (tools/component-bundle); `cargo mero` went with SDK 0.12.
-APPS_REF ?= main
-
+# Core's `meroctl` builds the contract into a `calimero:app` component, writes
+# its ABI, and packs the signed .mpk, at the release ci/core-version names
+# (into ~/.local/bin; MEROCTL_ROOT=… for another place).
 tools:
-	cargo install --locked --git https://github.com/calimero-network/apps --branch $(APPS_REF) mero-component
+	scripts/install-meroctl.sh
 
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
-	mero-component build logic
+	mkdir -p logic/res
+	meroctl app build logic --out logic/res/mero_tag.wasm --target-dir "$(CURDIR)/logic/target"
+	meroctl app abi show logic/res/mero_tag.wasm > logic/res/abi.json
 
-# What a `merod local` cluster installs (`meroctl app install --path`). `--dev`
-# signs with the well-known development key, which the registry refuses by
-# design; `--app-version` is a placeholder, because the registry owns the
-# published number.
-logic-bundle:
-	mero-component bundle logic --dev --no-frontend --app-version 0.0.1 --output logic/dist/mero-tag-dev.mpk
+# What a `merod local` cluster installs (`meroctl app install --path`). Without
+# `--key` it signs with the well-known development key, which the registry
+# refuses by design; `--app-version` is a placeholder, because the registry owns
+# the published number. No served page: a development cluster signs in with a
+# soft passkey in the app itself.
+logic-bundle: logic-build
+	meroctl app pack logic --wasm logic/res/mero_tag.wasm --no-frontend --app-version 0.0.1 --out logic/dist/mero-tag-dev.mpk
 
 logic-test:
 	cd logic && cargo test
+
+# ── Served page ──────────────────────────────────────────────────────────────
+# web/dist, which the release bundle carries (`frontend-dir`). A release build
+# sets VITE_CALIMERO_MIN_RELEASE (see .github/workflows/deploy-bundle.yml).
+web-build:
+	cd web && npm ci --no-audit --no-fund && npm run build
 
 # ── iOS app ─────────────────────────────────────────────────────────────────────
 app-gen:
@@ -100,4 +110,4 @@ test: logic-test
 
 clean:
 	cd logic && rm -rf res target
-	rm -rf $(APP_DIR)/.build $(XCODEPROJ)
+	rm -rf web/dist $(APP_DIR)/.build $(XCODEPROJ)

@@ -8,15 +8,14 @@ options:
   createIntermediateGroups: true
 
 packages:
-  # The official Calimero Swift SDK (MeroKit + MeroKitUI), Calimero 1.0:
-  # `CalimeroClient` over the sealed channel (attestation, passkeys, app
-  # calls/views/events, orgs and invites, consent) and `MeroClient` for
-  # sign-in state. Pinned to the v0.6.0 release — never `master`. To build
-  # against a local checkout instead, swap `url`/`exactVersion` for
-  # `path: ../../../swift-sdk`, but never commit that.
-  MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 0.6.0
+  # The official Calimero Swift SDK (MeroKit + MeroKitUI), shipped from core
+  # and versioned with it: `CalimeroClient` over the sealed channel
+  # (attestation, passkeys, app calls/views/events, orgs, consent) and
+  # `MeroClient` for sign-in state. Pinned to the core release the contract
+  # is built against (logic/Cargo.toml), never a branch.
+  core:
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
 
 targets:
   MeroTag:
@@ -25,15 +24,16 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources
-    # Native passkeys on a production cluster: its relying party is
-    # `calimero.network`, which publishes this app in its
-    # apple-app-site-association (`webcredentials`). Device builds also need
-    # a signing team (DEVELOPMENT_TEAM below).
+    # Calimero Cloud sign-in runs on Mero Tag's served page in the system
+    # sign-in sheet, which returns to `mero-tag://signed-in`: no associated
+    # domains. A development cluster uses a software passkey.
     entitlements:
       path: MeroTag.entitlements
-      properties:
-        com.apple.developer.associated-domains:
-          - webcredentials:calimero.network
+    # DEVELOPMENT_TEAM (for device builds) comes from Config/Signing.xcconfig:
+    # empty by default, so simulator builds need none.
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     info:
       path: Info.plist
       properties:
@@ -50,11 +50,25 @@ targets:
         UIBackgroundModes:
           - location
           - fetch
-        # Invite deep links: merotag://join?invitation=…
         CFBundleURLTypes:
+          # Invite deep links: merotag://join?invitation=…
           - CFBundleURLName: network.calimero.merotag.join
             CFBundleURLSchemes:
               - merotag
+          # Mero Tag's served page returns here: the session after sign-in
+          # (`mero-tag://signed-in#…`), a passkey approval
+          # (`mero-tag://approved#…`) and the node's consent page decision
+          # (`mero-tag://consent?request_id=…`). The sign-in sheet intercepts
+          # it itself; registering it also lets `onOpenURL` see a return that
+          # arrives outside the sheet.
+          - CFBundleURLName: network.calimero.merotag.callback
+            CFBundleURLSchemes:
+              - mero-tag
+        # A Calimero Cloud cluster to sign in on. Empty: Mero Tag's primary
+        # cluster.
+        MeroTagCluster: ""
+        # The Mero Tag release new spaces run. Empty: the latest.
+        MeroTagPackageVersion: ""
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.merotag
@@ -65,12 +79,10 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5"
-        # Set your team here (or pass DEVELOPMENT_TEAM=XXXX to xcodebuild) for device builds.
-        # DEVELOPMENT_TEAM: ""
     dependencies:
-      - package: MeroKit
+      - package: core
         product: MeroKit
-      - package: MeroKit
+      - package: core
         product: MeroKitUI
 
   MeroTagTests:
@@ -83,9 +95,9 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: MeroTag
-      - package: MeroKit
+      - package: core
         product: MeroKit
-      - package: MeroKit
+      - package: core
         product: MeroKitUI
 
   MeroTagUITests:

@@ -19,23 +19,6 @@ final class SessionTests: XCTestCase {
         XCTAssertNil(app.account)
     }
 
-    func testSignInNeedsAnHttpsClusterAddress() async {
-        let app = makeApp()
-        await app.restore()
-        await app.signIn(clusterURL: "http://example.com")
-        XCTAssertEqual(app.phase, .signedOut)
-        XCTAssertNotNil(app.client.errorMessage)
-        XCTAssertNil(app.client.cloud, "nothing is contacted for an address that isn't https")
-    }
-
-    func testCreatingAnAccountNeedsAName() async {
-        let app = makeApp()
-        await app.restore()
-        await app.createAccount(clusterURL: "https://cluster.example.com", name: "  ")
-        XCTAssertEqual(app.client.errorMessage, "Enter your name for the new account.")
-        XCTAssertNil(app.client.cloud)
-    }
-
     func testClusterAddressesAreNormalised() {
         XCTAssertEqual(AppState.validURL("cluster.example.com/", allowHTTP: false), "https://cluster.example.com")
         XCTAssertEqual(AppState.validURL(" https://n1.example.com ", allowHTTP: false), "https://n1.example.com")
@@ -45,10 +28,32 @@ final class SessionTests: XCTestCase {
         XCTAssertNil(AppState.validURL("ftp://x", allowHTTP: true))
     }
 
-    func testTheConsentPageReturnsToAnOriginTheNodeAccepts() {
-        // The node refuses an app scheme; https (http only on localhost).
-        XCTAssertTrue(AppState.consentReturnTo(devCluster: false).hasPrefix("https://"))
-        XCTAssertTrue(AppState.consentReturnTo(devCluster: true).hasPrefix("http://localhost"))
+    func testTheServedPageReturnsToTheAppsOwnScheme() {
+        XCTAssertEqual(AppConfig.signInCallback.url, "mero-tag://signed-in")
+        XCTAssertEqual(AppConfig.approveCallback.url, "mero-tag://approved")
+        XCTAssertEqual(AppConfig.consentCallback.url, "mero-tag://consent")
+    }
+
+    func testAServedPageReturnIsNotTakenForAnInvite() async {
+        let app = makeApp()
+        await app.restore()
+        await app.handleOpenURL(URL(string: "mero-tag://consent?request_id=abc&result=approved")!)
+        XCTAssertNil(app.pendingInvite)
+        XCTAssertEqual(app.phase, .signedOut)
+    }
+
+    func testOnlyAnApprovedConsentGoesThrough() throws {
+        func result(_ status: String) throws -> ConsentResult {
+            try JSONDecoder().decode(
+                ConsentResult.self, from: Data(#"{"requestId":"r1","kind":"upgrade","status":"\#(status)"}"#.utf8))
+        }
+        XCTAssertThrowsError(try CloudSpaces.approved(try result("declined"))) { error in
+            XCTAssertEqual(error as? SpaceDirectoryError, .notApproved(declined: true))
+        }
+        XCTAssertThrowsError(try CloudSpaces.approved(try result("pending"))) { error in
+            XCTAssertEqual(error as? SpaceDirectoryError, .notApproved(declined: false))
+        }
+        XCTAssertEqual(try CloudSpaces.approved(try result("approved")).status, .approved)
     }
 
     func testANonInviteURLIsIgnored() async {

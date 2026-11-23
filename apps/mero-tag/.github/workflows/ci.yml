@@ -28,7 +28,7 @@ jobs:
         working-directory: logic
     steps:
       - uses: actions/checkout@v4
-      # logic/rust-toolchain.toml (core 1.0.0-rc.9's) picks the toolchain and
+      # logic/rust-toolchain.toml (core's) picks the toolchain and
       # adds wasm32-wasip2.
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
@@ -64,6 +64,25 @@ jobs:
           cache-dependency-path: landing/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  web:
+    name: Served page build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # Any floor: this checks the page builds with its client in it.
+      - run: npm run build
+        env:
+          VITE_CALIMERO_MIN_RELEASE: 0.0.0
 
   app:
     name: iOS app build

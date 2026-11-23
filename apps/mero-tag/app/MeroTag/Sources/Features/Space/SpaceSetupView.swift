@@ -110,7 +110,9 @@ struct SpaceSetupView: View {
                 if let invite {
                     Callout(
                         tone: .success, title: invite.spaceName.isEmpty ? "Invite recognised" : "Invite to \(invite.spaceName)",
-                        message: "You'll join its organization with your account, then the space opens.")
+                        message: app.isDevelopmentCluster
+                            ? "You'll join its organization with your account, then the space opens."
+                            : "You'll approve joining its organization on your cluster's page, then the space opens.")
                 } else if !inviteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Callout(tone: .warning, message: "That doesn't look like a Mero Tag invite link.")
                 }
@@ -142,6 +144,12 @@ struct SpaceSetupView: View {
                         kind: .secondary, action: create)
                         .disabled(spaceName.isEmpty || displayName.isEmpty || isBusy)
                         .accessibilityIdentifier("createSpaceButton")
+                if !app.isDevelopmentCluster {
+                    Text("You'll approve the new space's organization on your cluster's page.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Tag.textFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

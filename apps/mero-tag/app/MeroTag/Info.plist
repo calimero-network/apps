@@ -28,9 +28,21 @@
 				<string>merotag</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>network.calimero.merotag.callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mero-tag</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>MeroTagCluster</key>
+	<string></string>
+	<key>MeroTagPackageVersion</key>
+	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

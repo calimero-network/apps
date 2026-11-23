@@ -1,8 +1,7 @@
 import XCTest
 
-/// Sign-in UI tests. A fresh install lands on passkey sign-in with the
-/// cluster address; account creation and the development cluster sit behind
-/// their own links.
+/// Sign-in UI tests. A fresh install lands on passkey sign-in through Mero
+/// Tag's sign-in page; the development cluster sits behind its own link.
 final class MeroTagUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -13,7 +12,6 @@ final class MeroTagUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["appTitle"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["passkeySignInButton"].exists)
-        XCTAssertTrue(app.textFields["clusterURLField"].exists)
         XCTAssertEqual(app.secureTextFields.count, 0, "passkeys: there is no password field")
     }
 
@@ -26,15 +24,6 @@ final class MeroTagUITests: XCTestCase {
         XCTAssertTrue(app.textFields["nodeURLField"].exists)
         app.buttons["showSignIn"].tap()
         XCTAssertTrue(app.buttons["passkeySignInButton"].waitForExistence(timeout: 5))
-    }
-
-    func testCreateAccountAsksForAName() {
-        let app = XCUIApplication()
-        app.launch()
-        XCTAssertTrue(app.buttons["showCreateAccount"].waitForExistence(timeout: 10))
-        app.buttons["showCreateAccount"].tap()
-        XCTAssertTrue(app.textFields["accountNameField"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["createAccountButton"].exists)
     }
 
     /// Against a `merod local` cluster: `TEST_RUNNER_MEROTAG_DEV_NODE=http://localhost:2501
