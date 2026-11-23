@@ -107,7 +107,7 @@ catalog:
   # conformance 0.x rig (`apps/conformance/v0/app`, conformance.yml's nightly
   # `rig` job) and the rig's mero-react 10's own mero-js (the root
   # `pnpm.overrides`); it goes when the rig is retired.
-  "@calimero-network/mero-js": 26.11.0 # fleet-bump: hold
+  "@calimero-network/mero-js": 1.0.0-rc.35 # fleet-bump: hold
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -168,14 +168,14 @@ catalog:
   # no app used; 10.1.0 (#113) says when a link was already used or the person
   # was removed; 10.1.2 (#116) signs in an app Calimero Desktop opens, which
   # mero-js 26 otherwise refuses as a login this page did not begin.
-  "@calimero-network/mero-react": ^10.3.0 # fleet-bump: hold
+  "@calimero-network/mero-react": ^1.0.0-rc.35 # fleet-bump: hold
   # The design system, published from core (sdks/components/mero-design) at
   # core's version; it was @calimero-network/mero-ui up to 1.5.2.
-  "@calimero-network/mero-design": ^1.0.0-rc.33
+  "@calimero-network/mero-design": ^1.0.0-rc.35
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
   # it each pinned their own version.
-  "@calimero-network/mero-icons": ^1.0.0-rc.33
+  "@calimero-network/mero-icons": ^1.0.0-rc.35
   "@calimero-network/mero-platform": ^0.1.0
   "@calimero-network/mero-platform-react": ^0.1.0
   # abi-codegen 2.4.0 (mero-devtools-js#66): a generated client takes any
@@ -280,8 +280,8 @@ catalog:
 # depends on mero-js 1.0.0-rc.32 exactly.
 catalogs:
   component:
-    "@calimero-network/mero-js": 1.0.0-rc.33
-    "@calimero-network/mero-react": 1.0.0-rc.33
+    "@calimero-network/mero-js": 1.0.0-rc.35
+    "@calimero-network/mero-react": 1.0.0-rc.35
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
