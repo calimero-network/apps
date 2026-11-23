@@ -176,7 +176,6 @@ async function start(tabId: number): Promise<void> {
   await setStatus(() => ({ ...IDLE, phase: "starting" }));
   await write("session", KEYS.transcript, [] as Line[]);
   try {
-    const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
     await ensureOffscreen();
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
     const tier = resolveTier(s.tier, caps, s.language);
@@ -201,6 +200,21 @@ async function start(tabId: number): Promise<void> {
       tier,
       meeting: { id: meetingId, appId: workspace.appId, title, platform, startedAt: Date.now() },
     }));
+    // A tab's stream id lives only a few seconds and is used once: ask for it
+    // last, right before the offscreen page opens it.
+    let streamId: string;
+    try {
+      streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+    } catch (e) {
+      await log(`tab capture refused: ${describe(e)}`);
+      // No audio can come: drop the empty meeting rather than leave it behind.
+      await onNode((_c, app) => app.deleteMeeting({ meetingId }), workspace.appId).catch(() => undefined);
+      await queue.clear();
+      queue = null;
+      recordingTab = null;
+      throw e;
+    }
+    await log("tab stream id taken, capturing");
     await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
@@ -223,6 +237,22 @@ async function stop(): Promise<void> {
     await log(`stop: offscreen page did not answer: ${describe(e)}`);
     await finish(0);
   });
+}
+
+/**
+ * The tab could not be recorded: nothing was captured, so the meeting just made
+ * is deleted (not left empty in the list) and the popup shows why.
+ */
+async function abandon(message: string): Promise<void> {
+  const s = await status();
+  const meeting = s.meeting;
+  if (meeting) await onNode((_c, app) => app.deleteMeeting({ meetingId: meeting.id }), meeting.appId).catch(() => undefined);
+  const q = await currentQueue();
+  if (q) await q.clear();
+  queue = null;
+  recordingTab = null;
+  await closeOffscreen().catch(() => undefined);
+  await setStatus((st) => ({ ...st, phase: "error", error: message, meeting: null, link: null }));
 }
 
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
@@ -257,7 +287,7 @@ function finish(durationMs: number): Promise<void> {
       link,
       pending: q && !all ? q.pending : 0,
       uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",
-      error,
+      error: error ?? st.error,
     }));
   })().finally(() => {
     stopping = null;
@@ -309,8 +339,7 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
       await setStatus((s) => ({ ...s, notice: event.message }));
       return;
     case "captureError":
-      await setStatus((s) => ({ ...s, phase: "error", error: event.message }));
-      await finish(0);
+      await abandon(event.message);
       return;
     case "log":
       return;
