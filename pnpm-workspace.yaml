@@ -10,6 +10,7 @@
 
 packages:
   - "apps/*/app"
+  - "apps/*/extension"
   # The conformance app's 0.x rig page (mero-react), kept beside its 1.0
   # successor in apps/conformance/app until the 1.0 job replaces it.
   - "apps/conformance/v0/app"

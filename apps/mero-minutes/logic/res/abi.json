@@ -1,0 +1,563 @@
+{
+  "abiVersion": 1,
+  "errors": {
+    "Forbidden": {
+      "message": "string"
+    },
+    "Invalid": {
+      "message": "string"
+    },
+    "NotFound": {
+      "message": "string"
+    },
+    "Refused": {
+      "message": "string"
+    }
+  },
+  "events": {
+    "ActionChanged": {
+      "id": "string",
+      "meetingId": "string"
+    },
+    "MeetingChanged": {
+      "id": "string"
+    },
+    "TranscriptChanged": {
+      "from": "u32",
+      "meetingId": "string",
+      "to": "u32"
+    }
+  },
+  "methods": {
+    "addAction": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Adds an action item to a meeting and returns its id. Anyone who reaches the app.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "assignee",
+          "string"
+        ],
+        [
+          "sourceSeq",
+          "option<u32>"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "appendSegments": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Stores a batch of segments. Numbers already stored are skipped, so a\nbatch can be resent safely. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "segments",
+          "list<SegmentInput>"
+        ]
+      ],
+      "public": false,
+      "returns": "AppendResult"
+    },
+    "deleteMeeting": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Deletes a meeting, its action items and up to 1,000 of its segments,\nand returns how many segments remain. The meeting is gone from every\nlist at once; call again until `remaining` is 0. Its recorder or the\ninstance's owner.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "DeleteResult"
+    },
+    "editAction": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Rewrites an action item and who it is for. Anyone who reaches the app.",
+      "kind": "call",
+      "params": [
+        [
+          "actionId",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "assignee",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "ActionView"
+    },
+    "editSegment": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Corrects one segment's text. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "seq",
+          "u32"
+        ],
+        [
+          "text",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "SegmentView"
+    },
+    "endMeeting": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Ends the recording. `durationMs` is the length the extension measured.\nEnding an ended meeting changes nothing. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "durationMs",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
+    "getMeeting": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "One meeting.",
+      "kind": "view",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "kind": "init",
+      "params": [],
+      "public": false,
+      "returns": null
+    },
+    "listActions": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "A meeting's action items, oldest first.",
+      "kind": "view",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "list<ActionView>"
+    },
+    "listMeetings": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every meeting, newest first.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<MeetingView>"
+    },
+    "myAccount": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "The calling account.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "string"
+    },
+    "openActions": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every action item not yet done, across meetings, newest meeting first.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<ActionView>"
+    },
+    "removeAction": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Removes an action item. Its author, the meeting's recorder or the\ninstance's owner.",
+      "kind": "call",
+      "params": [
+        [
+          "actionId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "renameMeeting": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Renames a meeting. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
+    "setActionDone": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Ticks an action item off, or back on. Anyone who reaches the app.",
+      "kind": "call",
+      "params": [
+        [
+          "actionId",
+          "string"
+        ],
+        [
+          "done",
+          "bool"
+        ]
+      ],
+      "public": false,
+      "returns": "ActionView"
+    },
+    "setSummary": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Replaces a meeting's summary (free text, may be empty). The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "summary",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
+    "startMeeting": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Starts recording a meeting and returns its id. The caller is its recorder.",
+      "kind": "call",
+      "params": [
+        [
+          "title",
+          "string"
+        ],
+        [
+          "platform",
+          "string"
+        ],
+        [
+          "url",
+          "string"
+        ],
+        [
+          "model",
+          "string"
+        ],
+        [
+          "language",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "transcript": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Segments from number `fromSeq` on, in order, at most `limit` (1–500).",
+      "kind": "view",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "fromSeq",
+          "u32"
+        ],
+        [
+          "limit",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "TranscriptPage"
+    }
+  },
+  "state": {
+    "fields": {
+      "actions": "unorderedMap",
+      "byTime": "set",
+      "deleting": "set",
+      "meetingActions": "set",
+      "meetings": "unorderedMap",
+      "openActions": "set",
+      "segments": "unorderedMap"
+    },
+    "search": {
+      "actions": [],
+      "byTime": [],
+      "deleting": [],
+      "meetingActions": [],
+      "meetings": [],
+      "openActions": [],
+      "segments": []
+    },
+    "version": 1
+  },
+  "types": {
+    "ActionView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "assignee",
+          "string"
+        ],
+        [
+          "done",
+          "bool"
+        ],
+        [
+          "sourceSeq",
+          "option<u32>"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "AppendResult": {
+      "fields": [
+        [
+          "added",
+          "u32"
+        ],
+        [
+          "skipped",
+          "u32"
+        ],
+        [
+          "nextSeq",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "DeleteResult": {
+      "fields": [
+        [
+          "remaining",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MeetingView": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "platform",
+          "string"
+        ],
+        [
+          "url",
+          "string"
+        ],
+        [
+          "model",
+          "string"
+        ],
+        [
+          "language",
+          "string"
+        ],
+        [
+          "recorder",
+          "string"
+        ],
+        [
+          "startedAt",
+          "u64"
+        ],
+        [
+          "endedAt",
+          "u64"
+        ],
+        [
+          "durationMs",
+          "u32"
+        ],
+        [
+          "summary",
+          "string"
+        ],
+        [
+          "segments",
+          "u32"
+        ],
+        [
+          "words",
+          "u32"
+        ],
+        [
+          "nextSeq",
+          "u32"
+        ],
+        [
+          "live",
+          "bool"
+        ],
+        [
+          "openActions",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SegmentInput": {
+      "fields": [
+        [
+          "seq",
+          "u32"
+        ],
+        [
+          "startMs",
+          "u32"
+        ],
+        [
+          "endMs",
+          "u32"
+        ],
+        [
+          "speaker",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SegmentView": {
+      "fields": [
+        [
+          "seq",
+          "u32"
+        ],
+        [
+          "startMs",
+          "u32"
+        ],
+        [
+          "endMs",
+          "u32"
+        ],
+        [
+          "speaker",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "edited",
+          "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "TranscriptPage": {
+      "fields": [
+        [
+          "segments",
+          "list<SegmentView>"
+        ],
+        [
+          "next",
+          "option<u32>"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
+  "world": "calimero:app@0.5.6"
+}
