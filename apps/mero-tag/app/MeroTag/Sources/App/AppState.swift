@@ -37,12 +37,14 @@ public struct SpacePreferences {
 
 /// Session-level state.
 ///
-/// Sign-in is a passkey on a Calimero 1.0 cluster: the person enters the
-/// address of their cluster (from the Calimero Cloud console) and signs in,
-/// or creates an account, with the phone's passkey. For development, a
-/// `merod local` cluster is reached by its node URL with mock attestation
-/// allowed; the SDK keeps a software passkey for it. Every call then goes to
-/// the cluster over its sealed channel as that account.
+/// Sign-in is on Calimero Cloud, through Mero Tag's served page: the page
+/// opens in the system sign-in sheet, the person signs in (or creates an
+/// account) there with their passkey, and the page hands back a session bound
+/// to Mero Tag's package. Organization actions (founding a space, inviting,
+/// joining) and updates are approved on the node's consent page. For
+/// development, a `merod local` cluster is reached by its node URL with mock
+/// attestation allowed; the SDK keeps a software passkey for it. Every call
+/// then goes to the cluster over its sealed channel as that account.
 @MainActor
 public final class AppState: ObservableObject {
     public enum Phase: Equatable {
@@ -69,10 +71,6 @@ public final class AppState: ObservableObject {
     /// An invite that arrived as a deep link, waiting to be accepted on the
     /// space screen. Kept through sign-in.
     @Published public var pendingInvite: String?
-    /// Creating an account: the sign-up policy check and the passkey's two prompts.
-    @Published public internal(set) var isCreatingAccount = false
-    /// The cluster takes new accounts with an invite only: the create form asks for one.
-    @Published public var signUpNeedsInvite = false
     /// A space this account is in that could not be reached (offline, the
     /// cluster briefly away). Offered back as "Try again" on the space
     /// screen, so a transient failure doesn't read as "you have no space".
@@ -86,8 +84,6 @@ public final class AppState: ObservableObject {
     /// An update approval is waiting on the consent page.
     @Published public private(set) var isAwaitingApproval = false
     @Published public private(set) var updateMessage: String?
-    /// The cluster address last used, prefilled on the sign-in screen.
-    @Published public var lastClusterURL: String = UserDefaults.standard.string(forKey: "merotag.clusterURL") ?? ""
     /// The development node URL last used.
     @Published public var lastDevNodeURL: String =
         UserDefaults.standard.string(forKey: "merotag.devNodeURL")
@@ -112,15 +108,13 @@ public final class AppState: ObservableObject {
         makeTransport: @escaping @MainActor (MeroClient) -> (any ContextTransport)? = { client in
             client.cloud.map { CloudTransport(client: $0) }
         },
-        makeDirectory: @escaping @MainActor (MeroClient) -> (any SpaceDirectory)? = { client in
-            client.cloud.map { CloudSpaces(client: $0, passkey: client.passkeyForNode()) }
-        }
+        makeDirectory: @escaping @MainActor (MeroClient) -> (any SpaceDirectory)? = AppState.cloudSpaces
     ) {
         self.client =
             client
             ?? MeroClient(
-                config: MeroProviderConfig(packageName: SpaceInvite.appSlug),
-                store: KeychainCloudSessionStore(service: "network.calimero.merotag"))
+                config: AppConfig.providerConfig,
+                store: KeychainCloudSessionStore(service: AppConfig.keychainService))
         self.preferences = preferences
         self.makeTransport = makeTransport
         self.makeDirectory = makeDirectory
@@ -161,23 +155,14 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Sign in to the person's cluster with this phone's passkey.
-    public func signIn(clusterURL: String) async {
-        guard useCluster(clusterURL) != nil else { return }
-        if await client.signIn() { await didSignIn() }
-    }
-
-    /// Create an account on the cluster with a new passkey on this phone.
-    /// `invite` is an invite link or code, for a cluster that takes new
-    /// accounts by invitation only.
-    public func createAccount(clusterURL: String, name rawName: String, invite: String = "") async {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            client.errorMessage = "Enter your name for the new account."
-            return
+    /// Sign in on Calimero Cloud through Mero Tag's served page, where the
+    /// person signs in or creates an account with their passkey, as on the web.
+    public func signInWithCalimero() async {
+        sessionNotice = nil
+        client.errorMessage = nil
+        if await client.signInWithServedPage(cluster: AppConfig.cluster, callback: AppConfig.signInCallback) {
+            await didSignIn()
         }
-        guard useCluster(clusterURL) != nil else { return }
-        if await signUp(name: name, invite: Self.signUpInvite(from: invite)) { await didSignIn() }
     }
 
     /// "Development cluster": a `merod local` node, trusted with mock
@@ -196,20 +181,6 @@ public final class AppState: ObservableObject {
         if await client.signInOrSignUp(name: name.isEmpty ? "dev" : name) { await didSignIn() }
     }
 
-    /// Point the client at a production cluster; `nil` (with a message) when the address is unusable.
-    private func useCluster(_ raw: String) -> String? {
-        sessionNotice = nil
-        client.errorMessage = nil
-        guard let url = Self.validURL(raw, allowHTTP: false) else {
-            client.errorMessage = "Enter your cluster's address from the Calimero Cloud console, like https://…"
-            return nil
-        }
-        lastClusterURL = url
-        UserDefaults.standard.set(url, forKey: "merotag.clusterURL")
-        client.connect(nodeURL: url, allowMock: false)
-        return url
-    }
-
     /// `raw` as a node URL: https (or http when `allowHTTP`), with a host.
     static func validURL(_ raw: String, allowHTTP: Bool) -> String? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -222,8 +193,10 @@ public final class AppState: ObservableObject {
 
     /// A URL delivered to the app (`onOpenURL`): an invite link
     /// (`merotag://join?invitation=…`, or the shareable https link when the
-    /// OS routes it here).
+    /// OS routes it here). The served page's returns (`mero-tag://…`) are read
+    /// by the sign-in sheet that waits for them, so nothing is done here.
     public func handleOpenURL(_ url: URL) async {
+        if url.scheme?.lowercased() == AppConfig.callbackScheme { return }
         if SpaceInvite.decode(deepLink: url) != nil {
             receiveInvite(url.absoluteString)
         }
@@ -413,38 +386,35 @@ public final class AppState: ObservableObject {
 
     // MARK: Updates
 
-    /// Whether the registry has a newer Mero Tag than the open space runs.
+    /// Whether the cluster has a newer Mero Tag than the open space runs.
     func checkForUpdate() async {
         availableUpdate = nil
         guard let cloud = client.cloud, let space else { return }
         guard
-            let current = try? await cloud.listApps(package: SpaceInvite.appSlug)
-                .first(where: { $0.appId == space.appId })?.version,
-            let latest = try? await cloud.package(SpaceInvite.appSlug).latest,
+            let listed = try? await cloud.apps.list(package: SpaceInvite.appSlug).apps,
+            let apps = try? MeroJSON.convert(listed, to: [AppInfo].self),
+            let current = apps.first(where: { $0.appId == space.appId })?.version,
+            let latest = try? await cloud.packages.get(package: SpaceInvite.appSlug).latest,
             latest != current
         else { return }
         availableUpdate = latest
     }
 
-    /// Ask the cluster for the update's consent page, open it in the system
-    /// browser, and wait for the decision. Only the space's owner (or an
-    /// organization admin) can approve; the page says what changes.
-    public func approveUpdate(open: @escaping (URL) -> Void) {
-        guard let cloud = client.cloud, let space, let version = availableUpdate else { return }
+    /// Open the node's consent page for the update in the system sheet and
+    /// wait for the decision. Only the space's owner (or an organization
+    /// admin) can approve; the page says what changes.
+    public func approveUpdate() {
+        guard let space, let version = availableUpdate else { return }
         updateMessage = nil
         isAwaitingApproval = true
-        let returnTo = Self.consentReturnTo(devCluster: client.allowMock)
         approvalTask?.cancel()
         approvalTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let started = try await cloud.requestConsent(
-                    upgradeConsent(app: space.appId, toVersion: version, returnTo: returnTo))
-                guard let url = URL(string: started.url) else {
-                    throw AccountError.protocolViolation("the cluster answered no consent page")
+                let result = try await Self.decide(self.client) {
+                    upgradeConsent(app: space.appId, toVersion: version, returnTo: $0)
                 }
-                open(url)
-                let result = try await cloud.waitForConsent(started.requestId, expiresAt: started.expiresAt)
-                guard let self else { return }
+                guard !Task.isCancelled else { return }
                 switch result.status {
                 case .approved:
                     self.updateMessage = "Approved. Your space moves to version \(version) shortly."
@@ -452,13 +422,13 @@ public final class AppState: ObservableObject {
                 case .declined:
                     self.updateMessage = "The update was declined."
                 case .pending:
-                    self.updateMessage = "The approval page expired. Try again when you're ready."
+                    self.updateMessage = "The approval page closed before a decision. Try again when you're ready."
                 }
             } catch is CancellationError {
             } catch {
-                self?.updateMessage = TrackerStore.message(for: error)
+                self.updateMessage = TrackerStore.message(for: error)
             }
-            self?.isAwaitingApproval = false
+            self.isAwaitingApproval = false
         }
     }
 
@@ -469,13 +439,46 @@ public final class AppState: ObservableObject {
         isAwaitingApproval = false
     }
 
-    /// Where the consent page sends the person afterwards. The node accepts
-    /// only an https origin the cluster is configured with (http on
-    /// localhost), never an app scheme, so it is the Calimero Cloud console
-    /// (or `merod local`'s development origin); the app learns the decision
-    /// by asking the cluster, not from the redirect.
-    static func consentReturnTo(devCluster: Bool) -> String {
-        devCluster ? "http://localhost:3000/" : "https://cloud.calimero.network/"
+    // MARK: Consent
+
+    /// The spaces directory for the client's session: on Calimero Cloud,
+    /// organization actions go to the node's consent page and step-ups over
+    /// Mero Tag's own apps to its served page; on a development cluster both
+    /// are made directly with the soft passkey.
+    public static func cloudSpaces(_ client: MeroClient) -> (any SpaceDirectory)? {
+        guard let cloud = client.cloud else { return nil }
+        var consent: OrgConsent?
+        if !client.allowMock {
+            consent = { @Sendable request in try await AppState.decide(client, request) }
+        }
+        return CloudSpaces(
+            client: cloud,
+            passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback),
+            consent: consent, packageVersion: client.config.packageVersion)
+    }
+
+    /// Ask the person on the node's consent page and answer the node's
+    /// decision. On Calimero Cloud the page sends the person back through
+    /// Mero Tag's served page (the only `returnTo` the node takes for a
+    /// session bound to the package), which passes the answer on to
+    /// `mero-tag://consent`; a development cluster returns there directly.
+    static func decide(
+        _ client: MeroClient, _ request: (_ returnTo: String) -> ConsentRequest
+    ) async throws -> ConsentResult {
+        let returnTo: String?
+        do {
+            returnTo = try await client.servedConsentReturnTo(cluster: AppConfig.cluster)
+        } catch {
+            throw SpaceDirectoryError.consentUnavailable(
+                "Couldn't reach Mero Tag's page. (" + MeroClient.describe(error) + ")")
+        }
+        guard
+            let result = await client.requestConsent(request, callback: AppConfig.consentCallback, returnTo: returnTo)
+        else {
+            throw SpaceDirectoryError.consentUnavailable(
+                client.errorMessage ?? "The approval page closed before a decision.")
+        }
+        return result
     }
 
     /// Leave the open space (stay signed in) to pick another.

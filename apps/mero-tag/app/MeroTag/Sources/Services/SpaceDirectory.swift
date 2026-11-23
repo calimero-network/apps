@@ -1,5 +1,6 @@
 import Foundation
 import MeroKit
+import OpenAPIRuntime
 
 /// A space this account just created: an organization and the Mero Tag app
 /// instance that is its space.
@@ -21,6 +22,10 @@ public enum SpaceDirectoryError: LocalizedError, Equatable {
     case notConnected
     /// The app instance belongs to no organization, so there is nobody to invite into.
     case notInAnOrganization
+    /// The person declined the change on the consent page, or left it undecided.
+    case notApproved(declined: Bool)
+    /// The consent page could not be opened (the reason in words).
+    case consentUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
@@ -28,9 +33,19 @@ public enum SpaceDirectoryError: LocalizedError, Equatable {
             return "You're not connected to a Calimero cluster."
         case .notInAnOrganization:
             return "This space doesn't belong to an organization, so there's no one to invite into."
+        case .notApproved(let declined):
+            return declined ? "Declined. Nothing was changed." : "Not approved. Nothing was changed."
+        case .consentUnavailable(let reason):
+            return reason
         }
     }
 }
+
+/// Asks the person to approve an organization action on the node's consent
+/// page, and answers the node's decision. `request` builds the request for
+/// the `returnTo` the page sends the person back to.
+public typealias OrgConsent =
+    @Sendable (_ request: @escaping @Sendable (_ returnTo: String) -> ConsentRequest) async throws -> ConsentResult
 
 /// Spaces on a Calimero 1.0 cluster.
 ///
@@ -42,39 +57,77 @@ public enum SpaceDirectoryError: LocalizedError, Equatable {
 ///   the app instance id and the space's name into a ``SpaceInvite`` link.
 /// - **Join** redeems the invite, which makes the account a member of the
 ///   organization and so lets it reach the app instance.
+///
+/// On Calimero Cloud the session is bound to Mero Tag's package (it was
+/// opened on Mero Tag's served page), and the node refuses it organization
+/// routes: founding the organization, minting and redeeming the invite are
+/// approved on the node's consent page instead (`consent`). On a development
+/// cluster (`consent` is `nil`) they are called directly.
 public struct CloudSpaces: SpaceDirectory {
     public let client: CalimeroClient
-    /// The passkey the account signed in with; minting an invite is a
-    /// step-up the node asks that passkey to sign.
+    /// Step-ups the node asks of a direct call (a development cluster's
+    /// invite): the account's passkey.
     public let passkey: (any PasskeyProvider)?
+    /// Where organization actions are approved; `nil`: call the node directly.
+    public let consent: OrgConsent?
     /// The release new spaces run; the newest when `nil`.
     public var packageVersion: String?
 
-    public init(client: CalimeroClient, passkey: (any PasskeyProvider)?, packageVersion: String? = nil) {
+    public init(
+        client: CalimeroClient, passkey: (any PasskeyProvider)?, consent: OrgConsent? = nil,
+        packageVersion: String? = nil
+    ) {
         self.client = client
         self.passkey = passkey
+        self.consent = consent
         self.packageVersion = packageVersion
     }
 
     public func createSpace(named name: String) async throws -> CreatedSpace {
-        let org = try await client.createOrg(name)
-        try await client.setOrgMetadata(org, ["name": .string(name), "package": .string(SpaceInvite.appSlug)])
-        let app = try await client.createApp(
-            name, bundle: .package(SpaceInvite.appSlug, version: packageVersion), org: org, access: .org,
-            initArgs: ["name": .string(name)])
+        let org: String
+        if let consent {
+            org = try Self.approved(try await consent { .createOrg(name: name, returnTo: $0) }).orgId ?? ""
+            guard !org.isEmpty else { throw AccountError.protocolViolation("the node made no organization") }
+        } else {
+            org = try await client.orgs.create(name: name).orgId
+        }
+        let metadata: JSONValue = ["name": .string(name), "package": .string(SpaceInvite.appSlug)]
+        _ = try await client.orgs.metadata(org: org, metadata: try OpenAPIValueContainer(metadata))
+        let app = try await client.apps.create(
+            name: name, package: SpaceInvite.appSlug, version: packageVersion, org: org,
+            access: AppAccess.org.generated, initArgs: try OpenAPIValueContainer(["name": .string(name)])
+        ).appId
         return CreatedSpace(orgId: org, appId: app)
     }
 
     public func invite(appId: String, spaceName: String) async throws -> SpaceInvite {
-        guard let org = try await client.getApp(appId)["org"]?.stringValue, !org.isEmpty else {
+        let record = try JSONValue(encoding: try await client.apps.get(app: appId))
+        guard let org = record["org"]?.stringValue, !org.isEmpty else {
             throw SpaceDirectoryError.notInAnOrganization
         }
-        guard let passkey else { throw SpaceDirectoryError.notConnected }
-        let token = try await client.invite(org, role: .member, passkey: passkey)
+        let token: String
+        if let consent {
+            token = try Self.approved(try await consent { .createInvite(org: org, role: .member, returnTo: $0) })
+                .inviteToken ?? ""
+            guard !token.isEmpty else { throw AccountError.protocolViolation("the node made no invite") }
+        } else {
+            guard let passkey else { throw SpaceDirectoryError.notConnected }
+            token = try await client.orgs.inviteCreate(org: org, role: .member, passkey: passkey).token
+        }
         return SpaceInvite(orgId: org, appId: appId, spaceName: spaceName, token: token)
     }
 
     public func join(_ invite: SpaceInvite) async throws {
-        _ = try await client.redeemInvite(invite.token)
+        if let consent {
+            _ = try Self.approved(try await consent { .acceptInvite(token: invite.token, returnTo: $0) })
+        } else {
+            _ = try await client.orgs.inviteRedeem(token: invite.token)
+        }
+    }
+
+    /// `result` when the person approved it; otherwise why not.
+    static func approved(_ result: ConsentResult) throws -> ConsentResult {
+        guard result.isApproved else { throw SpaceDirectoryError.notApproved(declined: result.status == .declined) }
+        return result
     }
 }

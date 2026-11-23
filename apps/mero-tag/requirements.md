@@ -6,8 +6,9 @@ running it in the Simulator and on an iPhone.
 ```
 mero-tag/
   logic/      Rust contract, a calimero:app component (runs on your cluster's nodes)
+  web/        the page the bundle carries: the app's sign-in, approvals and consent returns
   app/
-    MeroTag/  the SwiftUI iOS app (depends on calimero-network/swift-sdk)
+    MeroTag/  the SwiftUI iOS app (the Swift SDK from calimero-network/core)
   scripts/    setup, publish-bundle
   Makefile    every command below has a `make` shortcut
 ```
@@ -26,10 +27,10 @@ mero-tag/
 | Tool | Needed for | Install |
 |------|-----------|---------|
 | **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
-| **mero-component** | component build + signed bundle | `make tools` (calimero-network/apps' component bundler) |
+| **meroctl** | component build + signed bundle | `make tools` (core's release in `ci/core-version`) |
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
-| **A Calimero account** | signing in | created with a passkey in the Calimero wallet on first sign-in |
+| **A Calimero account** | signing in | created with a passkey on Mero Tag's sign-in page on first sign-in |
 | `merod` (Linux, or Docker on macOS) | *optional:* a `merod local` development cluster | build from calimero-network/core |
 
 Check everything at once with `make setup`.
@@ -42,8 +43,8 @@ Check everything at once with `make setup`.
 make app-run      # xcodegen + xcodebuild + boot the Simulator + launch
 ```
 
-1. Tap **Continue with Calimero**. The Calimero wallet opens in a system sheet. Approve this device with your passkey,
-   and you're back in the app.
+1. Tap **Sign in with passkey**. Mero Tag's sign-in page opens in a system sheet. Sign in, or create an account, with
+   your passkey, and you're back in the app.
 2. On **Choose a space**, enter the name others see, then either **Create a space** (you own it) or paste the invite
    link someone sent you and tap **Join space**. Opening an invite link (`merotag://join?invitation=…`) does the same.
    In a space, **Invite people** on the Space tab creates a link to share.
@@ -58,7 +59,8 @@ Passkeys in the Simulator need an Apple ID signed in with iCloud Keychain. For t
 ## 3. Running on a physical iPhone
 
 1. `make app-gen`, then `open app/MeroTag/MeroTag.xcodeproj`.
-2. Select the **MeroTag** target ▸ *Signing & Capabilities* ▸ your team.
+2. Select the **MeroTag** target ▸ *Signing & Capabilities* ▸ your team, or put it in
+   `app/MeroTag/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = …`, gitignored). No associated domains are needed.
 3. Plug in the iPhone, select it, and press **⌘R**.
 4. The first time only: on the phone, trust your developer certificate in *Settings ▸ General ▸ VPN & Device
    Management*.
@@ -110,9 +112,10 @@ cluster too (accounts named `@alice`, `@bob`); the same files run in `cargo test
 
 - **`xcodebuild` says "tool not found".** Full Xcode isn't selected. Run
   `sudo xcode-select -s /Applications/Xcode.app`.
-- **The package fails to resolve, or MeroKit / MeroKitUI APIs are missing.** The app needs swift-sdk `0.2.0` or
-  later. Reset the package cache (*File ▸ Packages ▸ Reset Package Caches*), or to try an unreleased SDK change:
-  1. Temporarily set the `path:` in `project.yml`.
+- **The package fails to resolve, or MeroKit / MeroKitUI APIs are missing.** The app uses the Swift SDK from
+  calimero-network/core at the release in `project.yml`. Reset the package cache (*File ▸ Packages ▸ Reset Package
+  Caches*), or to try an unreleased SDK change:
+  1. Temporarily set the `path:` in `project.yml` to a core checkout.
   2. Run `make app-gen`.
 - **"Couldn't open that space".** Either the ID is wrong, or your account isn't a member of that context on its relay.
   Ask the owner for an invitation.

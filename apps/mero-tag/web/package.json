@@ -1,0 +1,18 @@
+{
+  "name": "mero-tag-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "1.0.0-rc.35"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "vite": "6.4.4"
+  }
+}

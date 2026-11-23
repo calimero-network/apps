@@ -25,12 +25,13 @@ step "Checking Rust wasm target…"
   && ok "wasm32-wasip2 installed" \
   || { (cd "$REPO_ROOT/logic" && rustup target add wasm32-wasip2) && ok "wasm32-wasip2 added"; }
 
-step "Checking mero-component…"
-command -v mero-component >/dev/null 2>&1 && ok "mero-component found" \
-  || { (cd "$REPO_ROOT" && make tools) && ok "mero-component installed"; }
+step "Checking meroctl…"
+"$REPO_ROOT/scripts/install-meroctl.sh" && export PATH="${MEROCTL_ROOT:-$HOME/.local}/bin:$PATH"
+command -v meroctl >/dev/null 2>&1 && ok "meroctl $(meroctl --version | head -1)" \
+  || { err "meroctl is not on PATH"; exit 1; }
 
 step "Building the component contract + signed dev bundle…"
-(cd "$REPO_ROOT" && mero-component bundle logic --dev --no-frontend --app-version 0.0.1 --output logic/dist/mero-tag-dev.mpk)
+(cd "$REPO_ROOT" && make logic-bundle)
 ok "logic/dist/mero-tag-dev.mpk built"
 
 step "Optional tooling…"
@@ -38,6 +39,7 @@ command -v xcodegen >/dev/null 2>&1 && ok "xcodegen found" || warn "xcodegen not
 command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1 \
   && ok "full Xcode found" \
   || warn "full Xcode not active — needed to build/run the iOS app and XCTest suite (Command Line Tools alone can't)"
+command -v npm >/dev/null 2>&1 && ok "npm found" || warn "npm not found — needed to build the served page (web/) for a release bundle"
 
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"

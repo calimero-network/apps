@@ -1,22 +1,20 @@
 import SwiftUI
 
-/// Sign-in with a passkey on the person's Calimero cluster. They enter the
-/// cluster's address once (from the Calimero Cloud console; it is
-/// remembered), then sign in, or create an account, with this phone's
-/// passkey. Under it, "Development cluster" connects to a `merod local` node
-/// by URL, trusting its mock attestation, with a software passkey the SDK
-/// keeps for that node.
+/// Sign-in on Calimero Cloud through Mero Tag's sign-in page: it opens in
+/// the system sign-in sheet, the person signs in, or creates an account, with
+/// their passkey there, and the page hands the session back to the app.
+/// Under it, "Development cluster" connects to a `merod local` node by URL,
+/// trusting its mock attestation, with a software passkey the SDK keeps for
+/// that node.
 struct SignInView: View {
     @EnvironmentObject private var app: AppState
     @State private var mode: Mode = .signIn
-    @State private var clusterURL = ""
     @State private var devURL = ""
     @State private var name = ""
-    @State private var invite = ""
     @FocusState private var focus: Field?
 
-    fileprivate enum Field { case cluster, name, invite, dev }
-    fileprivate enum Mode { case signIn, create, development }
+    fileprivate enum Field { case name, dev }
+    fileprivate enum Mode { case signIn, development }
 
     private var compact: Bool { mode != .signIn }
 
@@ -53,7 +51,7 @@ struct SignInView: View {
                         notices
                         Group {
                             switch mode {
-                            case .signIn, .create: clusterForm
+                            case .signIn: cloudForm
                             case .development: devForm
                             }
                         }
@@ -73,16 +71,13 @@ struct SignInView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .onAppear {
-            if clusterURL.isEmpty { clusterURL = app.lastClusterURL }
             if devURL.isEmpty { devURL = app.lastDevNodeURL }
-            if invite.isEmpty, let pending = app.pendingInvite { invite = pending }
         }
     }
 
     private var title: String {
         switch mode {
         case .signIn: return "Find your people.\nPrivately."
-        case .create: return "Create your account"
         case .development: return "Development cluster"
         }
     }
@@ -92,8 +87,6 @@ struct SignInView: View {
         case .signIn:
             return "Live location with the people you choose. It lives on your own Calimero cluster, "
                 + "never with a tracking company."
-        case .create:
-            return "Your account is a passkey on this phone. No password to remember, nothing to leak."
         case .development:
             return "Connect to a merod local cluster on your Mac. Its attestation is a mock, so use this only "
                 + "for development."
@@ -106,69 +99,26 @@ struct SignInView: View {
                 .accessibilityIdentifier("sessionNotice")
         }
         if let error = app.client.errorMessage {
-            Callout(tone: .danger, title: errorTitle, message: error)
+            Callout(tone: .danger, title: mode == .signIn ? "Couldn't sign in" : "Couldn't connect", message: error)
                 .accessibilityIdentifier("signInError")
         }
     }
 
-    private var errorTitle: String {
-        switch mode {
-        case .signIn: return "Couldn't sign in"
-        case .create: return "Couldn't create your account"
-        case .development: return "Couldn't connect"
-        }
-    }
-
-    private var asksForInvite: Bool { mode == .create && app.signUpNeedsInvite }
-
-    private var clusterForm: some View {
+    private var cloudForm: some View {
         Card(padding: 18) {
             VStack(spacing: 14) {
-                TagTextField(
-                    label: "Cluster address", placeholder: "https://your-cluster.calimero.network", text: $clusterURL,
-                    monospaced: true, keyboardKind: .url, submitLabel: mode == .create ? .next : .go
-                ) {
-                    if mode == .create { focus = .name } else { submit() }
-                }
-                .focused($focus, equals: .cluster)
-                .accessibilityIdentifier("clusterURLField")
-                if mode == .create {
-                    TagTextField(
-                        label: "Your name", placeholder: "How people in your spaces see you", text: $name,
-                        submitLabel: asksForInvite ? .next : .go
-                    ) {
-                        if asksForInvite { focus = .invite } else { submit() }
-                    }
-                    .focused($focus, equals: .name)
-                    .accessibilityIdentifier("accountNameField")
-                }
-                if asksForInvite {
-                    TagTextField(
-                        label: "Invite", placeholder: "Invite link or code", text: $invite,
-                        help: "From the person who invited you, or the cluster's operator.",
-                        monospaced: true, keyboardKind: .url, submitLabel: .go, onSubmit: submit
-                    )
-                    .focused($focus, equals: .invite)
-                    .accessibilityIdentifier("signUpInviteField")
-                }
                 LoadingButton(
-                    title: mode == .create ? "Create account with passkey" : "Sign in with passkey",
-                    systemImage: "person.badge.key.fill",
-                    isLoading: app.client.isLoading || app.isCreatingAccount, action: submit
+                    title: "Sign in with passkey", systemImage: "person.badge.key.fill",
+                    isLoading: app.client.isLoading, action: submit
                 )
-                .disabled(clusterURL.isEmpty || (mode == .create && name.isEmpty))
-                .accessibilityIdentifier(mode == .create ? "createAccountButton" : "passkeySignInButton")
-                Group {
-                    if mode == .create {
-                        Label(
-                            "You'll confirm twice with Face ID or Touch ID: once to create the passkey, once to sign in",
-                            systemImage: "faceid")
-                    } else {
-                        Label("Find the address in the Calimero Cloud console", systemImage: "info.circle")
-                    }
-                }
+                .accessibilityIdentifier("passkeySignInButton")
+                Label(
+                    "Opens Mero Tag's sign-in page on Calimero Cloud. New here? Create your account there.",
+                    systemImage: "lock.shield"
+                )
                 .font(.system(size: 12.5))
                 .foregroundStyle(Tag.textFaint)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -203,12 +153,9 @@ struct SignInView: View {
         VStack(spacing: 2) {
             switch mode {
             case .signIn:
-                link("New here? Create an account", id: "showCreateAccount") { switchTo(.create, focus: .cluster) }
                 link("Development cluster", id: "showDevelopment") { switchTo(.development, focus: .dev) }
-            case .create:
-                link("I already have an account", id: "showSignIn") { switchTo(.signIn, focus: .cluster) }
             case .development:
-                link("Use my Calimero cluster instead", id: "showSignIn") { switchTo(.signIn, focus: .cluster) }
+                link("Use Calimero Cloud instead", id: "showSignIn") { switchTo(.signIn, focus: nil) }
             }
         }
     }
@@ -229,7 +176,7 @@ struct SignInView: View {
         .accessibilityIdentifier(id)
     }
 
-    private func switchTo(_ next: Mode, focus field: Field) {
+    private func switchTo(_ next: Mode, focus field: Field?) {
         app.client.errorMessage = nil
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { mode = next }
         focus = field
@@ -239,11 +186,7 @@ struct SignInView: View {
         focus = nil
         switch mode {
         case .signIn:
-            guard !clusterURL.isEmpty else { return }
-            Task { await app.signIn(clusterURL: clusterURL) }
-        case .create:
-            guard !clusterURL.isEmpty, !name.isEmpty else { return }
-            Task { await app.createAccount(clusterURL: clusterURL, name: name, invite: invite) }
+            Task { await app.signInWithCalimero() }
         case .development:
             guard !devURL.isEmpty else { return }
             Task { await app.signInToDevCluster(url: devURL, name: name) }

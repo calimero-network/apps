@@ -8,6 +8,7 @@ your own Calimero cluster, not with a tracking company.
 
 ```
 logic/      Rust WASM contract (calimero-sdk)
+web/        The page the bundle carries: the app's sign-in, approvals and consent returns
 landing/    The landing page (Vite + React + Framer Motion) and its media
 promo/      The promo film (Remotion), rendered from the app's recordings
 app/
@@ -19,18 +20,20 @@ scripts/    setup
 Built for **Calimero core 1.0**:
 
 - the contract is a `calimero:app` WebAssembly component on core's component SDK (`calimero-sdk` tag
-  `1.0.0-rc.10`, `min-runtime-version = "1.0.0-rc.10"`), run by the node's wasmtime runtime
-- the app uses [`calimero-network/swift-sdk`](https://github.com/calimero-network/swift-sdk) pinned to
-  its `v0.6.0` release (`exactVersion` in `app/MeroTag/project.yml`)
+  `1.0.0-rc.35`, `min-runtime-version = "1.0.0-rc.35"`), run by the node's wasmtime runtime
+- the app uses the Swift SDK (MeroKit + MeroKitUI) from [`calimero-network/core`](https://github.com/calimero-network/core)
+  at the same release (`exactVersion` in `app/MeroTag/project.yml`)
 
 ## How the app talks to Calimero
 
 A Calimero 1.0 node runs in an attested cluster. The app verifies the node's attestation, then talks to it over a
 sealed channel (`calimero/sealed-http/v2`), all through the SDK's `CalimeroClient`.
 
-1. **Sign in with a passkey.** The person enters their cluster's address once (from the Calimero Cloud console) and
-   signs in, or creates an account, with this phone's passkey. The session is kept in the Keychain and refreshed, so a
-   relaunch needs no prompt.
+1. **Sign in with a passkey.** The app opens Mero Tag's own page, which the cluster serves from the package's origin
+   (`web/`, packed into the bundle), in the system sign-in sheet. The person signs in, or creates an account, with
+   their passkey there, and the page hands the session back to `mero-tag://signed-in`, sealed to a key the app made
+   for that sign-in. The session is bound to Mero Tag's package, kept in the Keychain and refreshed, so a relaunch
+   needs no prompt.
 2. **A space is an app instance.** Creating one founds an **organization** named after it and creates the Mero Tag
    app instance in it from the registry package (`com.calimero.mero-tag`), open to the organization's members.
 3. **Calls, views and events.** Reads (`getTrackers`, `whoami`, …) are views (`POST /apps/{app}/views`); writes
@@ -39,10 +42,11 @@ sealed channel (`calimero/sealed-http/v2`), all through the SDK's `CalimeroClien
    written offline.
 4. **Invite people.** An organization invite (role member) travels as the SDK's `InviteLink`
    (`https://links.calimero.network/com.calimero.mero-tag/join?invitation=…`) with the app instance id and the space's
-   name. The joiner pastes it, or opens it as `merotag://join?invitation=…`; the app redeems it
-   (`/invites/{token}/redeem`) and opens the space.
-5. **Approvals.** When the registry has a newer Mero Tag than the space runs, the Space tab offers it. Approving opens
-   the cluster's consent page in the system browser; the app waits for the decision.
+   name. The joiner pastes it, or opens it as `merotag://join?invitation=…`; the app redeems it and opens the space.
+5. **Approvals.** A session bound to the package can't found organizations, mint or redeem invites itself: those, and
+   updates to a newer Mero Tag, are approved on the node's consent page in the system sheet, which returns through
+   Mero Tag's page to `mero-tag://consent`. A step-up over Mero Tag's own apps is approved with the passkey on Mero
+   Tag's page (`mero-tag://approved`). On a development cluster these are made directly with the soft passkey.
 
 The contract takes every member, owner and author id from the caller's account (`env::caller()`), stamps records
 with the leader's clock, and lets admins of the space's organization (`env::org_role`) moderate.
@@ -55,7 +59,7 @@ sentence in `fields.message`.
 ## Run it against a development cluster
 
 ```bash
-make tools        # once: mero-component, the component bundler
+make tools        # once: meroctl at the core release in ci/core-version
 make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
 ```
 
@@ -81,19 +85,31 @@ You need full Xcode 16+ (an iOS 17 SDK) and XcodeGen (`brew install xcodegen`).
 make app-gen      # generate app/MeroTag/MeroTag.xcodeproj from project.yml
 ```
 
-For a device: open `app/MeroTag/MeroTag.xcodeproj` and set your team under *Signing & Capabilities* (or set
-`DEVELOPMENT_TEAM` in `project.yml`). A platform passkey on a real cluster also needs the
-`webcredentials:<cluster rp id>` associated domain.
+For a device: set your team in `app/MeroTag/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = ABCDE12345`,
+gitignored), export `MEROTAG_DEVELOPMENT_TEAM`, or pick it under *Signing & Capabilities*. No associated domains
+are needed: sign-in runs on Mero Tag's served page.
 
-To build against a local swift-sdk checkout, temporarily replace the package's `url` / `exactVersion` in
-`app/MeroTag/project.yml` with `path: /path/to/swift-sdk`, run `make app-gen`, and do not commit that change.
+To build against a local core checkout, temporarily replace the `core` package's `url` / `exactVersion` in
+`app/MeroTag/project.yml` with `path: /path/to/core`, run `make app-gen`, and do not commit that change.
+
+## The served page
+
+`web/` is a small page the bundle carries (`frontend-dir` in `logic/Cargo.toml`); the cluster serves it at
+`https://{label}.apps.calimero.network/{version}/`. It does only what the app can't: the passkey sign-in
+(`#native-sign-in`), step-up approvals (`#native-approve`) and passing the consent page's decision back
+(`?native-consent=1`). A production build needs `VITE_CALIMERO_MIN_RELEASE`, the lowest mero-tee release a node may
+run:
+
+```bash
+cd web && npm ci && VITE_CALIMERO_MIN_RELEASE=<version> npm run build   # → web/dist, packed by the bundle
+```
 
 ## Contract
 
 ```bash
 make setup        # check prereqs, build the component + signed dev bundle
 make logic-test   # cargo test (pure helpers, then the TestApp harness and scenarios on core's engine)
-make logic-build  # mero-component build → logic/res/mero_tag.wasm + logic/res/abi.json
+make logic-build  # meroctl app build → logic/res/mero_tag.wasm + logic/res/abi.json
 make logic-bundle # signed dev .mpk for a merod local cluster
 ```
 
@@ -101,9 +117,9 @@ Run `make help` for all targets. [requirements.md](requirements.md) has the full
 
 ## Status
 
-- Done: the component contract on core 1.0.0-rc.10 (trackers, locations, sharing, groups, geofences, presence, history).
-- Done: passkey sign-in, spaces as app instances in organizations, invites, live events, update approvals on the
-  consent page.
+- Done: the component contract on core 1.0.0-rc.35 (trackers, locations, sharing, groups, geofences, presence, history).
+- Done: passkey sign-in through the served page, spaces as app instances in organizations, invites, live events,
+  organization and update approvals on the consent page.
 - Not yet: authoring geofences, playing back history, and a UI for groups.
 - Not yet: an end-to-end lane against `merod local` (merobox, which the old lane used, is archived);
   `logic/scenarios/*.json` are ready for one.

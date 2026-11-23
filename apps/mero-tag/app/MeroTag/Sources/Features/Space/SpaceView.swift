@@ -4,7 +4,6 @@ import SwiftUI
 struct SpaceView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var sharing: LocationSharing
-    @Environment(\.openURL) private var openURL
     @ObservedObject var store: TrackerStore
     @State private var confirmSignOut = false
     @State private var confirmLeave = false
@@ -103,7 +102,7 @@ struct SpaceView: View {
     // MARK: Update
 
     /// A newer Mero Tag release for this space. Approving it happens on the
-    /// cluster's consent page in the system browser, which only the space's
+    /// cluster's consent page in the system sheet, which only the space's
     /// owner or an organization admin can approve.
     private var updateCard: some View {
         Card {
@@ -118,7 +117,7 @@ struct SpaceView: View {
                     if app.isAwaitingApproval {
                         HStack(spacing: 10) {
                             ProgressView()
-                            Text("Waiting for your approval in the browser")
+                            Text("Waiting for your approval")
                                 .font(.system(size: 14))
                                 .foregroundStyle(Tag.textDim)
                             Spacer()
@@ -127,7 +126,7 @@ struct SpaceView: View {
                         }
                     } else {
                         Button {
-                            app.approveUpdate { url in openURL(url) }
+                            app.approveUpdate()
                         } label: {
                             Label("Review and approve", systemImage: "checkmark.shield")
                         }
