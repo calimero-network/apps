@@ -1,8 +1,8 @@
-# Native iOS Mero Stream (apps/mero-stream/mobile/ios): check the media-framing
-# test vectors still match the web app's encoder, test the core package
-# (generated client, framing, codecs, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The
-# swift-sdk is resolved from GitHub at the revision Core/Package.swift and
+# Native iOS Mero Stream (apps/mero-stream/mobile/ios): check the media-framing test
+# vectors still match the web app's encoder, test the core package (generated
+# client, framing, codecs, view models) on macOS, then generate the Xcode project
+# from project.yml and build the app for the iOS Simulator. The Swift SDK is
+# resolved from calimero-network/core at the revision StreamCore/Package.swift and
 # project.yml pin.
 name: Mero Stream iOS
 
@@ -47,7 +47,7 @@ jobs:
       - name: Regenerate and compare
         run: |
           node --experimental-strip-types scripts/gen-frame-vectors.ts
-          git diff --exit-code -- ios/Core/Tests/StreamCoreTests/Fixtures android/app/src/test/resources
+          git diff --exit-code -- ios/StreamCore/Tests/StreamCoreTests/Fixtures android/app/src/test/resources
 
   core:
     name: Core tests (macOS)
@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: apps/mero-stream/mobile/ios/Core
+        working-directory: apps/mero-stream/mobile/ios/StreamCore
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain

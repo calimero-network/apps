@@ -23,7 +23,8 @@ data class ChatInvitation(
  * Workspace invitations on Calimero 1.0: an org invite token (`POST /orgs/{org}/invites`, a passkey
  * step-up to mint), redeemed with `POST /invites/{token}/redeem`. (Swift `ChatInvitation`.)
  *
- * - payload: kotlin-sdk's [OrgInvitation], `{"invitation": "inv_…", "namespaceId": "<org>", "name"?: "<workspace>"}`
+ * - payload: mero-kotlin's [OrgInvitation], `{"invitation": "inv_…", "namespaceId": "<org>",
+ * "name"?: "<workspace>"}`
  *   (a `{data: …}` wrapper and the web's `groupName` / `groupAlias` name keys are read too),
  * - token: `base58(deflate(payload))` ([InviteCodec]),
  * - link: `https://links.calimero.network/com.calimero.chat/join?invitation=<token>` ([InviteLink]).

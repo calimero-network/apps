@@ -4,7 +4,7 @@
 // private-store and identity-mapping flow, the PDF stamper, the signature ink
 // model and the view models the SwiftUI screens bind.
 //
-// The swift-sdk pin must match the one in ../project.yml (one revision for both).
+// The MeroKit pin must match the one in ../project.yml (one revision for both).
 import PackageDescription
 
 let package = Package(
@@ -17,16 +17,17 @@ let package = Package(
         .library(name: "SignCore", targets: ["SignCore"]),
     ],
     dependencies: [
-        // swift-sdk v4.1.0 (Calimero 1.0); keep it equal to `exactVersion` in ../project.yml.
+        // MeroKit from a calimero-network/core release (Calimero 1.0); keep it equal to
+        // `exactVersion` in ../project.yml.
         .package(
-            url: "https://github.com/calimero-network/swift-sdk",
-            exact: "4.1.0"),
+            url: "https://github.com/calimero-network/core",
+            exact: "1.0.0-rc.35"),
     ],
     targets: [
         .target(
             name: "SignCore",
             dependencies: [
-                .product(name: "MeroKit", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
             ]),
         // Sources/SignCore/Generated/SignClient.swift is generated from the
         // component ABI (../../../logic/res/abi.json) by scripts/mobile-codegen.sh;
@@ -35,8 +36,8 @@ let package = Package(
             name: "SignCoreTests",
             dependencies: [
                 "SignCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]),
     ]
 )

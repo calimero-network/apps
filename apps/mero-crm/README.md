@@ -222,9 +222,8 @@ permissions, aliases, the light/dark theme. Behind them:
   …); an invitation is `/?invite=<token>`. The dev server is on
   `http://localhost:5173/` (the origin `merod local` trusts), not 5186.
 
-`mobile/` is **not ported**: the native apps use the swift-sdk / kotlin-sdk
-v1 session, and those SDKs have no Calimero 1.0 client yet;
-`mobile/README.md` says what they wait for.
+`mobile/`: the native apps are on the Swift and Kotlin SDKs'
+Calimero 1.0 clients; `mobile/README.md` says how they are built.
 
 **Hyperfeed Forms** (still a v1 app) hands responses to v1 CRM pipelines. Its
 generated `CrmClient` now comes from the v1 ABI frozen in

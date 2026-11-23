@@ -6,11 +6,11 @@ Symbols ↔ Material Symbols) and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/ChessCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release, in `ios/project.yml` and `ios/ChessCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Maven Central), `meroSdk` in `android/gradle/libs.versions.toml` |
 
 The pins are SDK releases. Bumping is one line per platform (iOS: both `exactVersion` / `exact:`
-values; Android: `kotlin-sdk.ref`, the new tag's commit).
+values; Android: `meroSdk` in `gradle/libs.versions.toml`).
 
 ## Calimero 1.0
 
@@ -86,7 +86,6 @@ Android:
 
 ```bash
 cd android
-./scripts/fetch-sdk.sh            # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

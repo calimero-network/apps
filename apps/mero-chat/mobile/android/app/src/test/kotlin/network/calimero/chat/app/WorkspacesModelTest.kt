@@ -17,7 +17,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The workspaces list over kotlin-sdk's in-memory app backend. (Swift `WorkspaceModelsTests`.) */
+/** The workspaces list over mero-kotlin's in-memory app backend. (Swift `WorkspaceModelsTests`.) */
 class WorkspacesModelTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val profile = ProfileStore(MemoryKeyValueStore())

@@ -1,8 +1,8 @@
 # Native iOS Mero Blocks (apps/mero-blocks/mobile/ios): test the non-UI layer (BlocksCore, a local
 # SwiftPM package: generated contract client, the game bridge, view models) on macOS, then generate
 # the Xcode project from project.yml, build the app for the iOS Simulator and check the game page
-# (../game/assets/game) is inside it. The swift-sdk is resolved from GitHub at the revision
-# project.yml and BlocksCore/Package.swift pin.
+# (../game/assets/game) is inside it. The Swift SDK is resolved from calimero-network/core at the
+# revision project.yml and BlocksCore/Package.swift pin.
 name: Mero Blocks iOS
 
 on:

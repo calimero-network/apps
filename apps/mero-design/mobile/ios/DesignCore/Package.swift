@@ -14,20 +14,21 @@ let package = Package(
         .library(name: "DesignCore", targets: ["DesignCore"]),
     ],
     dependencies: [
-        // swift-sdk release v4.1.0 (Calimero 1.0). Keep it equal to ../project.yml.
-        .package(url: "https://github.com/calimero-network/swift-sdk", exact: "4.1.0"),
+        // MeroKit from a calimero-network/core release (Calimero 1.0). Keep it
+        // equal to ../project.yml.
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.35"),
     ],
     targets: [
         .target(
             name: "DesignCore",
-            dependencies: [.product(name: "MeroKit", package: "swift-sdk")]
+            dependencies: [.product(name: "MeroKit", package: "core")]
         ),
         .testTarget(
             name: "DesignCoreTests",
             dependencies: [
                 "DesignCore",
-                .product(name: "MeroKit", package: "swift-sdk"),
-                .product(name: "MeroKitTestSupport", package: "swift-sdk"),
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
             ]
         ),
     ]

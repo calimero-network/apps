@@ -11,7 +11,7 @@ import network.calimero.chat.generated.client.ChatClient
 /**
  * Everything the chat layer needs from a signed-in account on a Calimero 1.0 cluster. In 1.0 words
  * a workspace is an **org**, a channel is an **app instance** of chat (in the org itself, or in a
- * team of it for a private channel). [MeroChatBackend] is the real one, over kotlin-sdk's
+ * team of it for a private channel). [MeroChatBackend] is the real one, over the Kotlin SDK's
  * `MeroAppBackend`. (Swift `ChatBackend`.)
  */
 @Suppress("TooManyFunctions")

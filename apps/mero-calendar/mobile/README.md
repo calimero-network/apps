@@ -6,11 +6,11 @@ Both have the same screens, copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Maven Central) |
 
-Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
-To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).
+Both pins are core releases: the Swift SDK installs from calimero-network/core's tag, the Kotlin SDK from Maven Central. Each core release opens a pull request that moves them.
+To bump: iOS, the `exactVersion` / `exact:` values; Android, `meroSdk` in `gradle/libs.versions.toml`.
 
 ## Calimero 1.0
 

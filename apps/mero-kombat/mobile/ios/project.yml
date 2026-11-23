@@ -7,9 +7,9 @@
 # The non-UI layer (typed contract client, view models, the game bridge, the fight pad's input
 # mapping, presence) is the local SwiftPM package in KombatCore/, tested on macOS with `swift
 # test --package-path KombatCore` (no simulator). The game itself is the web app's engine, built
-# by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle. The swift-sdk is
-# pinned to its v4.1.0 release (Calimero 1.0). Keep it equal to the version in
-# KombatCore/Package.swift.
+# by ../scripts/build-web.sh into Resources/Game and shipped in the app bundle. The Swift SDK
+# (MeroKit, from calimero-network/core) is pinned to a core release (Calimero 1.0). Keep it equal
+# to the version in KombatCore/Package.swift.
 name: MeroKombat
 
 options:
@@ -20,8 +20,8 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   KombatCore:
     path: KombatCore
 

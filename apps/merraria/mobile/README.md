@@ -6,12 +6,12 @@ Symbols ↔ Material Symbols), controls and flows, and both are landscape-only.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0`, in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0`, composite build at the release commit in `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+, XcodeGen, WKWebView | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release, in `ios/project.yml` and `ios/MerrariaCore/Package.swift` |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, WebView | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release, `meroSdk` in `android/gradle/libs.versions.toml` |
 
 **Both apps run on Calimero 1.0** and call the contract's component ABI (`../logic/res/abi.json`
 after apps#710). The SDK pins are releases. Bumping is one line per platform (iOS: `exactVersion:` and
-`exact:`; Android: `kotlin-sdk.ref`, set to the new tag's commit).
+`exact:`; Android: `meroSdk` in `gradle/libs.versions.toml`).
 
 ## Calimero 1.0
 
@@ -124,7 +124,6 @@ Android:
 
 ```bash
 cd android
-./scripts/fetch-sdk.sh
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

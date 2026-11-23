@@ -2,14 +2,14 @@
 
 A native SwiftUI client for [Hyperfeed Calendar](../../) on the same contract as the
 web app (`com.calimero.mero-calendar`, [`logic/`](../../logic)), built on the
-swift-sdk's `MeroAppSession` (MeroKit / MeroKitUI). Its Android twin is
+MeroKit's `MeroAppSession` (MeroKit / MeroKitUI). Its Android twin is
 [`../android`](../android); both have the same screens, copy and flows.
 
 ## On Calimero 1.0
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey
 and talks to it over the sealed channel (`calimero/sealed-http/v2`, opened only
-after the node's attestation is verified). The swift-sdk's `CalimeroAppBackend`
+after the node's attestation is verified). MeroKit's `CalimeroAppBackend`
 maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
@@ -48,7 +48,7 @@ An invitation link is
 `https://links.calimero.network/com.calimero.mero-calendar/join?invitation=<token>`,
 the token being `base58(deflate(json))` of
 `{"invitation":"inv_…","namespaceId":"…","name":"…"}` (the SDK's `OrgInvitation`,
-the same payload kotlin-sdk writes, with the team's name in `name`). The invite token is a
+the same payload mero-kotlin writes, with the team's name in `name`). The invite token is a
 bearer secret: anyone holding the link can join until it expires. Pre-1.0 links
 (signed group invitations) are refused.
 
@@ -71,7 +71,7 @@ private event so that it invites someone promotes it with `updatePrivateEvent`
 
 ## The contract client
 
-`Core/Sources/CalendarContract/Generated/CalendarClient.swift` is generated
+`CalendarCore/Sources/CalendarContract/Generated/CalendarClient.swift` is generated
 from the component contract's ABI (`scripts/mobile-codegen.sh` at the repo
 root); `CalendarContract.swift` keeps the shapes it takes and answers as JSON
 until the logic derives `AbiType`, the twin of the web app's
@@ -97,7 +97,7 @@ colors, invite teammates, description, delete. Plus **Members**, **Your name**
 
 ```
 project.yml                  XcodeGen spec (the .xcodeproj is generated, not committed)
-Core/                        local SwiftPM package, checked on macOS with `swift test`
+CalendarCore/                        local SwiftPM package, checked on macOS with `swift test`
   Sources/CalendarContract/  the typed component-contract client
   Sources/CalendarCore/      EventTime, CalendarRepository,
                              TeamInvitation, CalendarMath, EventDraft, and the view models
@@ -122,8 +122,8 @@ Bundle id `network.calimero.calendar`, iOS 16+. CI:
 
 ### The SDK pin
 
-`Core/Package.swift`, `Core/Package.resolved` and `project.yml` pin the
-swift-sdk to its `v4.1.0` release (tag commit `807cfe6`). To bump it, change the
+`CalendarCore/Package.swift`, `CalendarCore/Package.resolved` and `project.yml` pin the
+Swift SDK (MeroKit) to a calimero-network/core release. To bump it, change the
 version in all three files.
 
 ### Pointing it at another environment

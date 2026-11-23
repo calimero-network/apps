@@ -8,11 +8,11 @@ node), its organizations as workspaces, their teams as folders.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build from `android/kotlin-sdk.ref` |
+| iOS | `ios/` | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Maven Central), `meroSdk` in `android/gradle/libs.versions.toml` |
 
 **To bump a pin**, change it in every place it is set. On iOS that means
-`ios/project.yml` and `ios/DocsCore/Package.swift`; on Android, `android/kotlin-sdk.ref`.
+`ios/project.yml` and `ios/DocsCore/Package.swift`; on Android, `meroSdk` in `android/gradle/libs.versions.toml`.
 
 ## Read and comment
 
@@ -144,7 +144,6 @@ Android (JDK 17, Android SDK 34):
 
 ```bash
 cd android
-./scripts/fetch-sdk.sh                 # the kotlin-sdk at kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

@@ -8,7 +8,7 @@ and messages. It is built on the Calimero Kotlin SDK (`mero-core` + `mero-compos
 ## On Calimero 1.0
 
 The phone runs no node. It signs in with a passkey on a Calimero 1.0 cluster and talks to it over
-the SDK's sealed channel (kotlin-sdk `4.0.0`). Contract calls use the component ABI that the web port
+the SDK's sealed channel (mero-kotlin). Contract calls use the component ABI that the web port
 (#730) ships in `../../logic/res/abi.json`.
 
 | What | How | SDK |
@@ -49,7 +49,6 @@ Needs JDK 17 and the Android SDK (platform 34).
 
 ```bash
 cd apps/mero-chat/mobile/android
-./scripts/fetch-sdk.sh            # clone kotlin-sdk at the commit in kotlin-sdk.ref into .sdk/
 ./gradlew assembleDebug           # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug            # onto a running emulator or device
 ```
@@ -62,23 +61,9 @@ The gates CI runs (`.github/workflows/mero-chat-android.yml`):
 
 ### The SDK pin
 
-The Calimero 1.0 layer the app uses is kotlin-sdk `4.0.0` (`kotlin-sdk.ref` pins its release commit,
-`e18ef8a`). That release is not on Maven Central,
-so the SDK is built from source as a Gradle composite build: `settings.gradle.kts` includes the
-checkout and substitutes it for the `network.calimero:mero-core` / `mero-compose` /
-`mero-testkit` coordinates the app declares. Which checkout:
-
-1. `-PmeroKotlinSdkDir=/path/to/kotlin-sdk` (or `meroKotlinSdkDir=` in `~/.gradle/gradle.properties`),
-2. else the `MERO_KOTLIN_SDK_DIR` environment variable,
-3. else `.sdk/kotlin-sdk`, which `scripts/fetch-sdk.sh` checks out at the SHA in `kotlin-sdk.ref`.
-
-To develop against a local SDK checkout, point option 1 or 2 at it.
-
-To bump the pin, put the new full commit SHA in `kotlin-sdk.ref` and run `./scripts/fetch-sdk.sh`.
-The SDK is built in the same Gradle invocation, so the Android Gradle Plugin and Kotlin versions in
-`gradle/libs.versions.toml` must equal the SDK's (its `gradle/libs.versions.toml`); compare them on
-every bump. Once the SDK is on Maven Central, drop the `includeBuild` block and give the three
-catalog entries a real version.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.
 
 ### Pointing it at a cluster
 

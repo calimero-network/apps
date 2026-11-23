@@ -7,8 +7,8 @@ sent.** Uploading documents, placing fields and the semantic search stay on the 
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
-| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (`android/kotlin-sdk.ref`, composite build) |
+| iOS | `ios/` | SwiftUI, iOS 16+, PDFKit | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release (in `ios/project.yml`, `ios/SignCore/Package.swift` and `Package.resolved`) |
+| Android | `android/` | Jetpack Compose + Material 3, minSdk 26, `PdfRenderer` + PdfBox-Android | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (`meroSdk` in `android/gradle/libs.versions.toml`) |
 
 Both pins are SDK releases; bump them to the next release together.
 
@@ -132,7 +132,6 @@ swift test --package-path ios/SignCore
 cd ios && xcodegen generate && xcodebuild build -scheme MeroSign -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO
 
 # Android
-cd android && ./scripts/fetch-sdk.sh
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 

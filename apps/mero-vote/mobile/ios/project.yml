@@ -4,11 +4,11 @@
 #   xcodegen generate          # writes MeroVote.xcodeproj (not committed)
 #   open MeroVote.xcodeproj
 #
-# The logic (ballot cryptography, generated contract client, view models,
-# invitation codec) lives in the local VoteCore package, which builds and tests
-# on macOS with `swift test --package-path VoteCore`. The swift-sdk is pinned
-# to its v4.1.0 release (Calimero 1.0); bump `exactVersion` for a new release.
-# Keep it identical to VoteCore/Package.swift.
+# The logic (ballot cryptography, generated contract client, view models, invitation codec)
+# lives in the local VoteCore package, which builds and tests on macOS with `swift test
+# --package-path VoteCore`. The Swift SDK (MeroKit, from calimero-network/core) is pinned to a
+# core release (Calimero 1.0); bump `exactVersion` for a new release. Keep it identical to
+# VoteCore/Package.swift.
 name: MeroVote
 
 options:
@@ -19,8 +19,8 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   VoteCore:
     path: VoteCore
 

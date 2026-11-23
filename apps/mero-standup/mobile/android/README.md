@@ -24,7 +24,6 @@ approvals), and per team the Standup, Week, Decisions and Team tabs.
 ## Build
 
 ```bash
-./scripts/fetch-sdk.sh          # kotlin-sdk at the SHA in kotlin-sdk.ref, into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
@@ -38,9 +37,9 @@ intent filter). Plain http is allowed only to `10.0.2.2` and `localhost`.
 
 ## SDK pin
 
-`kotlin-sdk.ref` pins kotlin-sdk `4.0.0` (Calimero 1.0) by its release commit; for a new release, set it
-to that tag's commit.
-`settings.gradle.kts` includes the checkout as a composite build.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.
 
 ## Layout
 

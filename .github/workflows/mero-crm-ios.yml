@@ -1,8 +1,8 @@
 # Native iOS Mero CRM (apps/mero-crm/mobile/ios): test the core package
 # (generated client, helpers, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The
-# swift-sdk is resolved from GitHub at the revision Core/Package.swift and
-# project.yml pin.
+# project from project.yml and build the app for the iOS Simulator. The Swift
+# SDK is resolved from calimero-network/core at the revision
+# CrmCore/Package.swift and project.yml pin.
 name: Mero CRM iOS
 
 on:
@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: apps/mero-crm/mobile/ios/Core
+        working-directory: apps/mero-crm/mobile/ios/CrmCore
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain

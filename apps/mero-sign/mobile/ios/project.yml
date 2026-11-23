@@ -4,12 +4,11 @@
 #   xcodegen generate          # writes MeroSign.xcodeproj (not committed)
 #   open MeroSign.xcodeproj
 #
-# The logic (generated contract client, private store and identity mapping,
-# PDF stamping, signature ink, view models) lives in the local SignCore
-# package, which builds and tests on macOS with `swift test --package-path SignCore`.
-# The swift-sdk is pinned to its v4.1.0 release (Calimero 1.0); bump
-# `exactVersion` for a new release. Keep it identical to SignCore/Package.swift
-# (and Package.resolved).
+# The logic (generated contract client, private store and identity mapping, PDF stamping,
+# signature ink, view models) lives in the local SignCore package, which builds and tests on
+# macOS with `swift test --package-path SignCore`. The Swift SDK (MeroKit, from
+# calimero-network/core) is pinned to a core release (Calimero 1.0); bump `exactVersion` for a
+# new release. Keep it identical to SignCore/Package.swift (and Package.resolved).
 name: MeroSign
 
 options:
@@ -20,8 +19,8 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   SignCore:
     path: SignCore
 

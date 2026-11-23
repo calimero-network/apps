@@ -6,8 +6,8 @@
 #
 # The logic (the typed contract client, the board and its commit-reveal, the invitation codec, the
 # view models) lives in the local BattleshipsCore package, which builds and tests on macOS with
-# `swift test --package-path BattleshipsCore`. The swift-sdk is pinned to its v4.1.0 release
-# (`exactVersion`). Keep it identical to BattleshipsCore/Package.swift.
+# `swift test --package-path BattleshipsCore`. The Swift SDK (MeroKit, from calimero-network/core)
+# is pinned to a core release (`exactVersion`). Keep it identical to BattleshipsCore/Package.swift.
 name: Battleships
 
 options:
@@ -18,8 +18,8 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   BattleshipsCore:
     path: BattleshipsCore
 

@@ -1,7 +1,7 @@
 import Foundation
 import MeroKit
 
-/// A team invitation: swift-sdk's ``OrgInvitation``, the link payload every Calimero 1.0 app
+/// A team invitation: MeroKit's ``OrgInvitation``, the link payload every Calimero 1.0 app
 /// shares, with the team's name to show as its `name`:
 ///
 /// - payload: `{"invitation": "inv_…", "namespaceId": "<team>", "name"?: "<team name>"}`

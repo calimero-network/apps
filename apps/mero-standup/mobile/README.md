@@ -6,11 +6,11 @@ copy, icons and flows.
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at `v0.5.0` (Calimero 1.0) |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (Calimero 1.0, `android/kotlin-sdk.ref`) |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` from core's release (Calimero 1.0) |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material 3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Calimero 1.0, `meroSdk` in `android/gradle/libs.versions.toml`) |
 
 **SDK pins.** Both are SDK releases. They live in
-`Core/Package.swift` and `project.yml` on iOS, `kotlin-sdk.ref` on Android.
+`StandupCore/Package.swift` and `project.yml` on iOS, `meroSdk` in `gradle/libs.versions.toml` on Android.
 
 ## Calimero 1.0
 

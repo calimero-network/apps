@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * An invitation link: kotlin-sdk's [OrgInvitation], the payload every Calimero 1.0 app shares, so a
- * link minted here opens in any client of the package. (Swift `ModelsInvitation`.)
+ * An invitation link: mero-kotlin's [OrgInvitation], the payload every Calimero 1.0 app shares, so
+ * a link minted here opens in any client of the package. (Swift `ModelsInvitation`.)
  *
  * - payload: `{"invitation": "inv_…", "namespaceId": "<studio>", "contextId": "<scene>"}`
  * - token: `base58(deflate(payload))` ([InviteCodec])

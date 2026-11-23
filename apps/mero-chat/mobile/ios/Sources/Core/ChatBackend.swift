@@ -46,9 +46,8 @@ protocol ChatBackend: Sendable {
     func downloadBlob(blobId: String, contextId: String) async throws -> Data
 }
 
-/// ``ChatBackend`` on the swift-sdk's app layer (`MeroAppBackend`; in the app
-/// `MeroKitUI.CalimeroAppBackend` over a `CalimeroClient`, in tests
-/// `InMemoryAppBackend`):
+/// ``ChatBackend`` on MeroKit's app layer (`MeroAppBackend`; in the app
+/// `MeroKitUI.CalimeroAppBackend` over a `CalimeroClient`, in tests `InMemoryAppBackend`):
 ///
 /// - Contract calls: ``AppChatContract`` over the backend's `ContextContract`
 ///   (`POST /apps/{app}/views` and `/intents`, sealed).

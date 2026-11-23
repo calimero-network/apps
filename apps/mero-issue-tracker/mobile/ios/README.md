@@ -5,7 +5,7 @@ SwiftUI, iOS 16+. See [`../README.md`](../README.md) for the screens, features a
 | Path | What |
 | --- | --- |
 | `project.yml` | XcodeGen spec (`MeroIssues.xcodeproj` is generated, not committed) |
-| `Core/` | SwiftPM package `IssueTrackerCore`: the contract client, `WorkspaceModel`, `IssuesModel`, `IssueDetailModel`, invitations, formatting, and their tests |
+| `IssueTrackerCore/` | SwiftPM package `IssueTrackerCore`: the contract client, `WorkspaceModel`, `IssuesModel`, `IssueDetailModel`, invitations, formatting, and their tests |
 | `Sources/App/` | The SwiftUI app |
 
 ```bash
@@ -24,7 +24,7 @@ Bundle id `network.calimero.issues`.
 
 The phone holds no node. It signs in to a Calimero 1.0 cluster with a passkey and talks to it over
 the sealed channel (`calimero/sealed-http/v2`, opened only after the node's attestation is
-verified). The swift-sdk's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
+verified). MeroKit's `CalimeroAppBackend` maps the app layer onto the 1.0 API:
 
 | What | SDK | Wire |
 | --- | --- | --- |
@@ -77,5 +77,5 @@ code, then opens the page in the system browser, which shows the same code and r
 
 ### The SDK pin
 
-The swift-sdk is pinned to its `v4.1.0` release (Calimero 1.0) in `project.yml`,
-`Core/Package.swift` and `Core/Package.resolved`; bump all three together.
+The Swift SDK (MeroKit) is pinned to a calimero-network/core release in `project.yml`,
+`IssueTrackerCore/Package.swift` and `IssueTrackerCore/Package.resolved`; bump all three together.

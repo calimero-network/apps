@@ -1,8 +1,8 @@
 # Native iOS Mero Standup (apps/mero-standup/mobile/ios): test the core package
 # (contract client, helpers, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The
-# swift-sdk is resolved from GitHub at the revision Core/Package.swift and
-# project.yml pin.
+# project from project.yml and build the app for the iOS Simulator. The Swift
+# SDK is resolved from calimero-network/core at the revision
+# StandupCore/Package.swift and project.yml pin.
 name: Mero Standup iOS
 
 on:
@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: apps/mero-standup/mobile/ios/Core
+        working-directory: apps/mero-standup/mobile/ios/StandupCore
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain

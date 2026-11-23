@@ -46,7 +46,7 @@ const out = {
 
 const json = JSON.stringify(out, null, 2) + "\n";
 for (const target of [
-  "../ios/Core/Tests/StreamCoreTests/Fixtures/frame-vectors.json",
+  "../ios/StreamCore/Tests/StreamCoreTests/Fixtures/frame-vectors.json",
   "../android/app/src/test/resources/frame-vectors.json",
 ]) {
   writeFileSync(join(here, target), json);

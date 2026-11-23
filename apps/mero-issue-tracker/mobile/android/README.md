@@ -11,7 +11,6 @@ the Calimero 1.0 model, sign-in, invitations and approvals.
 | `app/src/test/` | JVM tests of the models against mero-testkit's `InMemoryAppBackend`, and the contract's wire |
 
 ```bash
-./scripts/fetch-sdk.sh          # the kotlin-sdk at kotlin-sdk.ref, built as a composite build
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
@@ -28,5 +27,6 @@ Package `network.calimero.issues`.
   `https://links.calimero.network/com.calimero.mero-issue-tracker/join?…` and
   `calimero://com.calimero.mero-issue-tracker/join?…`.
 
-`kotlin-sdk.ref` pins the commit of the kotlin-sdk `4.0.0` release (Calimero 1.0, `e18ef8a`); to bump
-it, put the new tag's commit there.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.

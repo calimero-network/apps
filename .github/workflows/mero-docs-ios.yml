@@ -1,7 +1,7 @@
-# Native iOS Mero Docs (apps/mero-docs/mobile/ios): test the DocsCore package
-# (generated client, document reader, comments, view models) on macOS, then generate the Xcode
-# project from project.yml and build the app for the iOS Simulator. The swift-sdk is
-# resolved from GitHub at the revision project.yml and DocsCore/Package.swift pin.
+# Native iOS Mero Docs (apps/mero-docs/mobile/ios): test the DocsCore package (generated
+# client, document reader, comments, view models) on macOS, then generate the Xcode project
+# from project.yml and build the app for the iOS Simulator. The Swift SDK is resolved from
+# calimero-network/core at the revision project.yml and DocsCore/Package.swift pin.
 name: Mero Docs iOS
 
 on:

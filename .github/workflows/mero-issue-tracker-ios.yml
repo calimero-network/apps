@@ -1,7 +1,8 @@
 # Native iOS Mero Issue Tracker (apps/mero-issue-tracker/mobile/ios): run the Core package's
 # tests on macOS (generated contract client + view models against the SDK's fakes), then generate
-# the Xcode project from project.yml and build the app for the iOS Simulator. The swift-sdk is
-# resolved from GitHub at the revision project.yml and Core/Package.swift pin.
+# the Xcode project from project.yml and build the app for the iOS Simulator. The Swift SDK is
+# resolved from calimero-network/core at the revision project.yml and
+# IssueTrackerCore/Package.swift pin.
 name: Mero Issue Tracker iOS
 
 on:
@@ -40,7 +41,7 @@ jobs:
           swift --version
 
       - name: Core tests (macOS)
-        working-directory: apps/mero-issue-tracker/mobile/ios/Core
+        working-directory: apps/mero-issue-tracker/mobile/ios/IssueTrackerCore
         run: swift test
 
       - name: Install XcodeGen

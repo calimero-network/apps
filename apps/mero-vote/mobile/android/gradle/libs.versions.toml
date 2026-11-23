@@ -1,6 +1,6 @@
-# Versions follow the Calimero Kotlin SDK's own catalog (kotlin-sdk/gradle/libs.versions.toml at
-# the commit in kotlin-sdk.ref): the SDK is built in the same Gradle invocation (composite build),
-# so the Android Gradle Plugin and Kotlin versions must match it exactly.
+# Versions follow the Calimero Kotlin SDK's own catalog
+# (sdks/clients/mero-kotlin/gradle/libs.versions.toml in calimero-network/core), so the app builds
+# with the Android Gradle Plugin and Kotlin the SDK is built with.
 [versions]
 agp = "8.5.2"
 kotlin = "2.0.21"
@@ -15,14 +15,14 @@ composeBom = "2024.12.01"
 junit = "4.13.2"
 ktlint = "12.1.1"
 detekt = "1.23.7"
-# Unreleased: replaced by the included kotlin-sdk build (settings.gradle.kts). The number only
-# has to be well-formed.
-meroSdk = "4.0.0"
+# The Calimero Kotlin SDK, published to Maven Central from calimero-network/core
+# (sdks/clients/mero-kotlin) on core's version.
+meroSdk = "1.0.0-rc.35"
 
 [libraries]
-mero-core = { module = "network.calimero:mero-core", version.ref = "meroSdk" }
-mero-compose = { module = "network.calimero:mero-compose", version.ref = "meroSdk" }
-mero-testkit = { module = "network.calimero:mero-testkit", version.ref = "meroSdk" }
+mero-core = { module = "network.calimero:mero-kotlin", version.ref = "meroSdk" }
+mero-compose = { module = "network.calimero:mero-kotlin-compose", version.ref = "meroSdk" }
+mero-testkit = { module = "network.calimero:mero-kotlin-testkit", version.ref = "meroSdk" }
 
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }

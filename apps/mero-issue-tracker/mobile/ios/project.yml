@@ -4,10 +4,10 @@
 #   xcodegen generate          # writes MeroIssues.xcodeproj (not committed)
 #   open MeroIssues.xcodeproj
 #
-# The non-UI layer (generated contract client, models) is the local SwiftPM
-# package in Core/, tested with `swift test` on macOS. The swift-sdk is pinned to
-# its v4.1.0 release (`exactVersion`). Bump the pins here, in Core/Package.swift
-# and Core/Package.resolved together.
+# The non-UI layer (generated contract client, models) is the local SwiftPM package in
+# IssueTrackerCore/, tested with `swift test` on macOS. The Swift SDK (MeroKit, from
+# calimero-network/core) is pinned to a core release (`exactVersion`). Bump the pins here, in
+# IssueTrackerCore/Package.swift and IssueTrackerCore/Package.resolved together.
 name: MeroIssues
 
 options:
@@ -18,10 +18,10 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   IssueTrackerCore:
-    path: Core
+    path: IssueTrackerCore
 
 targets:
   MeroIssues:

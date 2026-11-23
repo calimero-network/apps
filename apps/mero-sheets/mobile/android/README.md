@@ -11,7 +11,6 @@ features and SDK notes.
 | `app/src/test/` | JVM tests of the models against mero-testkit's `InMemoryAppBackend` |
 
 ```bash
-./scripts/fetch-sdk.sh          # the kotlin-sdk at kotlin-sdk.ref, built as a composite build
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
@@ -23,5 +22,6 @@ allow cleartext to it). The node's consent page returns to `meroConsentCallback`
 `https://links.calimero.network/com.calimero.mero-sheets/join?…` and
 `calimero://com.calimero.mero-sheets/join?…`.
 
-`kotlin-sdk.ref` pins kotlin-sdk `4.0.0` (Calimero 1.0) by its release commit; for a new release, set it to
-that tag's commit.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.

@@ -47,16 +47,14 @@ Needs JDK 17 and the Android SDK (platform 34).
 
 ```bash
 cd apps/mero-calendar/mobile/android
-./scripts/fetch-sdk.sh            # clone kotlin-sdk at the commit in kotlin-sdk.ref into .sdk/
 ./gradlew ktlintCheck detekt testDebugUnitTest lint assembleDebug
 ```
 
 ### The SDK pin
 
-`kotlin-sdk.ref` pins `e18ef8acdd06c505918a97e212f8b5291f7cfc00`, the commit of the kotlin-sdk
-`4.0.0` release (Calimero 1.0), which is not on Maven Central. The SDK
-is built from source as a Gradle composite build (`settings.gradle.kts`): `-PmeroKotlinSdkDir=/path`,
-else `MERO_KOTLIN_SDK_DIR`, else `.sdk/kotlin-sdk`.
+`meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
+`mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
+core's version. Each core release opens a pull request that moves it.
 
 ### Configuration
 

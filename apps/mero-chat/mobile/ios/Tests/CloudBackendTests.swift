@@ -3,9 +3,9 @@ import MeroKit
 import MeroKitTestSupport
 import XCTest
 
-/// ``CloudChatBackend`` over the swift-sdk's app layer: what the chat screens
-/// ask becomes the `MeroAppBackend` calls `CalimeroAppBackend` maps onto the 1.0
-/// API (orgs, teams, app instances, invites, `/views` and `/intents`).
+/// ``CloudChatBackend`` over MeroKit's app layer: what the chat screens ask
+/// becomes the `MeroAppBackend` calls `CalimeroAppBackend` maps onto the 1.0 API
+/// (orgs, teams, app instances, invites, `/views` and `/intents`).
 final class CloudBackendTests: XCTestCase {
     private let org = String(repeating: "0a", count: 32)
 

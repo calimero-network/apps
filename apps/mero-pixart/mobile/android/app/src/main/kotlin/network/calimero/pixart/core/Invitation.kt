@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * A team invitation: kotlin-sdk's [OrgInvitation], the link payload every Calimero 1.0 app shares,
- * with the team's name to show as its `name`:
+ * A team invitation: mero-kotlin's [OrgInvitation], the link payload every Calimero 1.0 app
+ * shares, with the team's name to show as its `name`:
  *
  * - payload: `{"invitation": "inv_…", "namespaceId": "<team>", "name"?: "<team name>"}`
  * - token: `base58(deflate(payload))` ([com.calimero.mero.invite.InviteCodec])

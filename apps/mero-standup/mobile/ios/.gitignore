@@ -7,8 +7,8 @@ DerivedData/
 build/
 xcuserdata/
 .swiftpm/
-Core/.build/
-Core/.swiftpm/
-Core/Package.resolved
+StandupCore/.build/
+StandupCore/.swiftpm/
+StandupCore/Package.resolved
 *.xcresult
 xcodebuild*.log

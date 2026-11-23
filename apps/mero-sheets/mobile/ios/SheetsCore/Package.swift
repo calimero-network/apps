@@ -1,0 +1,34 @@
+// swift-tools-version: 5.9
+// Hyperfeed Sheets' non-UI layer: the generated contract client, the models
+// behind every screen, and their tests. A SwiftPM package so `swift test` runs
+// it on macOS with no simulator; project.yml links it into the iOS app.
+import PackageDescription
+
+let package = Package(
+    name: "SheetsCore",
+    platforms: [.iOS(.v16), .macOS(.v13)],
+    products: [
+        .library(name: "SheetsCore", targets: ["SheetsCore"])
+    ],
+    dependencies: [
+        // MeroKit from a calimero-network/core release (Calimero 1.0); keep in step with
+        // `packages.MeroKit.exactVersion` in ../project.yml.
+        .package(
+            url: "https://github.com/calimero-network/core",
+            exact: "1.0.0-rc.35")
+    ],
+    targets: [
+        .target(
+            name: "SheetsCore",
+            dependencies: [.product(name: "MeroKit", package: "core")]
+        ),
+        .testTarget(
+            name: "SheetsCoreTests",
+            dependencies: [
+                "SheetsCore",
+                .product(name: "MeroKit", package: "core"),
+                .product(name: "MeroKitTestSupport", package: "core"),
+            ]
+        ),
+    ]
+)

@@ -1,8 +1,8 @@
 import Foundation
 import MeroKit
 
-/// An invitation to one table, as the swift-sdk's `OrgInvitation` link payload, so a link made on
-/// the phone opens in the browser and the other way round:
+/// An invitation to one table, as MeroKit's `OrgInvitation` link payload, so a link made on the
+/// phone opens in the browser and the other way round:
 ///
 /// - payload: JSON `{"invitation": "inv_…", "namespaceId": "<org>", "contextId": "<table>", "name": "<club, optional>"}`
 /// - token: `base58(deflate(payload))` (``InviteCodec``)

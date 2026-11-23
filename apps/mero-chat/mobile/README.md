@@ -5,11 +5,11 @@ contract (`../logic`, package `com.calimero.chat`).
 
 | | Folder | Stack | SDK (pinned) |
 | --- | --- | --- | --- |
-| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [swift-sdk](https://github.com/calimero-network/swift-sdk) `MeroKit` + `MeroKitUI` at a commit, by SPM revision in `ios/project.yml` |
-| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) `mero-core` + `mero-compose` at `0.4.0` (not on Maven Central), composite build at the SHA in `android/kotlin-sdk.ref` |
+| iOS | [`ios/`](ios/README.md) | SwiftUI, iOS 16+ | [mero-swift](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-swift) `MeroKit` + `MeroKitUI` at a commit, by SPM revision in `ios/project.yml` |
+| Android | [`android/`](android/README.md) | Jetpack Compose + Material3, minSdk 26 | [mero-kotlin](https://github.com/calimero-network/core/tree/master/sdks/clients/mero-kotlin) `mero-core` + `mero-compose` from core's release (Maven Central), `meroSdk` in `android/gradle/libs.versions.toml` |
 
-Both pins are SDK releases (kotlin-sdk is not on Maven Central, so Android builds it from source).
-To bump: iOS, the `exactVersion` / `exact:` values; Android, `kotlin-sdk.ref` (the new tag's commit).
+Both pins are core releases: the Swift SDK installs from calimero-network/core's tag, the Kotlin SDK from Maven Central. Each core release opens a pull request that moves them.
+To bump: iOS, the `exactVersion` / `exact:` values; Android, `meroSdk` in `gradle/libs.versions.toml`.
 
 ## On Calimero 1.0
 
@@ -22,7 +22,7 @@ channel. They call the component contract the web port (#730) ships in `../logic
 - **Contract:** Android calls it through `ChatClient`, generated from the ABI by
   `scripts/mobile-codegen.sh`. iOS keeps `ComponentChatContract`, the one place that maps v1's
   method names and shapes to the ABI's (camelCase names and fields, `u64`s as decimal strings, as
-  the web's `src/api/meroChat.ts` does), until it moves to a swift-sdk release with the generated
+  the web's `src/api/meroChat.ts` does), until it moves to the generated
   Swift client. Errors are `422 APP_ERROR` (`Invalid`, `Forbidden`,
   `NotFound`, `Banned`), shown with the contract's own message.
 - **Workspaces** are orgs. **Channels** are app instances of chat: open ones in the org itself (as
@@ -54,8 +54,8 @@ README lists them with the reason.
 
 - **Sign-in on Calimero Cloud** runs on Mero Chat's served page in the system sign-in sheet
   (`#native-sign-in`), which returns an app-bound session to `mero-chat://signed-in`.
-  - **iOS:** `MeroClient.signInWithServedPage` (swift-sdk, pinned to a commit until released).
-  - **Android:** not wired yet (kotlin-sdk, Custom Tabs).
+  - **iOS:** `MeroClient.signInWithServedPage` (MeroKit, pinned to a commit until the next core release).
+  - **Android:** not wired yet (mero-kotlin, Custom Tabs).
   - Development nodes use software passkeys and need none of this.
 - **Blobs** (attachments, avatars) need a node past core `1.0.0-rc.7` (#730).
 - **Links across clients:** the web app shares `?invite=` links to its own origin and does not

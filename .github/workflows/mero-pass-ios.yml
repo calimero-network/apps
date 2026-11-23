@@ -2,11 +2,12 @@
 #
 # - Logic: the PassCore package (vault crypto, vault session, generated contract client, view
 #   models) is tested on macOS with `swift test`: the crypto against the web's test vectors
-#   (mobile/test-vectors), the models against the swift-sdk's in-memory fakes.
+#   (mobile/test-vectors), the models against MeroKitTestSupport's in-memory fakes.
 # - Vectors: regenerated from the web's own crypto (packages/mero-pass) and diffed, so a change
 #   on the web that would break native vaults fails here.
 # - App: the Xcode project is generated from project.yml and the app is built for the iOS
-#   Simulator, unsigned. The swift-sdk is resolved from GitHub at the revision both pin.
+#   Simulator, unsigned. The Swift SDK is resolved from calimero-network/core at the revision both
+# pin.
 name: Mero Pass iOS
 
 on:

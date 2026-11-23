@@ -288,8 +288,8 @@ because a release with #4815 forgets a blob nothing references after an hour.
 
 ## Mobile
 
-`mobile/ios` and `mobile/android` are on swift-sdk and kotlin-sdk for Calimero
-1.0 and call the contract through `DesignClient`, generated from
+`mobile/ios` and `mobile/android` are on the Swift and Kotlin SDKs (mero-swift,
+mero-kotlin) for Calimero 1.0 and call the contract through `DesignClient`, generated from
 `logic/res/abi.json` by `scripts/mobile-codegen.sh` at the repo root (see
 `mobile/README.md`).
 

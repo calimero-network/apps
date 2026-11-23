@@ -4,11 +4,11 @@
 #   xcodegen generate          # writes MeroPass.xcodeproj (not committed)
 #   open MeroPass.xcodeproj
 #
-# The logic (vault crypto, vault session, generated contract client, view
-# models) lives in the local PassCore package, which builds and tests on macOS
-# with `swift test --package-path PassCore`. The swift-sdk is pinned to
-# its v4.1.0 release (Calimero 1.0); bump `exactVersion` for a new release.
-# Keep it identical to PassCore/Package.swift.
+# The logic (vault crypto, vault session, generated contract client, view models) lives in the
+# local PassCore package, which builds and tests on macOS with `swift test --package-path
+# PassCore`. The Swift SDK (MeroKit, from calimero-network/core) is pinned to a core release
+# (Calimero 1.0); bump `exactVersion` for a new release. Keep it identical to
+# PassCore/Package.swift.
 name: MeroPass
 
 options:
@@ -19,8 +19,8 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   PassCore:
     path: PassCore
 

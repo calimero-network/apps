@@ -4,10 +4,10 @@
 #   xcodegen generate          # writes MeroSheets.xcodeproj (not committed)
 #   open MeroSheets.xcodeproj
 #
-# The non-UI layer (generated contract client, models) is the local SwiftPM
-# package in Core/, tested with `swift test` on macOS. The swift-sdk is pinned
-# to its v4.1.0 release (Calimero 1.0); bump `exactVersion` for a new release and
-# keep both pins (here and Core/Package.swift) equal.
+# The non-UI layer (generated contract client, models) is the local SwiftPM package in
+# SheetsCore/, tested with `swift test` on macOS. The Swift SDK (MeroKit, from
+# calimero-network/core) is pinned to a core release (Calimero 1.0); bump `exactVersion` for a
+# new release and keep both pins (here and SheetsCore/Package.swift) equal.
 name: MeroSheets
 
 options:
@@ -18,10 +18,10 @@ options:
 
 packages:
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    exactVersion: 4.1.0
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.35
   SheetsCore:
-    path: Core
+    path: SheetsCore
 
 targets:
   MeroSheets:
