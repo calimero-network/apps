@@ -95,7 +95,7 @@ public struct CloudSpaces: SpaceDirectory {
         _ = try await client.orgs.metadata(org: org, metadata: try OpenAPIValueContainer(metadata))
         let app = try await client.apps.create(
             name: name, package: SpaceInvite.appSlug, version: packageVersion, org: org,
-            access: AppAccess.org.generated, initArgs: try OpenAPIValueContainer(["name": .string(name)])
+            initArgs: try OpenAPIValueContainer(["name": .string(name)])
         ).appId
         return CreatedSpace(orgId: org, appId: app)
     }
