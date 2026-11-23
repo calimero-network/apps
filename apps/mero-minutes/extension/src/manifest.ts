@@ -33,8 +33,8 @@ export function buildManifest(options: { key: string; version: string }): chrome
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
-    // Cross-origin isolation, so the speech model may use several threads.
-    cross_origin_embedder_policy: { value: "require-corp" },
-    cross_origin_opener_policy: { value: "same-origin" },
+    // No cross-origin isolation (COEP/COOP): Chromium refuses to open a tab's
+    // stream in an isolated offscreen page ("Error starting tab capture"). The
+    // speech model then runs one CPU thread, or on WebGPU.
   } as chrome.runtime.ManifestV3;
 }

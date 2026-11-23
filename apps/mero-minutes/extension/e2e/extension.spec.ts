@@ -72,10 +72,10 @@ test("the side panel and the microphone page render", async () => {
   await expect(mic.getByRole("button", { name: "Allow microphone" })).toBeVisible();
 });
 
-test("the extension pages are cross-origin isolated (threads for the model)", async () => {
+test("the extension pages are not cross-origin isolated (tab capture refuses isolated pages)", async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${ID}/popup.html`);
-  expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+  expect(await page.evaluate(() => crossOriginIsolated)).toBe(false);
 });
 
 /**
