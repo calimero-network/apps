@@ -1,0 +1,22 @@
+{
+  "name": "Minutes",
+  "short_name": "Minutes",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#ff5a36",
+  "background_color": "#0f1115",
+  "display": "standalone",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/"
+}

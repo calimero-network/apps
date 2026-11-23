@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.background.config.ts",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "lint": "eslint .",
     "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-minutes -o src/generated",
-    "zip": "node scripts/zip.mjs"
+    "zip": "node scripts/zip.mjs",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@calimero-apps/glass": "workspace:*",
@@ -38,6 +39,9 @@
     "vite": "catalog:",
     "vitest": "catalog:",
     "@types/chrome": "^0.3.7",
-    "@calimero-apps/test-setup": "workspace:*"
+    "@calimero-apps/test-setup": "workspace:*",
+    "@calimero-apps/passkey": "workspace:*",
+    "@calimero-apps/connect": "workspace:*",
+    "@playwright/test": "catalog:"
   }
 }

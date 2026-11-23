@@ -526,10 +526,10 @@ jobs:
           pnpm -r $PNPM_FILTER --if-present run codegen
           # Same reason as the ABI gate: untracked generated output is invisible
           # to `git diff`, so a new app could pass with no client committed.
-          git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
-          if ! git diff --quiet -- 'apps/*/app/src/generated'; then
+          git add --intent-to-add -- 'apps/*/app/src/generated' 'apps/*/extension/src/generated' 2>/dev/null || true
+          if ! git diff --quiet -- 'apps/*/app/src/generated' 'apps/*/extension/src/generated'; then
             echo "::error::a generated client is stale. Run 'scripts/install-meroctl.sh', then 'pnpm -r codegen', and commit."
-            git --no-pager diff -- 'apps/*/app/src/generated'
+            git --no-pager diff -- 'apps/*/app/src/generated' 'apps/*/extension/src/generated'
             exit 1
           fi
           echo "generated clients match the committed ABIs"

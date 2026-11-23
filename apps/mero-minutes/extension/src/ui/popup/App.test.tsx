@@ -1,0 +1,154 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { IDLE, KEYS, type AuthState, type RecorderStatus } from "../../lib/messages";
+import { installFakeChrome, type FakeChrome } from "../../test/fakeChrome";
+import { App } from "./App";
+
+const AUTH: AuthState = {
+  accountId: "acc-1",
+  session: { accountId: "acc-1", sessionToken: "t", refreshToken: "r", expiresAt: 2e12 },
+  nodeUrl: "https://node.example",
+  nodes: [],
+  page: { origin: "https://minutes.example", version: "0.1.0" },
+  workspace: { appId: "app-1", name: "Design team" },
+};
+const MEET = { id: 7, url: "https://meet.google.com/abc-defg-hij", title: "Roadmap review - Google Meet" };
+
+let chrome: FakeChrome;
+beforeEach(() => {
+  chrome = installFakeChrome();
+  chrome.activeTab = MEET;
+});
+
+const types = () => chrome.sent.map((m) => (m as { type: string }).type);
+
+describe("popup", () => {
+  it("signed out: offers sign-in and asks the service worker", async () => {
+    render(<App />);
+    const button = await screen.findByRole("button", { name: "Sign in with Calimero" });
+    expect(screen.getByText(/Audio is never uploaded/)).toBeTruthy();
+    fireEvent.click(button);
+    await waitFor(() => expect(types()).toContain("signIn"));
+  });
+
+  it("shows a sign-in failure", async () => {
+    chrome.onSend = () => ({ ok: false, error: "Sign-in was cancelled." });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in with Calimero" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Sign-in was cancelled.");
+  });
+
+  it("no workspace: lists them and saves the choice", async () => {
+    chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
+    chrome.onSend = (m) =>
+      (m as { type: string }).type === "listWorkspaces"
+        ? { ok: true, value: [{ appId: "a2", name: "Sales" }] }
+        : { ok: true, value: null };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("radio", { name: "Sales" }));
+    await waitFor(() =>
+      expect(chrome.sent).toContainEqual({ type: "chooseWorkspace", workspace: { appId: "a2", name: "Sales" } }),
+    );
+  });
+
+  it("no workspace yet: sends the person to create one", async () => {
+    chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
+    chrome.onSend = () => ({ ok: true, value: [] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Create a workspace/ }));
+    expect(chrome.created).toEqual(["https://minutes.example/0.1.0/"]);
+  });
+
+  it("ready on a Meet call: names it and records this tab", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    expect(await screen.findByText("Roadmap review")).toBeTruthy();
+    expect(screen.getByText("Google Meet · in a call")).toBeTruthy();
+    expect(screen.getByText("Design team")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Record meeting" }));
+    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "start", tabId: 7 }));
+  });
+
+  it("ready on another site: still offers to record the tab", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    chrome.activeTab = { id: 3, url: "https://example.com/webinar", title: "Webinar" };
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Record this tab" })).toBeTruthy();
+    expect(screen.getByText(/Not a meeting tab/)).toBeTruthy();
+  });
+
+  it("toggles the microphone setting", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Mic on/ }));
+    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { mic: boolean }).mic).toBe(false));
+    expect(await screen.findByRole("button", { name: /Mic off/ })).toBeTruthy();
+  });
+
+  it("opens the model sheet with every tier and its size", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Speech model" }));
+    expect(await screen.findByRole("radio", { name: /Whisper large-v3 turbo/ })).toBeTruthy();
+    expect(screen.getByText("1.5 GB")).toBeTruthy();
+    expect(screen.getByText("28 MB")).toBeTruthy();
+    // No WebGPU here (jsdom): the turbo model is not offered.
+    expect((screen.getByRole("radio", { name: /Whisper large-v3 turbo/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: /^Moonshine tiny/ }));
+    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { tier: string }).tier).toBe("ultralight"));
+  });
+
+  it("recording: shows the meeting, live lines and levels, and stops", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    const status: RecorderStatus = {
+      ...IDLE,
+      phase: "recording",
+      tier: "light",
+      meeting: { id: "m1", appId: "app-1", title: "Roadmap review", platform: "meet", startedAt: Date.now() - 65_000 },
+      lines: [{ speaker: "others", text: "Shall we start?", startMs: 1_000 }],
+    };
+    chrome.areas.session.set(KEYS.status, status);
+    render(<App />);
+    expect(await screen.findByText("Shall we start?")).toBeTruthy();
+    expect(screen.getByText("1:05")).toBeTruthy();
+    expect(screen.getByText(/Moonshine base · on this laptop/)).toBeTruthy();
+    act(() => chrome.broadcast({ source: "offscreen", type: "levels", you: 0.05, others: 0 }));
+    await waitFor(() => expect(screen.getByRole("meter", { name: "You" }).getAttribute("aria-valuenow")).not.toBe("0"));
+    fireEvent.click(screen.getByRole("button", { name: /Live transcript/ }));
+    expect(chrome.panels).toEqual([7]);
+    fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
+    await waitFor(() => expect(types()).toContain("stop"));
+  });
+
+  it("saved: links to the meeting", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    chrome.areas.session.set(KEYS.status, {
+      ...IDLE,
+      phase: "saved",
+      link: "https://minutes.example/0.1.0/#/w/app-1/m/m1",
+      meeting: { id: "m1", appId: "app-1", title: "Roadmap review", platform: "meet", startedAt: 0 },
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Open in Minutes/ }));
+    expect(chrome.created).toEqual(["https://minutes.example/0.1.0/#/w/app-1/m/m1"]);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(types()).toContain("dismiss"));
+  });
+
+  it("settings: signs out and checks the development page", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Advanced" }));
+    const input = screen.getByLabelText("Sign-in page");
+    fireEvent.change(input, { target: { value: "http://evil.example" } });
+    expect(screen.getByText(/Use an https:\/\/ address/)).toBeTruthy();
+    fireEvent.change(input, { target: { value: "http://localhost:5173" } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect((chrome.areas.local.get(KEYS.settings) as { pageOverride: string }).pageOverride).toBe("http://localhost:5173"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Sign out/ }));
+    await waitFor(() => expect(types()).toContain("signOut"));
+  });
+});

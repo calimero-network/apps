@@ -1,0 +1,360 @@
+/**
+ * The service worker: signs in through the served page, starts and stops
+ * recordings, and sends the transcript to the workspace. Capture and speech
+ * recognition run in the offscreen document (a service worker has no media
+ * or audio); the transcript queue lives here and in `chrome.storage.local`, so
+ * a restarted worker carries on with what was waiting.
+ */
+import { pickWorkspaces, type AppRow } from "../lib/workspaces";
+import { PACKAGE, meetingLink, servedPage } from "../lib/appHost";
+import { newHandoff, openHandoff, signInUrl } from "../lib/handoff";
+import {
+  DEFAULT_SETTINGS,
+  IDLE,
+  KEYS,
+  type AuthState,
+  type Line,
+  type OffscreenCommand,
+  type OffscreenEvent,
+  type RecorderStatus,
+  type Reply,
+  type Request,
+  type Settings,
+  type Workspace,
+} from "../lib/messages";
+import { detectPlatform, meetingTitle, meetingUrl } from "../lib/platform";
+import { UploadQueue, type QueueState, type QueueStore, type QueuedSegment } from "../lib/queue";
+import { describe, isSignedOut, withClient } from "../lib/session";
+import { read, write } from "../lib/storage";
+import { resolveTier, TIERS, type Capabilities } from "../lib/tiers";
+
+const OFFSCREEN = "offscreen.html";
+const TRANSCRIPT_LIMIT = 5_000;
+
+// ── state ────────────────────────────────────────────────────────────────────
+
+const settings = async (): Promise<Settings> => ({ ...DEFAULT_SETTINGS, ...(await read<Settings>("local", KEYS.settings)) });
+const auth = () => read<AuthState>("local", KEYS.auth);
+const saveAuth = (a: AuthState | null) => write("local", KEYS.auth, a);
+const status = async (): Promise<RecorderStatus> => (await read<RecorderStatus>("session", KEYS.status)) ?? IDLE;
+
+let statusWrite: Promise<void> = Promise.resolve();
+/** Status changes, one after the other (events arrive faster than storage writes). */
+function setStatus(change: (s: RecorderStatus) => RecorderStatus): Promise<void> {
+  statusWrite = statusWrite.then(async () => write("session", KEYS.status, change(await status())));
+  return statusWrite;
+}
+
+const queueStore: QueueStore = {
+  load: () => read<QueueState>("local", KEYS.queue),
+  save: (s) => write("local", KEYS.queue, s),
+};
+
+/**
+ * Every call to the node, one at a time, each with the session as the last
+ * one left it: a refresh token works once, so two calls refreshing at the
+ * same moment would sign the person out.
+ */
+let nodeLock: Promise<unknown> = Promise.resolve();
+function onNode<T>(
+  work: Parameters<typeof withClient<T>>[2],
+  appId?: string,
+): Promise<T> {
+  const run = async () => {
+    const a = await auth();
+    if (!a) throw new Error("Sign in first.");
+    const workspace = appId ? { appId, name: a.workspace?.name ?? "" } : a.workspace;
+    try {
+      return await withClient({ ...a, workspace }, async (next) => saveAuth({ ...next, workspace: a.workspace }), work);
+    } catch (e) {
+      if (isSignedOut(e)) await saveAuth(null);
+      throw e;
+    }
+  };
+  const result = nodeLock.then(run, run);
+  nodeLock = result.catch(() => undefined);
+  return result;
+}
+
+async function send(appId: string, meetingId: string, batch: QueuedSegment[]): Promise<void> {
+  await onNode((_client, app) => app.appendSegments({ meetingId, segments: batch }), appId);
+}
+
+let queue: UploadQueue | null = null;
+async function currentQueue(): Promise<UploadQueue | null> {
+  queue ??= await UploadQueue.restore(queueStore, send);
+  return queue;
+}
+
+async function flushQueue(force = false): Promise<void> {
+  const q = await currentQueue();
+  if (!q) return;
+  await q.flush(force);
+  const snap = q.snapshot;
+  await setStatus((s) => ({ ...s, pending: snap.pending.length, uploadError: snap.lastError }));
+}
+
+// ── offscreen document ───────────────────────────────────────────────────────
+
+async function hasOffscreen(): Promise<boolean> {
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+    documentUrls: [chrome.runtime.getURL(OFFSCREEN)],
+  });
+  return contexts.length > 0;
+}
+
+async function ensureOffscreen(): Promise<void> {
+  if (await hasOffscreen()) return;
+  await chrome.offscreen.createDocument({
+    url: OFFSCREEN,
+    reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.AUDIO_PLAYBACK],
+    justification: "Record the meeting tab and microphone, keep the call audible, and transcribe speech on this device.",
+  });
+}
+
+async function closeOffscreen(): Promise<void> {
+  if (await hasOffscreen()) await chrome.offscreen.closeDocument();
+}
+
+function toOffscreen<T = unknown>(command: OffscreenCommand): Promise<T> {
+  return chrome.runtime.sendMessage(command) as Promise<T>;
+}
+
+// ── sign-in ──────────────────────────────────────────────────────────────────
+
+async function signIn(): Promise<AuthState> {
+  const s = await settings();
+  const page = await servedPage(s.pageOverride);
+  const request = await newHandoff();
+  const url = signInUrl(page.origin, page.version, request);
+  const answer = await chrome.identity.launchWebAuthFlow({ url, interactive: true });
+  if (!answer) throw new Error("Sign-in was cancelled.");
+  const session = await openHandoff(request, answer);
+  const previous = await auth();
+  const next: AuthState = {
+    accountId: session.accountId,
+    session: {
+      accountId: session.accountId,
+      sessionToken: session.sessionToken,
+      expiresAt: session.expiresAt,
+      refreshToken: session.refreshToken,
+    },
+    nodeUrl: session.nodeUrl,
+    nodes: session.nodes,
+    page,
+    // The same account on the same page keeps its workspace.
+    workspace: previous && previous.accountId === session.accountId ? previous.workspace : null,
+  };
+  await saveAuth(next);
+  return next;
+}
+
+async function listWorkspaces(): Promise<Workspace[]> {
+  const dev = (await settings()).pageOverride !== "";
+  const { apps } = await onNode((client) => client.apps.list(dev ? {} : { package: PACKAGE }));
+  return pickWorkspaces(apps as AppRow[], PACKAGE, dev);
+}
+
+// ── recording ────────────────────────────────────────────────────────────────
+
+async function start(tabId: number): Promise<void> {
+  const current = await status();
+  if (current.phase === "recording" || current.phase === "starting" || current.phase === "loading-model")
+    throw new Error("Already recording.");
+  const a = await auth();
+  if (!a) throw new Error("Sign in first.");
+  if (!a.workspace) throw new Error("Choose a workspace first.");
+  const workspace = a.workspace;
+  const tab = await chrome.tabs.get(tabId);
+  const s = await settings();
+  const platform = detectPlatform(tab.url);
+  const title = meetingTitle(tab.title, platform);
+
+  await setStatus(() => ({ ...IDLE, phase: "starting" }));
+  await write("session", KEYS.transcript, [] as Line[]);
+  try {
+    const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+    await ensureOffscreen();
+    const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
+    const tier = resolveTier(s.tier, caps, s.language);
+    const meetingId = await onNode((_c, app) =>
+      app.startMeeting({
+        title,
+        platform,
+        url: meetingUrl(tab.url),
+        model: TIERS[tier].modelId,
+        language: s.language,
+      }),
+    );
+    queue = await UploadQueue.start(workspace.appId, meetingId, queueStore, send);
+    recordingTab = tabId;
+    await chrome.storage.session.set({ "minutes:tab": tabId });
+    await setStatus((st) => ({
+      ...st,
+      phase: "loading-model",
+      tier,
+      meeting: { id: meetingId, appId: workspace.appId, title, platform, startedAt: Date.now() },
+    }));
+    await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
+  } catch (e) {
+    await closeOffscreen().catch(() => undefined);
+    await setStatus((st) => ({ ...st, phase: "error", error: describe(e) }));
+    throw e;
+  }
+}
+
+let recordingTab: number | null = null;
+let stopping: Promise<void> | null = null;
+
+async function stop(): Promise<void> {
+  const s = await status();
+  if (s.phase !== "recording" && s.phase !== "loading-model") return;
+  await setStatus((st) => ({ ...st, phase: "stopping" }));
+  // The offscreen page transcribes what it still holds, then answers `drained`.
+  await toOffscreen({ target: "offscreen", type: "stop" }).catch(() => finish(0));
+}
+
+/** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
+function finish(durationMs: number): Promise<void> {
+  stopping ??= (async () => {
+    const s = await status();
+    const q = await currentQueue();
+    const all = q ? await q.drain() : true;
+    let link: string | null = null;
+    let error: string | null = null;
+    const a = await auth();
+    const meeting = s.meeting;
+    if (a && meeting) {
+      try {
+        await onNode(
+          (_c, app) => app.endMeeting({ meetingId: meeting.id, durationMs: Math.min(durationMs, 0xffffffff) }),
+          meeting.appId,
+        );
+      } catch (e) {
+        error = describe(e);
+      }
+      link = meetingLink(a.page, meeting.appId, meeting.id);
+    }
+    if (all && q) await q.clear();
+    queue = all ? null : q;
+    recordingTab = null;
+    await closeOffscreen().catch(() => undefined);
+    await setStatus((st) => ({
+      ...st,
+      phase: "saved",
+      link,
+      pending: q && !all ? q.pending : 0,
+      uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",
+      error,
+    }));
+  })().finally(() => {
+    stopping = null;
+  });
+  return stopping;
+}
+
+// ── events from the offscreen page ───────────────────────────────────────────
+
+async function onOffscreen(event: OffscreenEvent): Promise<void> {
+  switch (event.type) {
+    case "segment": {
+      const q = await currentQueue();
+      if (!q) return;
+      await q.add({ speaker: event.speaker, startMs: event.startMs, endMs: event.endMs, text: event.text });
+      const line: Line = { speaker: event.speaker, text: event.text.trim(), startMs: event.startMs };
+      const lines = (await read<Line[]>("session", KEYS.transcript)) ?? [];
+      lines.push(line);
+      await write("session", KEYS.transcript, lines.slice(-TRANSCRIPT_LIMIT));
+      await setStatus((s) => ({ ...s, lines: [...s.lines, line].slice(-6) }));
+      await flushQueue();
+      return;
+    }
+    case "tick":
+      await flushQueue();
+      return;
+    case "model":
+      await setStatus((s) => ({
+        ...s,
+        tier: event.tier,
+        model: event.state === "loading" ? (event.progress ?? { fraction: 0, file: "" }) : null,
+        phase: event.state === "ready" && s.phase === "loading-model" ? "recording" : s.phase,
+        error: event.state === "error" ? (event.error ?? "The speech model could not load.") : s.error,
+      }));
+      return;
+    case "stepDown":
+      await setStatus((s) => ({
+        ...s,
+        tier: event.to,
+        notice: `Switched to ${TIERS[event.to].name} to keep up with the conversation.`,
+      }));
+      return;
+    case "notice":
+      await setStatus((s) => ({ ...s, notice: event.message }));
+      return;
+    case "captureError":
+      await setStatus((s) => ({ ...s, phase: "error", error: event.message }));
+      await finish(0);
+      return;
+    case "drained":
+      await finish(event.durationMs);
+      return;
+    case "levels":
+      return;
+  }
+}
+
+// ── wiring ───────────────────────────────────────────────────────────────────
+
+async function handle(req: Request): Promise<unknown> {
+  switch (req.type) {
+    case "signIn":
+      return signIn();
+    case "signOut":
+      await saveAuth(null);
+      return null;
+    case "listWorkspaces":
+      return listWorkspaces();
+    case "chooseWorkspace": {
+      const a = await auth();
+      if (!a) throw new Error("Sign in first.");
+      await saveAuth({ ...a, workspace: req.workspace });
+      return null;
+    }
+    case "start":
+      return start(req.tabId);
+    case "stop":
+      return stop();
+    case "dismiss":
+      await setStatus(() => IDLE);
+      return null;
+    case "preload":
+      await ensureOffscreen();
+      return toOffscreen({ target: "offscreen", type: "preload", tier: req.tier });
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
+  const m = message as Partial<OffscreenEvent> & Partial<OffscreenCommand> & { type?: string };
+  if (m.target === "offscreen") return false;
+  if (m.source === "offscreen") {
+    void onOffscreen(message as OffscreenEvent);
+    return false;
+  }
+  if (sender.id !== chrome.runtime.id) return false;
+  handle(message as Request).then(
+    (value) => respond({ ok: true, value } satisfies Reply),
+    (e: unknown) => respond({ ok: false, error: describe(e) } satisfies Reply),
+  );
+  return true;
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void (async () => {
+    const tab = recordingTab ?? ((await chrome.storage.session.get("minutes:tab"))["minutes:tab"] as number | undefined);
+    if (tab === tabId) await stop();
+  })();
+});
+
+// A restarted worker sends what was waiting.
+chrome.runtime.onStartup.addListener(() => void flushQueue(true));
