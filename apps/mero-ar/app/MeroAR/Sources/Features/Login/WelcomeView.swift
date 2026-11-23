@@ -1,17 +1,15 @@
 import MeroKitUI
 import SwiftUI
 
-/// Sign-in. The cluster address from the Calimero Cloud console and the
-/// device's passkey first; under it, "Development cluster" swaps in a node URL
-/// for a local `merod local` cluster (mock attestation, a soft passkey).
+/// Sign-in. Calimero Cloud first, on Mero AR's own sign-in page; under it,
+/// "Development cluster" swaps in a node URL for a local `merod local` cluster
+/// (mock attestation, a soft passkey).
 struct WelcomeView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var client: MeroClient
 
     @State private var manual = false
-    @State private var clusterURL = ""
     @State private var nodeURL = ""
-    @State private var invite = ""
     @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -65,7 +63,6 @@ struct WelcomeView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if clusterURL.isEmpty { clusterURL = app.clusterURL }
             if nodeURL.isEmpty { nodeURL = app.devNodeURL }
             withAnimation(reduceMotion ? nil : .spring(response: 0.8, dampingFraction: 0.85).delay(0.15)) {
                 appeared = true
@@ -98,60 +95,26 @@ struct WelcomeView: View {
         }
     }
 
+    /// Calimero Cloud: Mero AR's own sign-in page in the system sheet, where
+    /// the person signs in or creates an account with their passkey.
     private var cloudForm: some View {
         VStack(spacing: 12) {
-            TextInput(
-                placeholder: "https://your-cluster.calimero.network", text: $clusterURL, icon: "network",
-                identifier: "clusterURLField", keyboard: .url
-            )
-            .submitLabel(.go)
-            .onSubmit(signIn)
-            if app.signUpNeedsInvite {
-                TextInput(
-                    placeholder: "Invite link or code", text: $invite, icon: "envelope.open",
-                    identifier: "signUpInviteField", keyboard: .url
-                )
-                .submitLabel(.go)
-                .onSubmit(createAccount)
-                .transition(.opacity)
-            }
             Button(action: signIn) {
-                ButtonLabel(title: "Continue with passkey", icon: "person.badge.key.fill", isLoading: isBusy)
+                ButtonLabel(title: "Sign in with Calimero", icon: "person.badge.key.fill", isLoading: client.isLoading)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!canUseCluster)
+            .disabled(client.isLoading)
             .accessibilityIdentifier("cloudSignInButton")
-            Button(action: createAccount) {
-                Label("Create an account with a new passkey", systemImage: "plus.circle")
-            }
-            .buttonStyle(LinkButtonStyle())
-            .disabled(!canUseCluster)
-            .accessibilityIdentifier("createAccountButton")
-            VStack(spacing: 6) {
-                Label("Your cluster's address is in the Calimero Cloud console", systemImage: "info.circle")
-                Label("A new account asks for Face ID or Touch ID twice", systemImage: "faceid")
-            }
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.textFaint)
+            Label("Sign in with your passkey, or create a new one", systemImage: "info.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textFaint)
         }
     }
 
-    private var isBusy: Bool { client.isLoading || app.isCreatingAccount }
-
-    private var canUseCluster: Bool {
-        !isBusy && !clusterURL.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private func createAccount() {
-        guard canUseCluster else { return }
-        Haptics.tap()
-        Task { await app.createAccount(clusterAddress: clusterURL, invite: invite) }
-    }
-
     private func signIn() {
-        guard canUseCluster else { return }
+        guard !client.isLoading else { return }
         Haptics.tap()
-        Task { await app.signIn(clusterAddress: clusterURL) }
+        Task { await app.signInWithCalimero() }
     }
 
     private var devForm: some View {

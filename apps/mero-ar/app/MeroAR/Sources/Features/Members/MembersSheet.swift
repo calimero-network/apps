@@ -139,7 +139,7 @@ struct MembersSheet: View {
     // MARK: - Update
 
     /// A newer Mero AR release. Core approves an upgrade only on the node's
-    /// consent page, so the button opens it in the browser and waits.
+    /// consent page, so the button opens it and waits for the decision.
     private var updateCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -160,7 +160,7 @@ struct MembersSheet: View {
                 if app.isAwaitingApproval {
                     HStack {
                         ProgressView().tint(Theme.textDim)
-                        Text("Approve the upgrade in Safari, then come back.")
+                        Text("Approve the upgrade on the approval page.")
                             .font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
                         Spacer()
                         Button("Stop waiting") { app.cancelApprovalWait() }

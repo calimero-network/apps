@@ -400,12 +400,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertNil(maya.store)
     }
 
-    func testAClusterAddressMustBeHTTPS() async {
+    func testADevelopmentNodeNeedsAURL() async {
         let app = AppState(defaults: UserDefaults(suiteName: "AppFlowTests-url-\(UUID().uuidString)")!)
-        await app.signIn(clusterAddress: "http://cluster.example.com")
-        XCTAssertNotEqual(app.phase, .lobby)
-        XCTAssertNotNil(app.signInError)
         await app.signInToDevelopmentCluster(nodeURL: "not a url")
+        XCTAssertNotEqual(app.phase, .lobby)
         XCTAssertNotNil(app.signInError)
     }
 

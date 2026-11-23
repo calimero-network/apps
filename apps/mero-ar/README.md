@@ -12,27 +12,30 @@ install && npm run dev`; deploys to Vercel as-is (`landing/vercel.json`).
 logic/      Rust contract, a calimero:app component (scene graph: objects, transforms, presence, comments, locks, roles)
 app/
   MeroAR/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
+web/        the served page the bundle carries: the iOS app's Calimero Cloud sign-in, approvals, consent returns
 landing/    the landing page (Vite + React + Framer Motion), media in landing/public/media
 promo/      the promo film (Remotion), rendered into landing/public/media
 scripts/    setup.sh
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 1.0** (`1.0.0-rc.10`): the contract is a
-`calimero:app` WebAssembly component on core's **component SDK**
-(`calimero-sdk`, pinned to that tag in `logic/Cargo.toml`, `min-runtime-version`
-too) that runs on the node's wasmtime runtime, and the app uses the Swift SDK's
-1.0 client (`CalimeroClient`: sealed channel, passkeys).
+Built for **Calimero core 1.0** (`1.0.0-rc.35`, named in `ci/core-version`):
+the contract is a `calimero:app` WebAssembly component on core's **component
+SDK** (`calimero-sdk`, pinned to that tag in `logic/Cargo.toml`,
+`min-runtime-version` too) that runs on the node's wasmtime runtime, and the app
+uses core's Swift SDK at the same release (`CalimeroClient`: sealed channel,
+passkeys).
 
 ## The iOS app
 
 A dark, spatial design of its own: glass panels over the camera, an aurora
 (violet → cyan) accent, SF Symbols, spring animations and haptics.
 
-- **Sign in** with your cluster's address (from the Calimero Cloud console) and
-  a passkey, or create an account with a new one. **Development cluster** takes
-  a `merod local` node URL instead (mock attestation, a soft passkey kept for
-  that node).
+- **Sign in with Calimero** opens Mero AR's served page (`web/`) in the system
+  sign-in sheet: sign in with your passkey, or create an account with a new
+  one, as on the web. The page hands a session bound to Mero AR's package back
+  to `mero-ar://signed-in`. **Development cluster** takes a `merod local` node
+  URL instead (mock attestation, a soft passkey kept for that node).
 - **Nickname**: asked once after sign-in; it's the name on the roster, on
   notes and on what you place. Change it in Settings or from your row in People.
 - **Your homes**: a *home* is a Calimero organization holding Mero AR, and its
@@ -53,7 +56,7 @@ A dark, spatial design of its own: glass panels over the camera, an aurora
 - **People**: roles (admin / editor / viewer), editor toggles for admins,
   invites as a link (Share or Copy link) to the room's home, and **Update
   available** when a newer Mero AR release is out: an admin reviews and approves
-  it on the node's consent page in Safari.
+  it on the node's consent page.
 - **No ARKit?** In the Simulator, on a Mac or an older device, the room opens as
   a **3D preview** (SceneKit, orbit with a finger) with the same tools. The UI
   says so; live AR needs an ARKit iPhone or iPad. `MEROAR_PREVIEW=1` forces the
@@ -106,7 +109,7 @@ room from the model, not the USDZ.
 ### Run it against a development cluster
 
 ```bash
-make tools        # once: mero-component, the component bundler
+make tools        # once: core's meroctl, at the release ci/core-version names
 make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
 make app-gen      # then run from Xcode
 ```
@@ -125,16 +128,36 @@ soft passkey it keeps for the node, creating the account the first time.
 
 ### How the app talks to the cluster
 
-The Swift client is **not** vendored here: the app depends on
-[calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk)
-(`MeroKit` + `MeroKitUI`), declared in `app/MeroAR/project.yml` and pinned to
-the SDK's Calimero 1.0 release, v0.6.0 (`exactVersion`).
+The Swift client is **not** vendored here: the app depends on Calimero's Swift
+SDK (`MeroKit` + `MeroKitUI`), which lives in
+[calimero-network/core](https://github.com/calimero-network/core)
+(`sdks/clients/mero-swift`) and is versioned with it, declared in
+`app/MeroAR/project.yml` at core `1.0.0-rc.35` (`exactVersion`).
 
 The app first verifies the node's TDX quote (`GET /attestation`, against signed
 mero-tee releases) and opens the sealed channel; everything else goes through
-it. Sign-in is a passkey (`PlatformPasskey`); the session and its refresh token
-live in the Keychain (service `network.calimero.meroar`), so a relaunch
-reconnects without a prompt.
+it. The session and its refresh token live in the Keychain (service
+`network.calimero.meroar`), so a relaunch reconnects without a prompt.
+
+**Calimero Cloud sign-in runs on Mero AR's served page.** A node takes Mero
+AR's passkey ceremonies only from the package's own origin
+(`https://{label}.apps.calimero.network`), which the cluster serves from the
+bundle, and iOS refuses a `calimero.network` passkey for them. So the bundle
+carries a small page (`web/`, `frontend-dir` in `logic/Cargo.toml`) and the
+app opens it in the system sign-in sheet (`MeroClient.signInWithServedPage`):
+
+- `#native-sign-in`: sign in or create an account; the session comes back to
+  `mero-ar://signed-in`, sealed to a key made for that sign-in only.
+- `#native-approve`: Mero AR's own step-ups, approved with the passkey on the
+  same page (`ServedPagePasskey`), back to `mero-ar://approved`.
+- `?native-consent=1`: the node's consent page returns here, and the page
+  passes the answer on to `mero-ar://consent`.
+
+Such a session is bound to Mero AR's package: the node refuses it organization
+routes, so founding a home, inviting and joining are approved on the node's
+consent page (`createOrg`, `createInvite`, `acceptInvite`), as are upgrades. A
+development cluster's session does them itself. No associated domains are
+needed; device builds need only a signing team (`app/MeroAR/Config/Signing.xcconfig`).
 
 | What | How |
 | --- | --- |
@@ -142,9 +165,9 @@ reconnects without a prompt.
 | Reads (`getRoom`, `getObjects`, `myRole`…) | `POST /apps/{room}/views` |
 | World map, room scan, photos | the room's blobs, `/apps/{room}/blobs` |
 | Live updates | the room's sealed SSE, `/apps/{room}/events`; while it is down the room re-reads every few seconds |
-| Homes | organizations: `POST /orgs` (+ metadata `{name, package}`), rooms `POST /apps` with access `org` |
-| Invitations | `POST /orgs/{org}/invites` (role member), redeemed with `POST /invites/{token}/redeem` |
-| Upgrades | `POST /consent/requests` → the node's consent page in Safari → `GET /consent/{id}/result` |
+| Homes | organizations: on Calimero Cloud a `createOrg` consent, on a development cluster `POST /orgs`; then metadata `{name, package}`; rooms `POST /apps` with access `org` |
+| Invitations | on Calimero Cloud `createInvite` / `acceptInvite` consents; on a development cluster `POST /orgs/{org}/invites` (role member), redeemed with `POST /invites/{token}/redeem` |
+| Upgrades | `POST /consent/requests` → the node's consent page → `GET /consent/{id}/result` |
 
 ### Tests without a node
 
@@ -163,7 +186,7 @@ The app's real code runs against it with no network.
   view-only, is made an editor, and adds an object.
 
 `FurnitureFlowTests` use a `RecordingCluster` that records what the store sends.
-`make app-test` runs the unit tests.
+`make app-test` runs the unit tests; `make web-test` the served page's.
 
 ### Contract tests
 
@@ -190,10 +213,10 @@ keep their numbers. A refused call is `422 APP_ERROR` with code `Forbidden` or
 
 ### Building against an unmerged SDK
 
-To try an SDK change that isn't released yet, build against a local checkout:
-in `app/MeroAR/project.yml` replace the package's `url:`/`revision:` with
-`path: /path/to/swift-sdk-checkout`, run `make app-gen`, and **don't commit
-that change**.
+To try an SDK change that isn't released yet, build against a local core
+checkout: in `app/MeroAR/project.yml` replace the package's
+`url:`/`exactVersion:` with `path: /path/to/core-checkout`, run `make app-gen`,
+and **don't commit that change**.
 
 ## Identity & roles
 
@@ -236,9 +259,9 @@ so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.10's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
+- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.35's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
 - ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-only room rename, admin lock-breaking, org admins moderate
-- ✅ App on the swift-sdk 1.0 client: passkey sign-in on an attested cluster, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
+- ✅ App on core's Swift SDK: Calimero Cloud sign-in on Mero AR's served page, passkey approvals there, consent-page org actions, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")
 - ✅ Development clusters (`merod local`, mock attestation), room list and room creation, recent rooms
 - 🔵 Not yet exercised end to end against a live 1.0 cluster from the app
