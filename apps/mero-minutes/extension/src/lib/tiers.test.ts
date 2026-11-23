@@ -8,11 +8,14 @@ const caps = (c: Partial<Capabilities> = {}): Capabilities => ({
   cores: 8,
   ...c,
 });
-const GPU = caps({ webgpu: true, maxBufferSize: 2 ** 31 });
+const GPU = caps({ webgpu: true, maxBufferSize: 2 ** 31, cached: ["best"] });
+const GPU_FIRST_RUN = caps({ webgpu: true, maxBufferSize: 2 ** 31 });
 
 describe("model tiers", () => {
   it.each([
-    ["a laptop with WebGPU and 8 GB", GPU, "en", "best"],
+    ["a laptop with WebGPU and 8 GB, turbo downloaded", GPU, "en", "best"],
+    ["the same before turbo is downloaded", GPU_FIRST_RUN, "en", "light"],
+    ["before the download, in German", GPU_FIRST_RUN, "de", "balanced"],
     ["the same in German", GPU, "de", "best"],
     ["Brave with shields hiding WebGPU", caps(), "en", "light"],
     ["no WebGPU, another language", caps(), "fr", "balanced"],

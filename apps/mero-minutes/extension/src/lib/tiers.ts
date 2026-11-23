@@ -79,6 +79,8 @@ export interface Capabilities {
   /** `navigator.deviceMemory`, GB (Chrome caps it at 8); 0 when unknown. */
   deviceMemoryGb: number;
   cores: number;
+  /** Tiers whose model files are already in the browser's cache. */
+  cached?: TierId[];
 }
 
 /** English (or auto-detect on an English browser) may use the English-only models. */
@@ -96,7 +98,9 @@ export function isEnglish(language: string): boolean {
 export function pickTier(caps: Capabilities, language: string): TierId {
   const memory = caps.deviceMemoryGb || 4;
   const bigBuffers = caps.maxBufferSize === 0 || caps.maxBufferSize >= 1 << 30;
-  if (caps.webgpu && bigBuffers && memory >= 8) return "best";
+  // The big model is a 1.5 GB download: Auto uses it once it is on the laptop
+  // (Settings, Download), so a first call never waits on it and records nothing.
+  if (caps.webgpu && bigBuffers && memory >= 8 && caps.cached?.includes("best")) return "best";
   if (!isEnglish(language)) return "balanced";
   if (memory <= 4 || (caps.cores > 0 && caps.cores <= 2)) return "ultralight";
   return "light";

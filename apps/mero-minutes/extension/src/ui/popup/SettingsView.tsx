@@ -1,3 +1,4 @@
+import { readLog } from "../../lib/diagnostics";
 import { useState } from "react";
 import { ArrowLeft } from "@calimero-network/mero-icons";
 import { validOverride } from "../../lib/format";
@@ -85,6 +86,7 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
       <button className="btn link" style={{ alignSelf: "flex-start" }} onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
         {advanced ? "Hide advanced" : "Advanced"}
       </button>
+      {advanced && <Diagnostics />}
       {advanced && (
         <div className="card field">
           <label htmlFor="override">Sign-in page</label>
@@ -107,5 +109,31 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
         </div>
       )}
     </main>
+  );
+}
+
+/** Copies the recorder's log (steps, models, errors; no transcript or session) for a bug report. */
+function Diagnostics() {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async () => {
+    const lines = await readLog();
+    const text = [`Minutes ${chrome.runtime.getManifest().version} on ${navigator.userAgent}`, ...lines].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(lines.length ? `Copied ${lines.length} lines.` : "Nothing logged yet in this browser session.");
+    } catch {
+      setCopied("Could not copy. Open the service worker's console instead.");
+    }
+  };
+  return (
+    <div className="card field">
+      <label>Diagnostics</label>
+      <button className="btn" onClick={() => void copy()}>
+        Copy diagnostics
+      </button>
+      <span className="small muted">
+        {copied ?? "What the recorder did in this browser session: steps, models and errors. No transcript text or sign-in data."}
+      </span>
+    </div>
   );
 }

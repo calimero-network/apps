@@ -111,6 +111,7 @@ export type OffscreenEvent =
   | { source: "offscreen"; type: "drained"; durationMs: number }
   | { source: "offscreen"; type: "captureError"; message: string }
   | { source: "offscreen"; type: "notice"; message: string }
+  | { source: "offscreen"; type: "log"; message: string }
   | { source: "offscreen"; type: "tick" };
 
 export type { Capabilities };

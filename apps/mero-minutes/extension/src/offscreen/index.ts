@@ -165,6 +165,7 @@ function onWorker(m: FromWorker): void {
         toWorker({ type: "load", tier: next });
       } else {
         void emit({ type: "model", tier: m.tier, state: "error", error: `The speech model could not load: ${m.error}` });
+        if (r.stopping) void drained();
       }
       return;
     }
@@ -177,6 +178,7 @@ function onWorker(m: FromWorker): void {
     }
     case "transcribeError":
       r?.scheduler.done(m.id, 0);
+      void emit({ type: "log", message: `transcription failed: ${m.error}` });
       pump();
       return;
   }
@@ -191,12 +193,10 @@ async function stop(): Promise<void> {
   r.stopping = true;
   for (const [speaker, seg] of r.segmenters) for (const chunk of seg.flush()) r.scheduler.enqueue(chunk, speaker);
   for (const s of r.streams) for (const t of s.getTracks()) t.stop();
-  if (!r.ready) {
-    // No model yet: nothing can be transcribed.
-    await drained();
-    return;
-  }
-  pump();
+  // A model still loading transcribes what was captured once it is ready
+  // (`ready` pumps the queue); only a model that cannot load at all ends empty.
+  if (r.ready) pump();
+  else if (r.scheduler.idle) await drained();
 }
 
 let finishing = false;

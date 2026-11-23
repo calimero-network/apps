@@ -26,6 +26,7 @@ import { detectPlatform, meetingTitle, meetingUrl } from "../lib/platform";
 import { UploadQueue, type QueueState, type QueueStore, type QueuedSegment } from "../lib/queue";
 import { describe, isSignedOut, withClient } from "../lib/session";
 import { read, write } from "../lib/storage";
+import { log } from "../lib/diagnostics";
 import { resolveTier, TIERS, type Capabilities } from "../lib/tiers";
 
 const OFFSCREEN = "offscreen.html";
@@ -91,6 +92,7 @@ async function flushQueue(force = false): Promise<void> {
   if (!q) return;
   await q.flush(force);
   const snap = q.snapshot;
+  if (snap.lastError) await log(`upload: ${snap.pending.length} waiting, last error: ${snap.lastError}`);
   await setStatus((s) => ({ ...s, pending: snap.pending.length, uploadError: snap.lastError }));
 }
 
@@ -178,6 +180,9 @@ async function start(tabId: number): Promise<void> {
     await ensureOffscreen();
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
     const tier = resolveTier(s.tier, caps, s.language);
+    await log(
+      `start: platform=${platform} tier=${tier} choice=${s.tier} lang=${s.language || "auto"} mic=${s.mic} webgpu=${caps.webgpu} mem=${caps.deviceMemoryGb} cores=${caps.cores} cached=${(caps.cached ?? []).join(",") || "none"}`,
+    );
     const meetingId = await onNode((_c, app) =>
       app.startMeeting({
         title,
@@ -198,6 +203,7 @@ async function start(tabId: number): Promise<void> {
     }));
     await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
   } catch (e) {
+    await log(`start failed: ${describe(e)}`);
     await closeOffscreen().catch(() => undefined);
     await setStatus((st) => ({ ...st, phase: "error", error: describe(e) }));
     throw e;
@@ -211,8 +217,12 @@ async function stop(): Promise<void> {
   const s = await status();
   if (s.phase !== "recording" && s.phase !== "loading-model") return;
   await setStatus((st) => ({ ...st, phase: "stopping" }));
+  await log(`stop pressed (phase was ${s.phase})`);
   // The offscreen page transcribes what it still holds, then answers `drained`.
-  await toOffscreen({ target: "offscreen", type: "stop" }).catch(() => finish(0));
+  await toOffscreen({ target: "offscreen", type: "stop" }).catch(async (e: unknown) => {
+    await log(`stop: offscreen page did not answer: ${describe(e)}`);
+    await finish(0);
+  });
 }
 
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
@@ -236,6 +246,7 @@ function finish(durationMs: number): Promise<void> {
       }
       link = meetingLink(a.page, meeting.appId, meeting.id);
     }
+    await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} error=${error ?? "none"}`);
     if (all && q) await q.clear();
     queue = all ? null : q;
     recordingTab = null;
@@ -257,6 +268,11 @@ function finish(durationMs: number): Promise<void> {
 // ── events from the offscreen page ───────────────────────────────────────────
 
 async function onOffscreen(event: OffscreenEvent): Promise<void> {
+  if (event.type === "segment") await log(`segment: ${event.speaker} ${event.startMs}-${event.endMs}ms, ${event.text.length} chars`);
+  else if (event.type === "model" && event.state !== "loading") await log(`model ${event.tier}: ${event.state}${event.error ? ` (${event.error})` : ""}`);
+  else if (event.type === "stepDown") await log(`step down: ${event.from} -> ${event.to}`);
+  else if (event.type === "notice" || event.type === "captureError" || event.type === "log") await log(`${event.type}: ${event.message}`);
+  else if (event.type === "drained") await log(`drained: ${event.durationMs}ms`);
   switch (event.type) {
     case "segment": {
       const q = await currentQueue();
@@ -295,6 +311,8 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
     case "captureError":
       await setStatus((s) => ({ ...s, phase: "error", error: event.message }));
       await finish(0);
+      return;
+    case "log":
       return;
     case "drained":
       await finish(event.durationMs);
