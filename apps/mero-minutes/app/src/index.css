@@ -728,3 +728,6 @@ a.btn.primary { color: var(--glass-on-ink); }
 .details dt { color: var(--text-dim); }
 .details dd { margin: 0; }
 .open-actions { display: grid; gap: 16px; }
+
+/* The extension sign-in window: the first workspace, before the handoff. */
+.handoff-workspace { display: grid; gap: 16px; width: min(640px, 100%); }

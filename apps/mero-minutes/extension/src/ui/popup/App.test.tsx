@@ -51,12 +51,13 @@ describe("popup", () => {
     );
   });
 
-  it("no workspace yet: sends the person to create one", async () => {
+  it("no workspace yet: reopens the sign-in window, which offers one", async () => {
     chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
     chrome.onSend = () => ({ ok: true, value: [] });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: /Create a workspace/ }));
-    expect(chrome.created).toEqual(["https://minutes.example/0.1.0/"]);
+    await waitFor(() => expect(types()).toContain("signIn"));
+    expect(chrome.created).toEqual([]);
   });
 
   it("ready on a Meet call: names it and records this tab", async () => {

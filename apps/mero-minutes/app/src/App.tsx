@@ -50,18 +50,40 @@ function Root() {
 /**
  * The extension opened this page to sign in (`#native-sign-in`, see
  * `native.ts`). Signed out: the passkey sign-in, said to be for the extension.
- * Signed in: the session goes to the extension, sealed to its key, and is
- * forgotten here; Chrome closes the window as the callback loads.
+ * Signed in with no workspace yet: the person makes one here first, while the
+ * page still holds the session (after the handoff it does not, so sending them
+ * to the page later would mean signing in again). Then the session goes to the
+ * extension, sealed to its key, and is forgotten here; Chrome closes the window
+ * as the callback loads.
  */
 export function ExtensionSignIn() {
   const { api } = useSessionApi();
   const session = api.session;
+  const signedIn = useMaybeSignedIn();
   const [handed, setHanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** `null` until known; `true` shows the workspace step before the handoff. */
+  const [needsWorkspace, setNeedsWorkspace] = useState<boolean | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
-    if (session.status !== "signed-in" || started.current) return;
+    if (!signedIn || needsWorkspace !== null) return;
+    let live = true;
+    listWorkspaces(signedIn.client, signedIn.source)
+      .then((rows) => {
+        if (live) setNeedsWorkspace(rows.length === 0);
+      })
+      .catch(() => {
+        if (live) setNeedsWorkspace(false);
+      })
+      .finally(signedIn.after);
+    return () => {
+      live = false;
+    };
+  }, [signedIn, needsWorkspace]);
+
+  useEffect(() => {
+    if (session.status !== "signed-in" || needsWorkspace !== false || started.current) return;
     started.current = true;
     finishNativeSignIn({
       client: session.client,
@@ -70,7 +92,27 @@ export function ExtensionSignIn() {
     })
       .then((done) => setHanded(done))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [session, api.store]);
+  }, [session, api.store, needsWorkspace]);
+
+  if (session.status === "signed-in" && needsWorkspace === true) {
+    return (
+      <Centered>
+        <section className="handoff-workspace" data-testid="extension-workspace" aria-labelledby="handoff-title">
+          <div className="card handoff">
+            <h1 id="handoff-title">Create your first workspace</h1>
+            <p className="empty">
+              The extension saves the meetings you record to a workspace. Start one now, and the extension is
+              ready when this window closes.
+            </p>
+            <button type="button" className="btn ghost" onClick={() => setNeedsWorkspace(false)}>
+              Skip for now
+            </button>
+          </div>
+          <WorkspacePicker onOpen={() => setNeedsWorkspace(false)} />
+        </section>
+      </Centered>
+    );
+  }
 
   return (
     <Centered>

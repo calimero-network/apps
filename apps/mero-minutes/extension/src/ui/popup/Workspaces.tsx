@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Refresh } from "@calimero-network/mero-icons";
-import { workspaceLink } from "../../lib/appHost";
+import { Refresh } from "@calimero-network/mero-icons";
 import type { AuthState, Workspace } from "../../lib/messages";
 import { CheckIcon, Spinner } from "../icons";
 import { ask } from "../rpc";
@@ -29,7 +28,22 @@ export function Workspaces({ auth, onDone }: { auth: AuthState; onDone: () => vo
     onDone();
   };
 
-  const create = () => void chrome.tabs.create({ url: workspaceLink(auth.page) });
+  // The page forgets its session once it hands it to the extension, so a plain
+  // tab would ask for a passkey again (and invite a second account). The
+  // sign-in window instead offers the first workspace before it hands over.
+  const [creating, setCreating] = useState(false);
+  const create = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      await ask({ type: "signIn" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <main className="body">
@@ -45,10 +59,10 @@ export function Workspaces({ auth, onDone }: { auth: AuthState; onDone: () => vo
         <div className="card">
           <p style={{ margin: 0, fontWeight: 600 }}>No workspace yet</p>
           <p className="small muted" style={{ margin: "4px 0 12px" }}>
-            Create one on the Minutes page, then come back here.
+            Sign in once more with the same passkey and create one in the window that opens.
           </p>
-          <button className="btn primary block" onClick={create}>
-            Create a workspace <ExternalLink width={15} height={15} />
+          <button className="btn primary block" onClick={() => void create()} disabled={creating}>
+            {creating ? "Waiting for the sign-in window…" : "Create a workspace"}
           </button>
         </div>
       ) : (
