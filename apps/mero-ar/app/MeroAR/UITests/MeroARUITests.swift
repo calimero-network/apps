@@ -19,8 +19,6 @@ final class MeroARUITests: XCTestCase {
         app.launch()
         expect(app.staticTexts["Mero AR"], 8)
         expect(app.buttons["cloudSignInButton"], 5)
-        XCTAssertTrue(app.textFields["clusterURLField"].exists)
-        XCTAssertTrue(app.buttons["createAccountButton"].exists)
         XCTAssertFalse(app.textFields["nodeURLField"].exists, "the development form is behind the link")
         pause()
         app.buttons["manualNode"].tap()

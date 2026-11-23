@@ -22,7 +22,7 @@ jobs:
         working-directory: logic
     steps:
       - uses: actions/checkout@v4
-      # logic/rust-toolchain.toml (core 1.0.0-rc.9's) picks the toolchain and
+      # logic/rust-toolchain.toml (core's) picks the toolchain and
       # adds wasm32-wasip2.
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
@@ -43,10 +43,32 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --target wasm32-wasip2 -- -D warnings
 
-  # There is no MeroKit job any more: the Swift client is the shared SDK
-  # (calimero-network/swift-sdk), tested in its own repo. This app's job is to
-  # prove it still builds and passes its tests against the SDK branch named
-  # in app/MeroAR/project.yml (swift-sdk master).
+  # The served page (web/) the bundle carries: the iOS app's Calimero Cloud
+  # sign-in, passkey approvals and consent returns.
+  web:
+    name: Served page
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      # A placeholder floor: the release build sets the real one.
+      - run: npm run build
+        env:
+          VITE_CALIMERO_MIN_RELEASE: 0.0.0
+
+  # There is no MeroKit job: the Swift client is Calimero's Swift SDK, which
+  # lives in core and is tested there. This app's job is to prove it still
+  # builds and passes its tests against the core release named in
+  # app/MeroAR/project.yml.
   app:
     name: iOS app build
     runs-on: macos-15

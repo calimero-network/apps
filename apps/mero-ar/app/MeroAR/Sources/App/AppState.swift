@@ -17,8 +17,12 @@ public struct RoomSummary: Identifiable, Equatable, Codable {
 /// Calimero 1.0: the app talks to a node of the person's Calimero Cloud
 /// cluster over the sealed channel (the node's TDX quote verified first) and
 /// signs in with a passkey. Two ways in:
-/// - **Calimero Cloud**: the cluster address from the Cloud console, then the
-///   device's passkey (``PlatformPasskey``), or "Create account" for a new one.
+/// - **Calimero Cloud**: Mero AR's served page in the system sign-in sheet,
+///   where the person signs in (or creates an account) with their passkey as
+///   on the web; it hands back a session bound to Mero AR's package
+///   (`mero-ar://signed-in`). Such a session approves Mero AR's own step-ups
+///   on the same page (``ServedPagePasskey``), and creating a home, inviting
+///   and joining on the node's consent page.
 /// - **A development cluster** (`merod local`): a node URL whose mock
 ///   attestation is trusted (`allowMock`), signed in with a soft passkey the
 ///   SDK keeps for that node.
@@ -29,11 +33,10 @@ public final class AppState: ObservableObject {
     /// The app's package on the Calimero app registry: what a home is founded
     /// for and a room created from.
     public static let package = "com.calimero.mero-ar"
-    /// Where the consent page sends the person back to. Core accepts only an
-    /// https origin the cluster is configured with (http on localhost), never
-    /// a custom scheme, so this is the Cloud console, or the local console a
-    /// `merod local` cluster allows.
-    static let consentReturnCloud = "https://cloud.calimero.network/"
+    /// Where a development cluster's consent page sends the person back to:
+    /// the local console a `merod local` cluster allows. On Calimero Cloud the
+    /// consent page returns through Mero AR's served page instead
+    /// (``MeroClient/servedConsentReturnTo(cluster:appsDomain:)``).
     static let consentReturnLocal = "http://localhost:3000/"
 
     @Published public private(set) var phase: Phase = .restoring
@@ -58,15 +61,9 @@ public final class AppState: ObservableObject {
     @Published public var roomError: String?
 
     // Sign-in.
-    /// The cluster address last used, prefilled on the sign-in screen.
-    @Published public var clusterURL: String
     /// The development node URL last used.
     @Published public var devNodeURL: String
     @Published public var signInError: String?
-    /// Creating an account: the sign-up policy check and the passkey's two prompts.
-    @Published public internal(set) var isCreatingAccount = false
-    /// The cluster takes new accounts with an invite only: the sign-in screen asks for one.
-    @Published public var signUpNeedsInvite = false
 
     // Updates and approvals for the open room.
     /// A newer Mero AR release the open room could run.
@@ -95,7 +92,6 @@ public final class AppState: ObservableObject {
         static let roomId = "meroar.roomId"
         static let roomName = "meroar.roomName"
         static let displayName = "meroar.username"
-        static let clusterURL = "meroar.clusterURL"
         static let devNodeURL = "meroar.devNodeURL"
     }
 
@@ -107,7 +103,6 @@ public final class AppState: ObservableObject {
             store: KeychainCloudSessionStore(service: "network.calimero.meroar"))
         self.defaults = defaults
         self.displayName = defaults.string(forKey: Key.displayName) ?? ""
-        self.clusterURL = defaults.string(forKey: Key.clusterURL) ?? ""
         self.devNodeURL = defaults.string(forKey: Key.devNodeURL) ?? "http://localhost:2501"
         if let data = defaults.data(forKey: Key.recent),
             let rooms = try? JSONDecoder().decode([RoomSummary].self, from: data)
@@ -120,7 +115,19 @@ public final class AppState: ObservableObject {
     public var cluster: RoomCluster? {
         if let fixture { return fixture }
         guard client.isAuthenticated, let cloud = client.cloud else { return nil }
-        return CloudCluster(client: cloud, passkey: client.passkeyForNode(), endpoint: client.nodeURL ?? "")
+        let consent: ConsentDecider = { [weak self] request in
+            guard let self else { throw CancellationError() }
+            return try await self.decide(request)
+        }
+        return CloudCluster(
+            client: cloud,
+            // Step-ups over Mero AR's own rooms: on Calimero Cloud approved on
+            // Mero AR's served page, on a development node the soft passkey.
+            passkey: client.approvalPasskey(cluster: AppConfig.cluster, callback: AppConfig.approveCallback),
+            endpoint: client.nodeURL ?? "",
+            // A package-bound session founds homes, invites and joins on the
+            // node's consent page; a development node's session does it itself.
+            consent: client.allowMock ? nil : consent)
     }
 
     /// Signed in to a development cluster (mock attestation trusted).
@@ -158,29 +165,23 @@ public final class AppState: ObservableObject {
         fixture = cluster
     }
 
-    /// "Continue with passkey": sign in to the cluster at `address`.
-    public func signIn(clusterAddress address: String) async {
-        guard let url = checkedURL(address, https: true) else { return }
-        rememberCluster(url)
-        client.connect(nodeURL: url, allowMock: false)
-        if await client.signIn() { await didSignIn() } else { signInError = client.errorMessage }
-    }
-
-    /// "Create account": register a new passkey on the cluster at `address`.
-    /// `invite` is an invite link or code, for a cluster that takes new
-    /// accounts by invitation only.
-    public func createAccount(clusterAddress address: String, invite: String = "") async {
-        guard let url = checkedURL(address, https: true) else { return }
-        rememberCluster(url)
-        client.connect(nodeURL: url, allowMock: false)
-        if await signUp(name: effectiveDisplayName, invite: Self.signUpInvite(from: invite)) { await didSignIn() }
+    /// "Sign in with Calimero": Mero AR's served page in the system sign-in
+    /// sheet, where the person signs in or creates an account with their
+    /// passkey. A dismissed sheet is not an error.
+    public func signInWithCalimero() async {
+        signInError = nil
+        if await client.signInWithServedPage(cluster: AppConfig.cluster, callback: AppConfig.signInCallback) {
+            await didSignIn()
+        } else {
+            signInError = client.errorMessage
+        }
     }
 
     /// A development cluster (`merod local`): trust its mock attestation and
     /// sign in with the soft passkey kept for that node, creating the account
     /// the first time.
     public func signInToDevelopmentCluster(nodeURL address: String) async {
-        guard let url = checkedURL(address, https: false) else { return }
+        guard let url = checkedURL(address) else { return }
         devNodeURL = url
         defaults.set(url, forKey: Key.devNodeURL)
         client.connect(nodeURL: url, allowMock: true)
@@ -189,23 +190,16 @@ public final class AppState: ObservableObject {
         }
     }
 
-    private func checkedURL(_ raw: String, https: Bool) -> String? {
+    private func checkedURL(_ raw: String) -> String? {
         signInError = nil
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text), let scheme = url.scheme, url.host != nil,
-            scheme == "https" || (!https && scheme == "http")
+            scheme == "https" || scheme == "http"
         else {
-            signInError = https
-                ? "Enter your cluster's address from the Calimero Cloud console, like https://node-1.example.calimero.network."
-                : "Enter the node's URL, like http://localhost:2501."
+            signInError = "Enter the node's URL, like http://localhost:2501."
             return nil
         }
         return text
-    }
-
-    private func rememberCluster(_ url: String) {
-        clusterURL = url
-        defaults.set(url, forKey: Key.clusterURL)
     }
 
     private func didSignIn() async {
@@ -473,23 +467,30 @@ public final class AppState: ObservableObject {
     }
 
     /// Ask for the open room to be upgraded. Core approves upgrades only on
-    /// the node's consent page, so this opens it in the system browser and
-    /// waits for the decision there.
+    /// the node's consent page, so this opens it and waits for the decision.
     public func requestRoomUpgrade(open: @escaping @MainActor (URL) -> Void) {
         guard let update = roomUpdate, let service, let cloud = client.cloud, fixture == nil else { return }
         approvalTask?.cancel()
         approvalNotice = nil
         isAwaitingApproval = true
-        let returnTo = client.allowMock ? Self.consentReturnLocal : Self.consentReturnCloud
+        let development = client.allowMock
         approvalTask = Task { [weak self] in
             do {
-                let started = try await cloud.requestConsent(
-                    upgradeConsent(app: service.contextId, toVersion: update.latest, returnTo: returnTo))
-                guard let url = URL(string: started.url) else {
-                    throw MeroARError.invitationRefused("the cluster answered no consent page")
+                let result: ConsentResult
+                if development {
+                    let started = try await cloud.requestConsent(
+                        upgradeConsent(app: service.contextId, toVersion: update.latest, returnTo: Self.consentReturnLocal))
+                    guard let url = URL(string: started.url) else {
+                        throw MeroARError.invitationRefused("the cluster answered no consent page")
+                    }
+                    open(url)
+                    result = try await cloud.waitForConsent(started.requestId, expiresAt: started.expiresAt)
+                } else {
+                    guard let self else { return }
+                    result = try await self.decide {
+                        upgradeConsent(app: service.contextId, toVersion: update.latest, returnTo: $0)
+                    }
                 }
-                open(url)
-                let result = try await cloud.waitForConsent(started.requestId, expiresAt: started.expiresAt)
                 guard let self, !Task.isCancelled else { return }
                 self.isAwaitingApproval = false
                 switch result.status {
@@ -507,6 +508,26 @@ public final class AppState: ObservableObject {
                 self.approvalNotice = userMessage(error)
             }
         }
+    }
+
+    /// Ask the node's consent page (Calimero Cloud): it opens in the system
+    /// sheet, the person decides there, and the answer comes back through
+    /// Mero AR's served page. Throws when the page could not be asked or the
+    /// answer not read; a declined request is a result, not an error.
+    func decide(_ request: @escaping (_ returnTo: String) -> ConsentRequest) async throws -> ConsentResult {
+        let returnTo: String?
+        do {
+            returnTo = try await client.servedConsentReturnTo(cluster: AppConfig.cluster)
+        } catch {
+            throw MeroARError.consentUnavailable("Mero AR's page couldn't be reached: \(MeroClient.describe(error))")
+        }
+        guard
+            let result = await client.requestConsent(
+                request, callback: AppConfig.consentCallback, returnTo: returnTo)
+        else {
+            throw MeroARError.consentUnavailable(client.errorMessage ?? "The approval page was closed.")
+        }
+        return result
     }
 
     /// Stop waiting for a consent decision (the page itself stays valid until it expires).

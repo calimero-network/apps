@@ -8,14 +8,15 @@ Calimero 1.0 cluster. This is the end-to-end guide to building and running it.
 mero-ar/
   logic/      Rust WASM contract (the scene-graph backend, runs as an app instance on the cluster)
   app/
-    MeroAR/   the SwiftUI + ARKit + RealityKit app (depends on the shared swift-sdk)
+    MeroAR/   the SwiftUI + ARKit + RealityKit app (depends on core's Swift SDK)
+  web/        the served page the bundle carries: the app's Calimero Cloud sign-in
   scripts/    setup.sh
   Makefile    every command below has a `make` shortcut
 ```
 
-> **What talks to what:** the iOS app → **MeroKit**, the shared Calimero Swift
-> SDK ([calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk),
-> pinned by revision in `app/MeroAR/project.yml`) → a **node of your cluster**,
+> **What talks to what:** the iOS app → **MeroKit**, Calimero's Swift SDK (in
+> [calimero-network/core](https://github.com/calimero-network/core), pinned to a
+> core release in `app/MeroAR/project.yml`) → a **node of your cluster**,
 > after verifying its TDX quote, over the sealed channel (`/apps/{room}/intents`
 > for writes, `/views` for reads, `/events` for live changes, `/blobs` for the
 > world map and scans) → the **WASM contract** running as the room's app
@@ -37,7 +38,8 @@ a 3D preview with the same tools.
 | Tool | Needed for | Install |
 |------|-----------|---------|
 | **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
-| **`mero-component`** | building and bundling the contract | `make tools` (calimero-network/apps' component bundler) |
+| **`meroctl`** | building and bundling the contract | `make tools` (core's release, from `ci/core-version`) |
+| **Node.js 22** | building the served page (`web/`) for a release bundle | <https://nodejs.org> |
 | **Full Xcode** (16+) | building the app, device deploy | Mac App Store |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero cluster** | running rooms | Calimero Cloud, or `merod local` for development |
@@ -48,10 +50,9 @@ Verify everything with `make setup`.
 
 ## 3. A cluster
 
-- **Calimero Cloud:** your organization's cluster, from the console at
-  cloud.calimero.network. Note a node's address; the app asks for it once.
-  Mero AR is installed from the app registry (`com.calimero.mero-ar`) when the
-  first room is created.
+- **Calimero Cloud:** the app signs in on Mero AR's own page, which the
+  cluster running `com.calimero.mero-ar` serves; there is no address to enter.
+  Mero AR is installed from the app registry when the first room is created.
 - **Development:** `merod local` in a core checkout (3 nodes on
   `127.0.0.1:2501-2503`, mock attestation; Linux only, so in Docker on a Mac),
   then install this repo's contract: `make logic-bundle` and
@@ -62,14 +63,15 @@ Verify everything with `make setup`.
 ## 4. Build & run on your iPhone/iPad
 
 1. `make app-gen` and open `app/MeroAR/MeroAR.xcodeproj`.
-2. **Signing:** choose your team on the **MeroAR** target. For passkeys on a
-   real cluster, add the Associated Domains entitlement
-   `webcredentials:<the cluster's passkey domain>`.
+2. **Signing:** set your team in `app/MeroAR/Config/Signing.local.xcconfig`
+   (`DEVELOPMENT_TEAM = ABCDE12345`, gitignored), or export
+   `MEROAR_DEVELOPMENT_TEAM`, or choose it on the **MeroAR** target. No
+   associated domains are needed.
 3. Run on the device.
-4. **In the app:** enter the cluster address and **Continue with passkey** (or
-   **Create an account with a new passkey**). For a development cluster, use
-   **Development cluster (merod local)** with the node URL (the Mac's LAN
-   address from a phone).
+4. **In the app:** **Sign in with Calimero** opens Mero AR's sign-in page in a
+   system sheet: sign in with your passkey, or create an account. For a
+   development cluster, use **Development cluster (merod local)** with the
+   node URL (the Mac's LAN address from a phone).
 5. **New home** creates an organization and its first room. Invite people from
    the home (or from People inside a room); they paste the link in **Join**.
 
@@ -89,7 +91,7 @@ moderate. This is contract-enforced, not just UI.
 
 **Updates:** when a newer Mero AR release is out, People shows **Update
 available**. An admin approves it on the node's consent page, which opens in
-Safari; core accepts approvals only there.
+a system sheet; core accepts approvals only there.
 
 ---
 

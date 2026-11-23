@@ -91,24 +91,44 @@ extension RoomCluster {
 
 // MARK: - A Calimero 1.0 cluster
 
+/// Asks the node's consent page for `request` (built with the page's
+/// `returnTo`) and answers the decision.
+public typealias ConsentDecider =
+    @Sendable @MainActor (_ request: @escaping (_ returnTo: String) -> ConsentRequest) async throws -> ConsentResult
+
 /// The cluster behind the signed-in ``CalimeroClient``.
 public struct CloudCluster: RoomCluster {
     public let client: CalimeroClient
     public let package: String
-    /// The passkey the account signed in with; minting an invite is a
-    /// step-up the node asks that passkey to sign.
+    /// The passkey for this account's step-ups; minting an invite on a
+    /// development node is one.
     public let passkey: (any PasskeyProvider)?
     /// The node this session signed in to.
     public let endpoint: String
+    /// The node's consent page, for a session bound to Mero AR's package (a
+    /// Calimero Cloud sign-in on the served page): the node refuses such a
+    /// session organization routes, so founding a home, inviting and joining
+    /// are approved there. `nil`: the session does them itself.
+    public let consent: ConsentDecider?
 
     public init(
         client: CalimeroClient, passkey: (any PasskeyProvider)?, endpoint: String,
-        package: String = AppState.package
+        package: String = AppState.package, consent: ConsentDecider? = nil
     ) {
         self.client = client
         self.passkey = passkey
         self.endpoint = endpoint
         self.package = package
+        self.consent = consent
+    }
+
+    /// `request` approved on the consent page, or ``MeroARError/declined``.
+    private func approved(_ consent: ConsentDecider, _ request: @escaping (String) -> ConsentRequest)
+        async throws -> ConsentResult
+    {
+        let result = try await consent(request)
+        guard result.isApproved else { throw MeroARError.declined }
+        return result
     }
 
     public func view(app: String, method: String, args: [String: JSONValue]) async throws -> JSONValue? {
@@ -123,23 +143,23 @@ public struct CloudCluster: RoomCluster {
     public func events(app: String) -> AsyncThrowingStream<CloudEvent, Error> { client.events(app) }
 
     public func uploadBlob(app: String, data: Data) async throws -> String {
-        try await client.uploadBlob(app, data).blobId
+        try await client.apps.blobUpload(app: app, body: data).blobId
     }
 
     public func downloadBlob(app: String, id: String) async throws -> Data {
-        try await client.downloadBlob(app, id)
+        try await client.apps.blobDownload(app: app, id: id)
     }
 
     /// The account's organizations that hold Mero AR (by metadata, or by
     /// running a room of it), each with its rooms.
     public func listHomes() async throws -> HomeListing {
-        let me = try await client.me()
-        let apps = try await client.listApps(package: package)
+        let me = AccountInfo(json: try JSONValue(encoding: try await client.auth.me()))
+        let apps = try MeroJSON.convert(try await client.apps.list(package: package).apps, to: [AppInfo].self)
         var homes: [Home] = []
         for membership in me.orgs {
             let rooms = apps.filter { $0.org == membership.orgId }
             do {
-                let org = try await client.getOrg(membership.orgId)
+                let org = try await org(membership.orgId)
                 guard org.metadata["package"]?.stringValue == package || !rooms.isEmpty else { continue }
                 homes.append(
                     Home(
@@ -161,38 +181,75 @@ public struct CloudCluster: RoomCluster {
         RoomSummary(id: app.appId, name: app.name, lastOpened: nil)
     }
 
+    private func org(_ id: String) async throws -> OrgInfo {
+        OrgInfo(json: try JSONValue(encoding: try await client.orgs.get(org: id)))
+    }
+
+    private func app(_ id: String) async throws -> JSONValue {
+        try JSONValue(encoding: try await client.apps.get(app: id))
+    }
+
     public func createHome(named name: String) async throws -> String {
-        let org = try await client.createOrg(name)
-        try await client.setOrgMetadata(org, ["name": .string(name), "package": .string(package)])
+        let org: String
+        if let consent {
+            guard let made = try await approved(consent, { .createOrg(name: name, returnTo: $0) }).orgId else {
+                throw MeroARError.declined
+            }
+            org = made
+        } else {
+            org = try await client.orgs.create(name: name).orgId
+        }
+        // `POST /orgs/{org}/metadata`, which any member may set (a
+        // package-bound session too): how the lobby knows a home.
+        _ = try await client.post(
+            "orgs/\(org)/metadata", ["metadata": ["name": .string(name), "package": .string(package)]])
         return org
     }
 
     public func createRoom(named name: String, inHome homeId: String) async throws -> String {
-        try await client.createApp(
-            name, bundle: .package(package), org: homeId, access: .org, initArgs: ["name": .string(name)])
+        // `POST /apps`: a package-bound session creates instances of its own package only.
+        let created = try await client.post(
+            "apps",
+            [
+                "name": .string(name), "package": .string(package), "org": .string(homeId),
+                "access": ["kind": "org"], "initArgs": ["name": .string(name)],
+            ])
+        guard let appId = created["appId"]?.stringValue else {
+            throw AccountError.protocolViolation("the cluster answered no app id")
+        }
+        return appId
     }
 
     public func home(ofRoom app: String) async throws -> String? {
-        try await client.getApp(app)["org"]?.stringValue
+        try await self.app(app)["org"]?.stringValue
     }
 
     public func homeName(_ homeId: String) async throws -> String {
-        let org = try await client.getOrg(homeId)
+        let org = try await org(homeId)
         return org.metadata["name"]?.stringValue ?? org.name
     }
 
     public func invite(toHome homeId: String) async throws -> String {
+        if let consent {
+            let made = try await approved(consent) { .createInvite(org: homeId, role: .member, returnTo: $0) }
+            guard let token = made.inviteToken else { throw MeroARError.declined }
+            return token
+        }
         guard let passkey else { throw MeroARError.notSignedIn }
-        return try await client.invite(homeId, role: .member, passkey: passkey)
+        return try await client.orgs.inviteCreate(org: homeId, role: .member, teams: [], passkey: passkey).token
     }
 
     public func redeem(token: String) async throws {
-        _ = try await client.redeemInvite(token)
+        if let consent {
+            _ = try await approved(consent) { .acceptInvite(token: token, returnTo: $0) }
+            return
+        }
+        _ = try await client.orgs.inviteRedeem(token: token)
     }
 
     public func availableUpdate(app: String) async throws -> RoomUpdate? {
-        guard let current = try await client.getApp(app)["version"]?.stringValue,
-            let latest = try await client.package(package).latest, latest != current
+        guard let current = try await self.app(app)["version"]?.stringValue,
+            case let latest = try await client.packages.get(package: package).latest, latest != current
         else { return nil }
         return RoomUpdate(current: current, latest: latest)
     }
@@ -208,6 +265,10 @@ public enum MeroARError: LocalizedError, Equatable {
     /// The invitation was redeemed but the home never listed.
     case homeNotSynced
     case invitationRefused(String)
+    /// The request was declined on the approval page.
+    case declined
+    /// The approval page couldn't be asked, or its answer not read.
+    case consentUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
@@ -219,6 +280,10 @@ public enum MeroARError: LocalizedError, Equatable {
             return "You joined the home, but it isn't listed yet. Pull to refresh in a moment."
         case .invitationRefused(let reason):
             return "This invitation wasn't accepted: \(reason)"
+        case .declined:
+            return "That wasn't approved."
+        case .consentUnavailable(let reason):
+            return reason
         }
     }
 }
@@ -250,14 +315,5 @@ func userMessage(_ error: Error) -> String {
     }
 }
 
-// MARK: - Encodable → JSONValue
-
-extension JSONValue {
-    /// Bridge a `Codable` model into the SDK's dynamic JSON type, preserving the
-    /// model's own key names (no snake_case conversion) so nested contract
-    /// structs stay camelCase.
-    init<T: Encodable>(encoding value: T) throws {
-        let data = try JSONEncoder().encode(value)
-        self = try JSONDecoder().decode(JSONValue.self, from: data)
-    }
-}
+// `JSONValue(encoding:)`, a `Codable` model as the SDK's dynamic JSON (key
+// names kept as they are), is MeroKit's own.
