@@ -1,0 +1,72 @@
+# Native iOS Mero AR (apps/mero-ar/mobile/ios): generate the Xcode project
+# from project.yml and run the unit tests on an iOS Simulator. The Swift SDK is
+# resolved from calimero-network/core at the release project.yml pins. The
+# contract and the served page are covered by the Components and CI workflows.
+name: Mero AR iOS
+
+on:
+  pull_request:
+    paths:
+      - apps/mero-ar/mobile/ios/**
+      - .github/workflows/mero-ar-ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mero-ar/mobile/ios/**
+      - .github/workflows/mero-ar-ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mero-ar-ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  app:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mero-ar/mobile/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Addressed by UDID after waiting, not by name: on a cold runner
+      # CoreSimulator is often not up yet and xcodebuild's device list comes
+      # back empty; touching simctl starts the service.
+      - name: Wait for a simulator, then run the unit tests
+        env:
+          XCB_QUIET: ${{ runner.debug == '1' && '' || '-quiet' }}
+        run: |
+          set -euo pipefail
+          udid=""
+          for attempt in $(seq 1 20); do
+            udid=$(xcrun simctl list devices available -j \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next((x["udid"] for rt in d for x in d[rt] if "iPhone" in x["name"]), ""))')
+            [ -n "$udid" ] && break
+            echo "attempt $attempt: no iPhone simulator yet, waiting…"
+            sleep 5
+          done
+          if [ -z "$udid" ]; then
+            echo "::error::no iOS simulator became available — tests did NOT run"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "using simulator $udid"
+          xcrun simctl boot "$udid" || true
+          xcodebuild test $XCB_QUIET -project MeroAR.xcodeproj -scheme MeroAR \
+            -destination "platform=iOS Simulator,id=$udid" \
+            -derivedDataPath .build -only-testing:MeroARTests \
+            CODE_SIGNING_ALLOWED=NO

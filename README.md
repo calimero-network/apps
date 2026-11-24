@@ -24,7 +24,7 @@ places.
 > Fifteen of the sixteen source repositories are archived with a pointer back — several under their
 > older names (`p2p-sheets`, `only-peers-client`, `meropass`, `MeroSign`,
 > `scaffolding-e2e-application`); only [`kv-store`](https://github.com/calimero-network/kv-store)
-> is still open. Three projects stayed out by design — see [Out of scope](#out-of-scope).
+> is still open. One project stayed out by design — see [Out of scope](#out-of-scope).
 
 ---
 
@@ -119,15 +119,14 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [mero-stream](apps/mero-stream) | [↗](https://mero-stream-neon.vercel.app) | Media capacity probe, on the component runtime. `/stream` runs a toy integer codec inside the contract; `/live` carries browser-encoded H.264 over the node's presence channel. Deliberately the wrong way round, to find the platform's ceiling with numbers. **Not shippable media, and web only.** | `com.calimero.mero-stream` |
 | [hyperfeed](apps/hyperfeed) | — | Prototype. One feed for your agent and your apps: every action an agent took on your behalf (with its warrant's intent hash and executor) beside every notification your other apps emitted, with approvals, undo, per-app agent modes and "always ask" guards enforced by the contract. `/demo` runs with no node. A component app (Calimero 1.0): `calimero-sdk`, `merod local` in dev, mero-js `CalimeroClient` on Calimero Cloud. | `com.calimero.hyperfeed` |
+| [mero-ar](apps/mero-ar) | — | Collaborative spatial editing: several people scan the same room and edit one shared 3D scene, a native iOS app (SwiftUI + ARKit + RealityKit) on the Swift SDK. The scene graph is a component app (Calimero 1.0); `app/` is only the sign-in, approval and consent page the cluster serves for it. | `com.calimero.mero-ar` |
 
 ### Out of scope
 
-Three projects stayed in their own repositories, and one was abandoned.
+One project stayed in its own repository, and one was abandoned.
 
 | Project | Why |
 | --- | --- |
-| [mero-tag](https://github.com/calimero-network/mero-tag) | SwiftUI + MapKit iOS app. Shares neither the pnpm nor the Cargo surface this repo is built around. |
-| [mero-ar](https://github.com/calimero-network/mero-ar) | ARKit + RealityKit iOS app, same reason. |
 | [mero-chat-pwa](https://github.com/calimero-network/mero-chat-pwa) | Installable PWA with offline support; still developed on its own. |
 | [mero-chat](https://github.com/calimero-network/mero-chat) | **Abandoned** 2026-08-19, stuck on rc.20 / mero-js 7 / mero-react 4. Superseded by `mero-chat-pwa`. Won't-fix; exclude it from fleet sweeps. |
 

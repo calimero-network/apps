@@ -1,5 +1,5 @@
 {
-  "name": "mero-ar-web",
+  "name": "mero-ar",
   "private": true,
   "version": "0.1.0",
   "description": "Mero AR's served page: the iOS app's Calimero Cloud sign-in, passkey approvals and consent returns",
@@ -7,15 +7,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "1.0.0-rc.35"
+    "@calimero-network/mero-js": "catalog:component"
   },
   "devDependencies": {
-    "typescript": "5.7.3",
-    "vite": "6.4.6",
-    "vitest": "5.1.1"
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

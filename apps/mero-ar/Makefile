@@ -1,7 +1,7 @@
 .PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
         web-build web-test app-gen app-build app-test test clean
 
-APP_DIR    := app/MeroAR
+APP_DIR    := mobile/ios
 XCODEPROJ  := $(APP_DIR)/MeroAR.xcodeproj
 SCHEME     := MeroAR
 SIMULATOR  ?= iPhone 17
@@ -13,14 +13,14 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    setup        Check prereqs, install meroctl, bundle the contract"
-	@echo "    tools        Install meroctl (core's, at the release ci/core-version names)"
+	@echo "    tools        Install meroctl (core's, at the release ../../scripts/install-meroctl.sh pins)"
 	@echo ""
 	@echo "  Contract (Rust, a calimero:app component)"
 	@echo "    logic-build  Build logic/ → logic/res/mero_ar.wasm + logic/res/abi.json"
 	@echo "    logic-bundle Package the dev-signed .mpk a merod local cluster accepts"
 	@echo ""
-	@echo "  Served page (web/: the iOS app's Calimero Cloud sign-in)"
-	@echo "    web-build    Build web/dist, which the bundle carries"
+	@echo "  Served page (app/: the iOS app's Calimero Cloud sign-in)"
+	@echo "    web-build    Build app/dist, which the bundle carries"
 	@echo "    web-test     Its unit tests"
 	@echo "    logic-test   cargo test (pure helpers + the TestApp harness on core's engine)"
 	@echo ""
@@ -43,10 +43,10 @@ setup:
 	@bash scripts/setup.sh
 
 # Core's `meroctl` builds the contract into a `calimero:app` component, writes
-# its ABI, and packs the signed .mpk, at the release ci/core-version names
+# its ABI, and packs the signed .mpk, at the release the repository pins
 # (into ~/.local/bin; MEROCTL_ROOT=… for another place).
 tools:
-	scripts/install-meroctl.sh
+	../../scripts/install-meroctl.sh
 
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
@@ -67,10 +67,10 @@ logic-test:
 
 # ── Served page ──────────────────────────────────────────────────────────────
 web-build:
-	cd web && npm ci --no-audit --no-fund && npm run build
+	pnpm install --frozen-lockfile && pnpm -F mero-ar build
 
 web-test:
-	cd web && npm ci --no-audit --no-fund && npm test
+	pnpm install --frozen-lockfile && pnpm -F mero-ar test
 
 # ── iOS app ─────────────────────────────────────────────────────────────────────
 app-gen:
@@ -100,10 +100,10 @@ dev-down:
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
 # The Swift client itself is Calimero's Swift SDK, from core (declared in
-# app/MeroAR/project.yml) and tested there; what this repo tests is the
+# mobile/ios/project.yml) and tested there; what this repo tests is the
 # contract, the served page, and this app against that SDK.
 test: logic-test web-test app-test
 
 clean:
 	cd logic && rm -rf res target
-	rm -rf web/dist $(APP_DIR)/.build $(XCODEPROJ)
+	rm -rf app/dist $(APP_DIR)/.build $(XCODEPROJ)

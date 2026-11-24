@@ -1,6 +1,0 @@
-# Core 1.0.0-rc.35's toolchain (its rust-toolchain.toml): the SDK, the builder and
-# the test engine are built with it.
-[toolchain]
-channel = "1.98.0"
-components = ["cargo", "clippy", "rustfmt"]
-targets = ["wasm32-wasip2"]
