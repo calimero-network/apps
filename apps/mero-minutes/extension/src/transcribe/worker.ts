@@ -22,7 +22,9 @@ if (env.backends.onnx.wasm) {
 }
 
 let loaded: { tier: TierId; asr: AutomaticSpeechRecognitionPipeline } | null = null;
+/** Loads run one after the other; `loadingTier` is the last one asked for. */
 let loading: Promise<void> | null = null;
+let loadingTier: TierId | null = null;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
 
@@ -74,9 +76,18 @@ async function transcribe(id: number, audio: Float32Array, language: string): Pr
 self.addEventListener("message", (event: MessageEvent<ToWorker>) => {
   const m = event.data;
   if (m.type === "load") {
-    loading = load(m.tier).finally(() => {
-      loading = null;
+    // Asked again for the model already on its way (a preload, then Record):
+    // its `ready` answers both. Loading it twice would hold it twice in memory.
+    if (loading && loadingTier === m.tier) return;
+    const tier = m.tier;
+    loadingTier = tier;
+    const next: Promise<void> = (loading ?? Promise.resolve()).then(() => load(tier)).finally(() => {
+      if (loading === next) {
+        loading = null;
+        loadingTier = null;
+      }
     });
+    loading = next;
   } else {
     void transcribe(m.id, m.audio, m.language);
   }

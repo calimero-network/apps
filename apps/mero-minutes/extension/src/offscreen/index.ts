@@ -118,7 +118,9 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
 function pump(): void {
   const r = rec;
   if (!r || !r.ready) return;
-  if (r.scheduler.behind()) {
+  // Only between stretches: loading the next model disposes the current one,
+  // which would fail the stretch it is transcribing.
+  if (!r.scheduler.working && r.scheduler.behind()) {
     const next = stepDown(r.tier, r.language);
     if (next) {
       void emit({ type: "stepDown", from: r.tier, to: next });

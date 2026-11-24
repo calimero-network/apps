@@ -60,6 +60,11 @@ export class Scheduler {
     return all.reduce((s, j) => s + (j.endMs - j.startMs), 0) / 1000;
   }
 
+  /** Whether a stretch is with the model now. */
+  get working(): boolean {
+    return this.busy !== null;
+  }
+
   get idle(): boolean {
     return !this.busy && this.jobs.length === 0;
   }

@@ -175,6 +175,8 @@ async function start(tabId: number): Promise<void> {
 
   await setStatus(() => ({ ...IDLE, phase: "starting" }));
   await write("session", KEYS.transcript, [] as Line[]);
+  /** The meeting made for this recording, deleted again if capture never starts. */
+  let meetingId: string | null = null;
   try {
     await ensureOffscreen();
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
@@ -182,7 +184,7 @@ async function start(tabId: number): Promise<void> {
     await log(
       `start: platform=${platform} tier=${tier} choice=${s.tier} lang=${s.language || "auto"} mic=${s.mic} webgpu=${caps.webgpu} mem=${caps.deviceMemoryGb} cores=${caps.cores} cached=${(caps.cached ?? []).join(",") || "none"}`,
     );
-    const meetingId = await onNode((_c, app) =>
+    const id = await onNode((_c, app) =>
       app.startMeeting({
         title,
         platform,
@@ -191,14 +193,15 @@ async function start(tabId: number): Promise<void> {
         language: s.language,
       }),
     );
-    queue = await UploadQueue.start(workspace.appId, meetingId, queueStore, send);
+    meetingId = id;
+    queue = await UploadQueue.start(workspace.appId, id, queueStore, send);
     recordingTab = tabId;
     await chrome.storage.session.set({ "minutes:tab": tabId });
     await setStatus((st) => ({
       ...st,
       phase: "loading-model",
       tier,
-      meeting: { id: meetingId, appId: workspace.appId, title, platform, startedAt: Date.now() },
+      meeting: { id, appId: workspace.appId, title, platform, startedAt: Date.now() },
     }));
     // A tab's stream id lives only a few seconds and is used once: ask for it
     // last, right before the offscreen page opens it.
@@ -207,19 +210,22 @@ async function start(tabId: number): Promise<void> {
       streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
     } catch (e) {
       await log(`tab capture refused: ${describe(e)}`);
-      // No audio can come: drop the empty meeting rather than leave it behind.
-      await onNode((_c, app) => app.deleteMeeting({ meetingId }), workspace.appId).catch(() => undefined);
-      await queue.clear();
-      queue = null;
-      recordingTab = null;
       throw e;
     }
     await log("tab stream id taken, capturing");
     await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
+    // No audio can come: drop the empty meeting rather than leave it behind.
+    if (meetingId) {
+      const id = meetingId;
+      await onNode((_c, app) => app.deleteMeeting({ meetingId: id }), workspace.appId).catch(() => undefined);
+    }
+    await queue?.clear();
+    queue = null;
+    recordingTab = null;
     await closeOffscreen().catch(() => undefined);
-    await setStatus((st) => ({ ...st, phase: "error", error: describe(e) }));
+    await setStatus((st) => ({ ...st, phase: "error", error: describe(e), meeting: null }));
     throw e;
   }
 }
@@ -353,6 +359,8 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
 
 // ── wiring ───────────────────────────────────────────────────────────────────
 
+let offscreenEvents: Promise<unknown> = Promise.resolve();
+
 async function handle(req: Request): Promise<unknown> {
   switch (req.type) {
     case "signIn":
@@ -385,7 +393,13 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   const m = message as Partial<OffscreenEvent> & Partial<OffscreenCommand> & { type?: string };
   if (m.target === "offscreen") return false;
   if (m.source === "offscreen") {
-    void onOffscreen(message as OffscreenEvent);
+    const e = message as OffscreenEvent;
+    // Levels are for the popup. Everything else is handled in the order it was
+    // sent: a burst of segments keeps every line, and `drained` comes after the
+    // segments before it are queued.
+    if (e.type !== "levels") {
+      offscreenEvents = offscreenEvents.then(() => onOffscreen(e)).catch((err: unknown) => log(`event ${e.type} failed: ${describe(err)}`));
+    }
     return false;
   }
   if (sender.id !== chrome.runtime.id) return false;
