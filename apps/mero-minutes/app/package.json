@@ -2,7 +2,7 @@
   "name": "mero-minutes",
   "private": true,
   "version": "0.1.0",
-  "description": "Minutes — meeting transcripts and action items from a browser extension, on Calimero (component SDK, CalimeroClient)",
+  "description": "Minutes \u2014 meeting transcripts and action items from a browser extension, on Calimero (component SDK, CalimeroClient)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "icons": "node scripts/gen-icons.mjs",
-    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-minutes -o src/generated"
+    "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-minutes -o src/generated",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@calimero-apps/connect": "workspace:*",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@calimero-apps/test-setup": "workspace:*",
     "@eslint/js": "catalog:",
+    "@playwright/test": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
