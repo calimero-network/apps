@@ -108,7 +108,7 @@ describe("MeetingPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Cy sends the deck");
     expect(sent.find((s) => s.method === "editSegment")!.args).toEqual({ meetingId: "aa11", seq: 1, text: "Cy sends the deck" });
-    expect(screen.getByText("(edited)", { exact: false })).toBeTruthy();
+    expect(await screen.findByText("(edited)", { exact: false })).toBeTruthy();
   });
 
   it("lets the owner delete someone else's meeting, in batches", async () => {
