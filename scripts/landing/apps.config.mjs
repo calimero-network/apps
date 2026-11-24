@@ -43,6 +43,10 @@
  *                 Cloud, the App Registry and the desktop app share. Its
  *                 contract lives in its own `tests/marketing-landing.spec.ts`.
  *
+ * `mero-ar`       an iPhone app; its frontend is only the sign-in, approval and
+ *                 consent page the cluster serves for it, and the template's
+ *                 availability badge (web, desktop) has no phone.
+ *
  * `mero-blocks` and `merraria` ARE included, but they need one extra piece.
  * Neither is a React app — both boot from `src/main.ts` with no `.tsx` — and
  * their `Landing` (`src/ui/landing.ts`) is an imperative launcher resolving a

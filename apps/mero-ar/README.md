@@ -4,18 +4,12 @@ Collaborative spatial editing on [Calimero](https://calimero.network): several
 people scan the same room and edit a shared 3D scene, with every change kept by
 their organization's attested Calimero cluster (Figma-meets-ARKit).
 
-**Landing page:** [`landing/`](landing/), a static site explaining how Mero AR
-works, with real recordings from the app and a promo film. `cd landing && npm
-install && npm run dev`; deploys to Vercel as-is (`landing/vercel.json`).
-
 ```
 logic/        Rust contract, a calimero:app component (scene graph: objects, transforms, presence, comments, locks, roles)
 mobile/ios/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
 app/          the served page the bundle carries: the iOS app's Calimero Cloud sign-in, approvals, consent returns
-landing/      the landing page (Vite + React + Framer Motion), media in landing/public/media
-promo/        the promo film (Remotion), rendered into landing/public/media
 scripts/      setup.sh, the development cluster
-Makefile    every command has a `make` shortcut
+Makefile      every command has a `make` shortcut
 ```
 
 Built for **Calimero core 1.0** (`component-core-tag` in the root `Cargo.toml`):
@@ -282,18 +276,3 @@ so there is nothing to announce; anyone who can reach the room can download it.
 - 🔵 Live AR alignment to a shared room scan — needs on-device validation
 - ⬜ Undo/redo, image objects, dragging objects by touch in AR (next tickets — see `../merointerier.md`)
 - ⬜ No Android client. [kotlin-sdk](https://github.com/calimero-network/kotlin-sdk) exists, but an Android AR app (ARCore) is greenfield work, not a port of this one.
-
-## Landing page, recordings and promo
-
-- **Landing page:** `landing/` (Vite + React + TypeScript + Framer Motion). `npm
-  run dev` to work on it, `npm run build` for `dist/`. Respects reduced motion and
-  the system light/dark setting.
-- **Recordings:** the clips in `landing/public/media/` were filmed from the 0.x
-  app; the recording script went with the 0.x dev nodes and has not been
-  rebuilt for 1.0 yet.
-- **Promo film:** `cd promo && npm install && npm run render` renders `promo`
-  (1920×1080) and `promo-vertical` (1080×1920) with Remotion into `promo/out/`,
-  using the recordings above, plus the poster. Compress for the web with
-  `ffmpeg -i out/promo.mp4 -c:v libx264 -crf 28 -preset slow -an -movflags
-  +faststart ../landing/public/media/promo.mp4`. The phone-in-a-room scan shot is
-  motion graphics and is labelled as an illustration.

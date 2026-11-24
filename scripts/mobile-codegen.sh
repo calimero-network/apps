@@ -26,6 +26,7 @@ ROOT="${MEROCTL_ROOT:-$HOME/.local}"
 
 # app | lang | output directory | client name | Kotlin package
 CLIENTS=(
+  "mero-ar|swift|apps/mero-ar/mobile/ios/MeroARCore/Sources/MeroARCore/Generated|mero-ar|"
   "mero-chess|swift|apps/mero-chess/mobile/ios/ChessCore/Sources/ChessCore/Generated|mero-chess|"
   "mero-chess|kotlin|apps/mero-chess/mobile/android/app/src/main/kotlin/network/calimero/chess/generated|mero-chess|network.calimero.chess.generated"
   "mero-kombat|swift|apps/mero-kombat/mobile/ios/KombatCore/Sources/KombatCore/Generated|kombat|"
@@ -66,7 +67,6 @@ CLIENTS=(
   "mero-calendar|kotlin|apps/mero-calendar/mobile/android/app/src/main/kotlin/network/calimero/calendar/generated|calendar|network.calimero.calendar.generated"
   "mero-docs|swift|apps/mero-docs/mobile/ios/DocsCore/Sources/DocsCore/Generated|docs|"
   "mero-docs|kotlin|apps/mero-docs/mobile/android/app/src/main/kotlin/network/calimero/docs/generated|docs|network.calimero.docs.generated"
-  "mero-ar|swift|apps/mero-ar/mobile/ios/MeroARCore/Sources/MeroARCore/Generated|mero-ar|"
   "mero-chat|kotlin|apps/mero-chat/mobile/android/app/src/main/kotlin/network/calimero/chat/generated/client|chat|network.calimero.chat.generated.client"
 )
 

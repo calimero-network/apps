@@ -9,7 +9,3 @@ DerivedData/
 
 # Local signing team (mobile/ios/Config/Signing.xcconfig includes it)
 mobile/ios/Config/Signing.local.xcconfig
-
-# landing/ and promo/ are standalone npm projects, outside the pnpm workspace
-landing/dist/
-promo/out/
