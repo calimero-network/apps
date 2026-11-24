@@ -75,7 +75,7 @@ A Cloud node trusts passkey ceremonies only on the frontend it serves from the
 app's bundle, so the extension never asks for a passkey. As the iOS and Android
 apps do, it opens the served page at
 `https://{label}.apps.calimero.network/{version}/#native-sign-in&state=…&key=…`
-(`chrome.identity.launchWebAuthFlow`); the page signs the person in and returns
+in a small sign-in popup window (`src/lib/authWindow.ts`); the page signs the person in and returns
 the session to `https://ljpjgindjakdpmbpjdcpadihhnaemocf.chromiumapp.org/signed-in#state=…&box=…`,
 sealed to a P-256 key made for that one sign-in (ECDH → HKDF-SHA256 →
 AES-256-GCM, `src/lib/handoff.ts`; the page's side is
@@ -102,3 +102,20 @@ MINUTES_E2E_MODEL=ultralight,light,balanced pnpm -F mero-minutes-extension e2e  
 
 The model e2e transcribes `e2e/fixtures/speech-16k.wav` (a sentence spoken by
 macOS `say`) and checks the words come back.
+
+## Manual testing still needed
+
+The automated suites stand in for the call audio (Chrome gives a tab's audio
+only after a real toolbar click), so real calls have not been tested end to
+end yet. Before a store release, record a real call on each of:
+
+| | Google Chrome | Brave |
+|---|---|---|
+| Google Meet | not yet tested | not yet tested |
+| Zoom (web client) | not yet tested | not yet tested |
+| Microsoft Teams (web) | not yet tested | not yet tested |
+
+For each: install from the page's `#/install` zip, sign in, pick a workspace,
+record with the mic on and off, stop, and check the transcript, the action
+items and search on the page. Watch for Brave Shields hiding WebGPU, and note
+that the Zoom and Teams desktop apps can't be captured (only their web clients).
