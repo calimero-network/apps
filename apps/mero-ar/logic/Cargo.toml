@@ -1,0 +1,58 @@
+[package]
+name = "mero-ar"
+description = "Mero AR — collaborative spatial editing on Calimero, on the component SDK"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
+version = "0.0.2"
+edition = "2021"
+publish = false
+
+[lib]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
+
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release. Every core crate shares the
+# exact same tag.
+[dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+serde_json = "1"
+
+# Read by `meroctl app pack` (core's packer).
+[package.metadata.calimero]
+package = "com.calimero.mero-ar"
+name = "Mero AR"
+description = "Mero AR — collaborative spatial editing for your organization on Calimero."
+author = "Calimero"
+# The slug IS the package id: the registry and the node's `/packages/install
+# {package, version}` both name the app by it.
+slug = "com.calimero.mero-ar"
+tags = ["ar", "spatial", "collaboration"]
+github = "https://github.com/calimero-network/mero-ar"
+# The served page the bundle carries (web/, built first: `npm --prefix web run
+# build`). Mero AR is an iPhone app; the cluster serves this page from the
+# package's own origin, the only one a node takes Mero AR's passkey ceremonies
+# from, and the app opens it for its Calimero Cloud sign-in, passkey approvals
+# and consent returns.
+frontend-dir = "../web/dist"
+# The oldest node that can run this bundle: a `calimero:app` component on the
+# core 1.0 wasmtime runtime, built against the rc.32 SDK. Older nodes, and every
+# 0.x node, must refuse the install.
+min-runtime-version = "1.0.0-rc.35"
+# No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
+# that are not declared here (as URL prefixes) and approved.
+
+# Standalone: its own Cargo.lock.
+[workspace]
