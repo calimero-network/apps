@@ -10,7 +10,7 @@ import { OpenActions } from "./OpenActions";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
-import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK } from "./native";
+import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, signInIntent } from "./native";
 import { PersonName, TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
 import { PRODUCT, type SessionDeps } from "./session";
@@ -65,9 +65,14 @@ export function ExtensionSignIn() {
   /** `null` until known; `true` shows the workspace step before the handoff. */
   const [needsWorkspace, setNeedsWorkspace] = useState<boolean | null>(null);
   const started = useRef(false);
+  const creating = signInIntent() === "create";
 
   useEffect(() => {
     if (!signedIn || needsWorkspace !== null) return;
+    if (creating) {
+      setNeedsWorkspace(true);
+      return;
+    }
     let live = true;
     listWorkspaces(signedIn.client, signedIn.source)
       .then((rows) => {
@@ -80,7 +85,7 @@ export function ExtensionSignIn() {
     return () => {
       live = false;
     };
-  }, [signedIn, needsWorkspace]);
+  }, [signedIn, needsWorkspace, creating]);
 
   useEffect(() => {
     if (session.status !== "signed-in" || needsWorkspace !== false || started.current) return;
@@ -99,16 +104,16 @@ export function ExtensionSignIn() {
       <Centered>
         <section className="handoff-workspace" data-testid="extension-workspace" aria-labelledby="handoff-title">
           <div className="card handoff">
-            <h1 id="handoff-title">Create your first workspace</h1>
+            <h1 id="handoff-title">{creating ? "Create a workspace" : "Create your first workspace"}</h1>
             <p className="empty">
-              The extension saves the meetings you record to a workspace. Start one now, and the extension is
-              ready when this window closes.
+              The extension saves the meetings you record to a workspace. Start one now, and the extension
+              switches to it when this window closes.
             </p>
             <button type="button" className="btn ghost" onClick={() => setNeedsWorkspace(false)}>
-              Skip for now
+              {creating ? "Cancel" : "Skip for now"}
             </button>
           </div>
-          <WorkspacePicker onOpen={() => setNeedsWorkspace(false)} />
+          <WorkspacePicker createOnly={creating} onOpen={() => setNeedsWorkspace(false)} />
         </section>
       </Centered>
     );

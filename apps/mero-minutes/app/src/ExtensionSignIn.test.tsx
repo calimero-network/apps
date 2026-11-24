@@ -19,20 +19,25 @@ vi.mock("./lib/orgs", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   listWorkspaces: async () => workspaces.current,
 }));
+const pickerProps = { createOnly: undefined as boolean | undefined };
 vi.mock("./WorkspacePicker", () => ({
-  WorkspacePicker: ({ onOpen }: { onOpen: (w: unknown) => void }) => (
-    <button type="button" onClick={() => onOpen({ appId: "new", org: "o1" })}>
-      Start a new workspace
-    </button>
-  ),
+  WorkspacePicker: ({ onOpen, createOnly }: { onOpen: (w: unknown) => void; createOnly?: boolean }) => {
+    pickerProps.createOnly = createOnly;
+    return (
+      <button type="button" onClick={() => onOpen({ appId: "new", org: "o1" })}>
+        Start a new workspace
+      </button>
+    );
+  },
 }));
 vi.mock("./SignIn", () => ({ SignInPanel: () => <div data-testid="signin-panel" /> }));
 
 import { ExtensionSignIn } from "./App";
-import { NATIVE_CALLBACK } from "./native";
+import { NATIVE_CALLBACK, captureSignInIntent } from "./native";
 
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
   workspaces.current = [{ appId: "w1", name: "Team", org: "o1", owner: "a" }];
   finish.mockReset();
   clear.mockReset();
@@ -81,5 +86,23 @@ describe("ExtensionSignIn", () => {
     render(<ExtensionSignIn />);
     fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
     await screen.findByText("You are signed in");
+  });
+
+  it("asked to create one: shows the start form even with workspaces, then hands over", async () => {
+    session.current = { status: "signed-in", client: { id: "client" } };
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k&intent=create" });
+    finish.mockResolvedValue(true);
+    render(<ExtensionSignIn />);
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Create a workspace");
+    expect(pickerProps.createOnly).toBe(true);
+    expect(finish).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Start a new workspace" }));
+    await waitFor(() => expect(finish).toHaveBeenCalledTimes(1));
+  });
+
+  it("a plain sign-in forgets an earlier create intent", () => {
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k&intent=create" });
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k" });
+    expect(sessionStorage.getItem("minutes:native-intent")).toBeNull();
   });
 });

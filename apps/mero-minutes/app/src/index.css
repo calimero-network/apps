@@ -38,6 +38,7 @@
   --r-lg: 12px;
 
   --font: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
   /* Back-compat names some components still use. */
@@ -103,6 +104,7 @@
   --shadow-sm: none;
   --shadow-float: 0 16px 40px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border);
   --glass-tint: #fafafa;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   color-scheme: dark;
 }
 
@@ -227,8 +229,7 @@ code {
 /* ── form controls ─────────────────────────────────────────────────────── */
 
 input,
-textarea,
-select {
+textarea {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--r);
@@ -273,8 +274,44 @@ input[type="radio"] {
   accent-color: var(--ink);
 }
 
-/* Bare <button> (shared components): the primary fill. */
-button {
+
+/* Selects: one look everywhere, the chevron drawn at the right edge. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 32px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background-color: var(--surface);
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+select:hover:not(:disabled) {
+  border-color: var(--faint);
+}
+select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Bare <button>: the primary fill. Zero specificity (`:where`), so any
+   classed button, the shared components' included, keeps its own look and
+   hover instead of turning black. */
+:where(button) {
   background: var(--ink);
   color: var(--on-ink);
   border: 1px solid transparent;
@@ -296,10 +333,10 @@ button {
     border-color 120ms ease-out,
     color 120ms ease-out;
 }
-button:hover:not(:disabled) {
+:where(button:not([class]):hover:not(:disabled)) {
   background: var(--ink-hover);
 }
-button:disabled {
+:where(button:disabled) {
   opacity: 0.4;
   cursor: default;
 }

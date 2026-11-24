@@ -39,3 +39,30 @@ export function memoryStorage(): KeyValueStorage {
 
 /** Where a person gets the extension. */
 export const EXTENSION_URL = "https://github.com/calimero-network/apps/tree/main/apps/mero-minutes/extension#install";
+
+const INTENT_KEY = "minutes:native-intent";
+
+/**
+ * The extension's reason for this sign-in, from `#native-sign-in&…&intent=create`:
+ * `create` shows the new-workspace step even when the account has workspaces.
+ * Read before `captureNativeSignIn` takes the fragment out of the address, and
+ * kept for this tab so the passkey round trip does not lose it.
+ */
+export function captureSignInIntent(
+  location: Pick<Location, "hash"> = window.location,
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> = sessionStorage,
+): void {
+  const parts = location.hash.replace(/^#/, "").split("&");
+  if (parts[0] !== "native-sign-in") return;
+  const intent = new URLSearchParams(parts.slice(1).join("&")).get("intent");
+  if (intent === "create") storage.setItem(INTENT_KEY, intent);
+  else storage.removeItem(INTENT_KEY);
+}
+
+export function signInIntent(storage: Pick<Storage, "getItem"> = sessionStorage): "create" | null {
+  try {
+    return storage.getItem(INTENT_KEY) === "create" ? "create" : null;
+  } catch {
+    return null;
+  }
+}

@@ -30,7 +30,14 @@ function shortId(id: string) {
  * org made for another app is never offered there: only under "Connect to an
  * existing organization", on the person's explicit choice.
  */
-export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => void }) {
+export function WorkspacePicker({
+  onOpen,
+  createOnly = false,
+}: {
+  onOpen: (w: ActiveWorkspace) => void;
+  /** Only the start form: the extension asked for a new workspace. */
+  createOnly?: boolean;
+}) {
   const { client, accountId, source, passkey, after } = useSignedIn();
   const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
@@ -128,6 +135,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
 
   return (
     <>
+      {!createOnly && (
       <section className="card">
         <h2>Your workspaces</h2>
         <p className="empty" style={{ marginBottom: 14 }}>
@@ -152,6 +160,7 @@ export function WorkspacePicker({ onOpen }: { onOpen: (w: ActiveWorkspace) => vo
           </ul>
         )}
       </section>
+      )}
 
       <form
         className="card"
