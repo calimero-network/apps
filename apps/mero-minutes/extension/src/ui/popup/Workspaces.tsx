@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Refresh } from "@calimero-network/mero-icons";
 import type { AuthState, Workspace } from "../../lib/messages";
-import { CheckIcon, Spinner } from "../icons";
+import { AlertIcon, BackIcon, CheckIcon, RefreshIcon, Spinner } from "../icons";
 import { ask } from "../rpc";
 
-export function Workspaces({ auth, onDone }: { auth: AuthState; onDone: () => void }) {
+export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState; onDone: () => void; canClose?: boolean }) {
   const [list, setList] = useState<Workspace[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,21 +46,31 @@ export function Workspaces({ auth, onDone }: { auth: AuthState; onDone: () => vo
 
   return (
     <main className="body">
-      <div>
-        <h1 className="title">Choose a workspace</h1>
-        <p className="subtitle">Meetings you record are saved there, for everyone in it to read.</p>
+      <div className="hstack" style={{ alignItems: "flex-start" }}>
+        {canClose && (
+          <button className="icon-btn" aria-label="Back" onClick={onDone} style={{ marginLeft: -6 }}>
+            <BackIcon size={16} />
+          </button>
+        )}
+        <div className="grow">
+          <h1 className="title">Choose a workspace</h1>
+          <p className="subtitle">Meetings you record are saved there, for everyone in it to read.</p>
+        </div>
       </div>
       {list === null ? (
         <div className="hero" aria-busy="true">
-          <Spinner size={20} />
+          <Spinner size={18} />
         </div>
       ) : list.length === 0 && !error ? (
-        <div className="card">
-          <p style={{ margin: 0, fontWeight: 600 }}>No workspace yet</p>
-          <p className="small muted" style={{ margin: "4px 0 12px" }}>
-            Sign in once more with the same passkey and create one in the window that opens.
-          </p>
+        <div className="card stack" style={{ gap: 12 }}>
+          <div>
+            <p className="strong">No workspace yet</p>
+            <p className="small muted" style={{ marginTop: 2 }}>
+              Sign in once more with the same passkey and create one in the window that opens.
+            </p>
+          </div>
           <button className="btn primary block" onClick={() => void create()} disabled={creating}>
+            {creating ? <Spinner size={14} /> : null}
             {creating ? "Waiting for the sign-in window…" : "Create a workspace"}
           </button>
         </div>
@@ -75,24 +84,28 @@ export function Workspaces({ auth, onDone }: { auth: AuthState; onDone: () => vo
               aria-checked={auth.workspace?.appId === w.appId}
               onClick={() => void choose(w)}
             >
+              <span className="tile" style={{ width: 28, height: 28, borderRadius: 6, fontSize: 12, fontWeight: 600 }} aria-hidden="true">
+                {w.name.trim().charAt(0).toUpperCase() || "W"}
+              </span>
               <span className="grow">
                 <span className="name">{w.name}</span>
               </span>
-              <span className="tick">{auth.workspace?.appId === w.appId ? <CheckIcon /> : null}</span>
+              <span className="tick">{auth.workspace?.appId === w.appId ? <CheckIcon size={16} /> : null}</span>
             </button>
           ))}
         </div>
       )}
       {error && (
         <div className="banner bad" role="alert">
+          <AlertIcon size={14} />
           <span className="grow">{error}</span>
-          <button className="icon-btn" aria-label="Try again" onClick={() => void load()}>
-            <Refresh width={16} height={16} />
+          <button className="icon-btn" aria-label="Try again" onClick={() => void load()} style={{ width: 20, height: 20, color: "inherit" }}>
+            <RefreshIcon size={14} />
           </button>
         </div>
       )}
       {list && list.length > 0 && (
-        <button className="btn link" onClick={create}>
+        <button className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={create} disabled={creating}>
           Create another workspace
         </button>
       )}

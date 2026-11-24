@@ -4,7 +4,7 @@ import { PLATFORM_NAMES, detectPlatform, isInCall, meetingTitle } from "../../li
 import { write } from "../../lib/storage";
 import { TIERS, resolveTier } from "../../lib/tiers";
 import { useCaps, useMicAllowed, type ActiveTab } from "../hooks";
-import { ChevronRightIcon, ChipIcon, MicIcon, MicOffIcon, RecordIcon, Spinner, VideoIcon } from "../icons";
+import { AlertIcon, ChevronRightIcon, ChipIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
 import { ask } from "../rpc";
 import { ModelSheet } from "./ModelSheet";
 
@@ -49,72 +49,66 @@ export function Ready({
   };
 
   const allowMic = () => void chrome.tabs.create({ url: chrome.runtime.getURL("permission.html") });
+  const shown = error ?? status.error;
 
   return (
     <main className="body">
-      <button className="row card" style={{ padding: "10px 14px" }} onClick={onWorkspaces} aria-label="Change workspace">
-        <span className="grow">
-          <span className="small muted">Saving to</span>
-          <span className="name" style={{ display: "block" }}>
-            {auth.workspace?.name}
+      <section className="card stack" style={{ gap: 12 }} aria-label="This tab">
+        <div className="tab-card">
+          <span className="tile">
+            <VideoIcon size={18} />
           </span>
-        </span>
-        <ChevronRightIcon />
-      </button>
-
-      <section className="card tab-card" aria-label="This tab">
-        <span className="badge">
-          <VideoIcon size={20} />
-        </span>
-        <span className="meta">
-          <span className="name" style={{ display: "block" }}>
-            {recordable ? meetingTitle(tab?.title, platform) : "Nothing to record here"}
+          <span className="grow">
+            <span className="strong truncate">{recordable ? meetingTitle(tab?.title, platform) : "Nothing to record here"}</span>
+            <span className="small muted truncate">
+              {inCall
+                ? `${PLATFORM_NAMES[platform]} · in a call`
+                : platform !== "other"
+                  ? `${PLATFORM_NAMES[platform]} · join the call, then record`
+                  : recordable
+                    ? "Not a meeting tab — you can still record it"
+                    : "Open your call's tab, then open Minutes"}
+            </span>
           </span>
-          <span className="small muted">
-            {inCall
-              ? `${PLATFORM_NAMES[platform]} · in a call`
-              : platform !== "other"
-                ? `${PLATFORM_NAMES[platform]} · join the call, then record`
-                : recordable
-                  ? "Not a meeting tab — you can still record it"
-                  : "Open your call's tab, then open Minutes"}
-          </span>
-        </span>
+        </div>
+        <button className="btn primary block lg" onClick={start} disabled={!recordable || busy}>
+          {busy ? <Spinner size={14} /> : <span className="dot" aria-hidden="true" />}
+          {busy ? "Starting…" : inCall || platform !== "other" ? "Record meeting" : "Record this tab"}
+        </button>
       </section>
 
-      <button className="btn record block big" onClick={start} disabled={!recordable || busy}>
-        {busy ? <Spinner /> : <RecordIcon />}
-        {busy ? "Starting…" : inCall || platform !== "other" ? "Record meeting" : "Record this tab"}
-      </button>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="hstack">
         <button
-          className={`chip ${settings.mic ? "on" : ""}`}
+          className="chip"
           aria-pressed={settings.mic}
           onClick={() => void save({ mic: !settings.mic })}
           title={settings.mic ? "Your microphone is transcribed as “You”" : "Only the call is transcribed"}
         >
-          {settings.mic ? <MicIcon size={15} /> : <MicOffIcon size={15} />}
-          {settings.mic ? "Mic on" : "Mic off"}
+          {settings.mic ? <MicIcon size={14} /> : <MicOffIcon size={14} />}
+          <span>{settings.mic ? "Mic on" : "Mic off"}</span>
         </button>
-        <button className="chip on" onClick={() => setSheet(true)} aria-label="Speech model">
-          <ChipIcon size={15} />
-          {settings.tier === "auto" ? "Auto · " : ""}
-          {tier ? TIERS[tier].name : "Checking this laptop…"}
+        <button className="chip grow" style={{ flex: "0 1 auto" }} onClick={() => setSheet(true)} aria-label="Speech model">
+          <ChipIcon size={14} />
+          <span>
+            {settings.tier === "auto" ? "Auto · " : ""}
+            {tier ? TIERS[tier].name : "Checking this laptop…"}
+          </span>
         </button>
       </div>
 
       {settings.mic && micAllowed === false && (
-        <div className="banner wait">
-          <span className="grow">Allow Minutes to use your microphone once, so your side of the call is transcribed.</span>
+        <div className="banner">
+          <MicIcon size={14} />
+          <span className="grow">Allow the microphone once so your side of the call is transcribed.</span>
           <button className="btn link" onClick={allowMic}>
             Allow
           </button>
         </div>
       )}
-      {(error || status.error) && (
+      {shown && (
         <div className="banner bad" role="alert">
-          <span className="grow">{error ?? status.error}</span>
+          <AlertIcon size={14} />
+          <span className="grow">{shown}</span>
           {status.error && !error && (
             <button className="btn link" onClick={() => void ask({ type: "dismiss" })}>
               Dismiss
@@ -122,6 +116,20 @@ export function Ready({
           )}
         </div>
       )}
+
+      <div className="stack" style={{ marginTop: "auto", gap: 12 }}>
+        <button className="row card" style={{ padding: "8px 12px" }} onClick={onWorkspaces} aria-label="Change workspace">
+          <span className="grow">
+            <span className="label">Saving to</span>
+            <span className="name">{auth.workspace?.name}</span>
+          </span>
+          <ChevronRightIcon size={16} className="chev" />
+        </button>
+        <p className="foot">
+          <LockIcon size={13} />
+          <span>Transcribed on this laptop. Audio is never uploaded.</span>
+        </p>
+      </div>
     </main>
   );
 }

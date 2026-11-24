@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Settings as SettingsGlyph } from "@calimero-network/mero-icons";
 import { DEFAULT_SETTINGS, IDLE, KEYS, type AuthState, type RecorderStatus, type Settings } from "../../lib/messages";
 import { useActiveTab, useStored } from "../hooks";
-import { Mark, Spinner } from "../icons";
+import { GearIcon, Mark, Spinner } from "../icons";
 import { Ready } from "./Ready";
 import { Recording } from "./Recording";
 import { Saved } from "./Saved";
@@ -20,8 +19,8 @@ export function App() {
   if (auth === undefined || status === undefined || stored === undefined || tab === undefined) {
     return (
       <div className="shell" aria-busy="true">
-        <div className="hero">
-          <Spinner size={20} />
+        <div className="hero" style={{ margin: "auto" }}>
+          <Spinner size={18} />
         </div>
       </div>
     );
@@ -40,7 +39,7 @@ export function App() {
   } else if (s.phase === "saved") {
     content = <Saved status={s} />;
   } else if (!auth.workspace || view === "workspaces") {
-    content = <Workspaces auth={auth} onDone={() => setView("main")} />;
+    content = <Workspaces auth={auth} onDone={() => setView("main")} canClose={!!auth.workspace} />;
   } else {
     content = <Ready auth={auth} settings={settings} status={s} tab={tab} onWorkspaces={() => setView("workspaces")} />;
   }
@@ -48,12 +47,12 @@ export function App() {
   return (
     <div className="shell">
       <header className="top">
-        <Mark size={26} />
+        <Mark size={22} />
         <span className="brand">Minutes</span>
         <span className="spacer" />
         {view !== "settings" && (
           <button className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setView("settings")}>
-            <SettingsGlyph width={18} height={18} />
+            <GearIcon size={16} />
           </button>
         )}
       </header>

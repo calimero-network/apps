@@ -1,6 +1,5 @@
-import { ExternalLink } from "@calimero-network/mero-icons";
 import type { RecorderStatus } from "../../lib/messages";
-import { CheckIcon } from "../icons";
+import { AlertIcon, CheckIcon, ExternalIcon } from "../icons";
 import { ask } from "../rpc";
 
 export function Saved({ status }: { status: RecorderStatus }) {
@@ -9,33 +8,30 @@ export function Saved({ status }: { status: RecorderStatus }) {
   };
   return (
     <main className="body">
-      <div className="hero">
-        <span
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: 52,
-            height: 52,
-            borderRadius: 16,
-            background: "var(--glass-good-bg)",
-            color: "var(--glass-good-ink)",
-          }}
-        >
-          <CheckIcon size={26} />
+      <div className="hero" style={{ padding: "32px 8px 8px" }}>
+        <span className="tile lg">
+          <CheckIcon size={22} />
         </span>
         <div>
           <h1 className="title">Meeting saved</h1>
           <p className="subtitle">{status.meeting?.title}</p>
         </div>
       </div>
-      {status.error && <div className="banner bad">{status.error}</div>}
-      {status.uploadError && <div className="banner wait">{status.uploadError}</div>}
-      <button className="btn primary block big" onClick={open} disabled={!status.link}>
-        Open in Minutes <ExternalLink width={16} height={16} />
-      </button>
-      <button className="btn block" onClick={() => void ask({ type: "dismiss" })}>
-        Done
-      </button>
+      {status.error && (
+        <div className="banner bad">
+          <AlertIcon size={14} />
+          <span className="grow">{status.error}</span>
+        </div>
+      )}
+      {status.uploadError && <div className="banner">{status.uploadError}</div>}
+      <div className="stack" style={{ marginTop: "auto" }}>
+        <button className="btn primary block lg" onClick={open} disabled={!status.link}>
+          Open in Minutes <ExternalIcon size={14} />
+        </button>
+        <button className="btn ghost block lg" onClick={() => void ask({ type: "dismiss" })}>
+          Done
+        </button>
+      </div>
     </main>
   );
 }

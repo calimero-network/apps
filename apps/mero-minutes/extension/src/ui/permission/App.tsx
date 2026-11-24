@@ -22,32 +22,35 @@ export function App() {
   };
 
   return (
-    <main className="body" style={{ maxWidth: 420, margin: "12vh auto", gap: 18 }}>
-      <div className="hero">
-        <Mark size={56} />
+    <main className="page">
+      <div className="card">
+        <Mark size={44} />
         {state === "granted" ? (
           <>
-            <span style={{ color: "var(--glass-good-ink)" }}>
-              <CheckIcon size={28} />
-            </span>
-            <h1 className="title">Microphone allowed</h1>
-            <p className="subtitle">You can close this tab and start recording from the Minutes button.</p>
-            <button className="btn primary" onClick={() => window.close()}>
+            <div>
+              <h1 className="title hstack" style={{ justifyContent: "center" }}>
+                <CheckIcon size={18} /> Microphone allowed
+              </h1>
+              <p className="subtitle">You can close this tab and start recording from the Minutes button.</p>
+            </div>
+            <button className="btn primary lg" onClick={() => window.close()}>
               Close
             </button>
           </>
         ) : (
           <>
-            <h1 className="title">Let Minutes hear you</h1>
-            <p className="subtitle">
-              Minutes transcribes your microphone as “You”, on this laptop. Audio is never uploaded. Your browser will ask
-              once.
-            </p>
-            <button className="btn primary big" onClick={() => void request()}>
-              <MicIcon /> Allow microphone
+            <div>
+              <h1 className="title">Let Minutes hear you</h1>
+              <p className="subtitle">
+                Minutes transcribes your microphone as “You”, on this laptop. Audio is never uploaded. Your browser will
+                ask once.
+              </p>
+            </div>
+            <button className="btn primary lg" onClick={() => void request()}>
+              <MicIcon size={15} /> Allow microphone
             </button>
             {state === "denied" && (
-              <div className="banner bad" role="alert">
+              <div className="banner bad" role="alert" style={{ textAlign: "left" }}>
                 The microphone was blocked. Allow it in the address bar's site settings for Minutes, then try again.
               </div>
             )}
