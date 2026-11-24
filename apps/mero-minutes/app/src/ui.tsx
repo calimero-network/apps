@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { avatarHue, displayName, initials } from "./lib/people";
+import { displayName, initials } from "./lib/people";
 import { useSpaceNames } from "./names";
 
 // ── avatar ──────────────────────────────────────────────────────────────────
 
-/** Initials on a colour derived from the ACCOUNT, so a rename keeps it. */
+/** Initials on a neutral disc. */
 export function Avatar({
   account,
   name,
@@ -14,7 +14,6 @@ export function Avatar({
   name?: string | null;
   size?: number;
 }) {
-  const hue = avatarHue(account);
   const spaceName = useSpaceNames().nameOf(account);
   return (
     <span
@@ -25,8 +24,6 @@ export function Avatar({
         width: size,
         height: size,
         fontSize: Math.round(size * 0.4),
-        background: `hsl(${hue} 55% var(--avatar-l))`,
-        color: `hsl(${hue} 70% var(--avatar-fg-l))`,
       }}
     >
       {initials(account, name, spaceName)}
