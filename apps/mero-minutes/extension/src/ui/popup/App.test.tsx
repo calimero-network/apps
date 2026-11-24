@@ -60,6 +60,21 @@ describe("popup", () => {
     expect(chrome.created).toEqual([]);
   });
 
+  it("create another workspace: asks the window for a new one and switches to it", async () => {
+    chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
+    let lists = 0;
+    chrome.onSend = (m) =>
+      (m as { type: string }).type === "listWorkspaces"
+        ? { ok: true, value: lists++ === 0 ? [{ appId: "a1", name: "Design" }] : [{ appId: "a1", name: "Design" }, { appId: "a9", name: "New team" }] }
+        : { ok: true, value: null };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Create another workspace" }));
+    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "signIn", intent: "create" }));
+    await waitFor(() =>
+      expect(chrome.sent).toContainEqual({ type: "chooseWorkspace", workspace: { appId: "a9", name: "New team" } }),
+    );
+  });
+
   it("ready on a Meet call: names it and records this tab", async () => {
     chrome.areas.local.set(KEYS.auth, AUTH);
     render(<App />);
@@ -149,7 +164,7 @@ describe("popup", () => {
     await waitFor(() =>
       expect((chrome.areas.local.get(KEYS.settings) as { pageOverride: string }).pageOverride).toBe("http://localhost:5173"),
     );
-    fireEvent.click(screen.getByRole("button", { name: /Sign out/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Log out/ }));
     await waitFor(() => expect(types()).toContain("signOut"));
   });
 });

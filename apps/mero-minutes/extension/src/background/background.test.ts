@@ -29,6 +29,7 @@ class FakeNode {
   /** Fail every append (the node is down for the whole recording). */
   down = false;
   signedOut = false;
+  actions: Array<{ meetingId: string; text: string; assignee: string; sourceSeq: number }> = [];
   private n = 0;
 
   private gate(): void {
@@ -61,6 +62,17 @@ class FakeNode {
         m.ended = true;
         m.durationMs = a.durationMs;
         return {};
+      },
+      transcript: async (a: { meetingId: string; fromSeq: number; limit: number }) => {
+        const all = [...(this.meetings.get(a.meetingId)?.segments.values() ?? [])].sort((x, y) => x.seq - y.seq);
+        const from = all.filter((x) => x.seq >= a.fromSeq);
+        const page = from.slice(0, a.limit);
+        return { segments: page, next: from.length > a.limit ? page.at(-1)!.seq + 1 : null };
+      },
+      listActions: async (a: { meetingId: string }) => this.actions.filter((x) => x.meetingId === a.meetingId),
+      addAction: async (a: { meetingId: string; text: string; assignee: string; sourceSeq: number }) => {
+        this.actions.push(a);
+        return `a${this.actions.length}`;
       },
       deleteMeeting: async (a: { meetingId: string }) => {
         this.deleted.push(a.meetingId);
@@ -179,7 +191,6 @@ function installChrome(): Harness {
       get: async (id: number) => ({ id, url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" }),
       onRemoved: { addListener: (l: (tabId: number) => void) => h.removedListeners.push(l) },
     },
-    identity: { launchWebAuthFlow: async () => undefined },
   };
   (globalThis as unknown as { chrome: unknown }).chrome = chromeLike;
   return h;
@@ -383,6 +394,33 @@ describe("service worker: when recording goes wrong", () => {
     // Nothing was captured: no stream id was spent.
     expect(h.streamIdsTaken).toBe(0);
     expect(h.offscreenOpen).toBe(false);
+  });
+
+  it("adds the action items said in the meeting when it ends", async () => {
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    await event(segment("you", 0, "Okay. Ana, can you send the deck to the design team by Friday?"));
+    await event(segment("others", 3_000, "Sure. Can you hear me okay?"));
+    await event(segment("others", 6_000, "I'll update the pricing page tomorrow."));
+    await request({ type: "stop" });
+    await event({ type: "drained", durationMs: 9_000 });
+    expect(status().phase).toBe("saved");
+    expect(status().actions).toBe(2);
+    expect(node.actions).toEqual([
+      { meetingId: "m1", text: "Send the deck to the design team by Friday", assignee: "Ana", sourceSeq: 0 },
+      { meetingId: "m1", text: "Update the pricing page tomorrow", assignee: "", sourceSeq: 2 },
+    ]);
+  });
+
+  it("adds no action items when that is turned off", async () => {
+    h.local.set("minutes:settings", { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: false });
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    await event(segment("you", 0, "Ana, can you send the deck by Friday?"));
+    await request({ type: "stop" });
+    await event({ type: "drained", durationMs: 3_000 });
+    expect(status().phase).toBe("saved");
+    expect(node.actions).toEqual([]);
   });
 
   it("stopping before the model is ready still waits for the transcript", async () => {

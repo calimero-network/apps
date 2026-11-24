@@ -17,6 +17,14 @@ export function Saved({ status }: { status: RecorderStatus }) {
           <p className="subtitle">{status.meeting?.title}</p>
         </div>
       </div>
+      {status.actions !== undefined && status.actions > 0 && (
+        <div className="banner">
+          <CheckIcon size={14} />
+          <span className="grow">
+            {status.actions === 1 ? "1 action item" : `${status.actions} action items`} added from the transcript.
+          </span>
+        </div>
+      )}
       {status.error && (
         <div className="banner bad">
           <AlertIcon size={14} />

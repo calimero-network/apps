@@ -7,7 +7,9 @@
  */
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
 import { PACKAGE, meetingLink, servedPage } from "../lib/appHost";
-import { newHandoff, openHandoff, signInUrl } from "../lib/handoff";
+import { findActions, type TranscriptLine } from "../lib/actionItems";
+import { openAuthWindow } from "../lib/authWindow";
+import { newHandoff, openHandoff, signInUrl, type SignInIntent } from "../lib/handoff";
 import {
   DEFAULT_SETTINGS,
   IDLE,
@@ -125,12 +127,12 @@ function toOffscreen<T = unknown>(command: OffscreenCommand): Promise<T> {
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
 
-async function signIn(): Promise<AuthState> {
+async function signIn(intent?: SignInIntent): Promise<AuthState> {
   const s = await settings();
   const page = await servedPage(s.pageOverride);
   const request = await newHandoff();
-  const url = signInUrl(page.origin, page.version, request);
-  const answer = await chrome.identity.launchWebAuthFlow({ url, interactive: true });
+  const url = signInUrl(page.origin, page.version, request, intent);
+  const answer = await openAuthWindow(url, `https://${chrome.runtime.id}.chromiumapp.org/`);
   if (!answer) throw new Error("Sign-in was cancelled.");
   const session = await openHandoff(request, answer);
   const previous = await auth();
@@ -261,6 +263,34 @@ async function abandon(message: string): Promise<void> {
   await setStatus((st) => ({ ...st, phase: "error", error: message, meeting: null, link: null }));
 }
 
+/**
+ * The action items said in the meeting (`lib/actionItems.ts`), added to it:
+ * read back the saved transcript, skip what is already there, add the rest.
+ */
+async function addFoundActions(meeting: { id: string; appId: string }): Promise<number> {
+  const lines: TranscriptLine[] = [];
+  let from: number | null = 0;
+  while (from !== null) {
+    const fromSeq: number = from;
+    const page = await onNode((_c, app) => app.transcript({ meetingId: meeting.id, fromSeq, limit: 500 }), meeting.appId);
+    lines.push(...page.segments);
+    from = page.next;
+  }
+  const existing = await onNode((_c, app) => app.listActions({ meetingId: meeting.id }), meeting.appId);
+  const found = findActions(
+    lines,
+    existing.map((x) => x.text),
+  );
+  for (const f of found) {
+    await onNode(
+      (_c, app) =>
+        app.addAction({ meetingId: meeting.id, text: f.text.slice(0, 500), assignee: f.assignee.slice(0, 100), sourceSeq: f.sourceSeq }),
+      meeting.appId,
+    );
+  }
+  return found.length;
+}
+
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
 function finish(durationMs: number): Promise<void> {
   stopping ??= (async () => {
@@ -269,6 +299,7 @@ function finish(durationMs: number): Promise<void> {
     const all = q ? await q.drain() : true;
     let link: string | null = null;
     let error: string | null = null;
+    let actions = 0;
     const a = await auth();
     const meeting = s.meeting;
     if (a && meeting) {
@@ -281,8 +312,14 @@ function finish(durationMs: number): Promise<void> {
         error = describe(e);
       }
       link = meetingLink(a.page, meeting.appId, meeting.id);
+      if (all && !error && (await settings()).autoActions) {
+        actions = await addFoundActions(meeting).catch(async (e: unknown) => {
+          await log(`actions: ${describe(e)}`);
+          return 0;
+        });
+      }
     }
-    await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} error=${error ?? "none"}`);
+    await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} actions=${actions} error=${error ?? "none"}`);
     if (all && q) await q.clear();
     queue = all ? null : q;
     recordingTab = null;
@@ -291,6 +328,7 @@ function finish(durationMs: number): Promise<void> {
       ...st,
       phase: "saved",
       link,
+      actions,
       pending: q && !all ? q.pending : 0,
       uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",
       error: error ?? st.error,
@@ -364,7 +402,7 @@ let offscreenEvents: Promise<unknown> = Promise.resolve();
 async function handle(req: Request): Promise<unknown> {
   switch (req.type) {
     case "signIn":
-      return signIn();
+      return signIn(req.intent);
     case "signOut":
       await saveAuth(null);
       return null;

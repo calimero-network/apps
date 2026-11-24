@@ -148,7 +148,7 @@ describe("manifest", () => {
   it("asks only for what it uses", () => {
     const m = buildManifest({ key, version: "0.1.0" });
     expect(m.manifest_version).toBe(3);
-    expect(m.permissions).toEqual(["tabCapture", "offscreen", "activeTab", "tabs", "storage", "identity", "sidePanel"]);
+    expect(m.permissions).toEqual(["tabCapture", "offscreen", "activeTab", "tabs", "storage", "sidePanel"]);
     expect(m.host_permissions).not.toContain("<all_urls>");
     expect(m.content_security_policy?.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
     expect(m.background).toEqual({ service_worker: "background.js", type: "module" });

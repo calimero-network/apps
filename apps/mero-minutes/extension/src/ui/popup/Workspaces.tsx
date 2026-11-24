@@ -29,14 +29,19 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
 
   // The page forgets its session once it hands it to the extension, so a plain
   // tab would ask for a passkey again (and invite a second account). The
-  // sign-in window instead offers the first workspace before it hands over.
+  // sign-in window instead offers a new workspace (`intent: "create"`) before
+  // it hands over; the workspace that appears is then chosen.
   const [creating, setCreating] = useState(false);
   const create = async () => {
     setCreating(true);
     setError(null);
+    const before = new Set((list ?? []).map((w) => w.appId));
     try {
-      await ask({ type: "signIn" });
-      await load();
+      await ask({ type: "signIn", intent: "create" });
+      const after = await ask<Workspace[]>({ type: "listWorkspaces" });
+      setList(after);
+      const made = after.find((w) => !before.has(w.appId));
+      if (made) await choose(made);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

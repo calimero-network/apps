@@ -6,7 +6,6 @@
  * - `offscreen`: a page that may hold media streams and play the call back;
  * - `activeTab`, `tabs`: the meeting tab's address and title, for the meeting's name and platform;
  * - `storage`: settings, the session and transcript lines waiting to be saved;
- * - `identity`: `launchWebAuthFlow`, the sign-in window;
  * - `sidePanel`: the live transcript beside the call.
  * Hosts: Calimero's nodes (the workspace's API), and a local development cluster.
  * Model files come from Hugging Face over CORS, so it needs no host permission.
@@ -28,7 +27,7 @@ export function buildManifest(options: { key: string; version: string }): chrome
     action: { default_title: "Minutes", default_popup: "popup.html", default_icon: icons },
     background: { service_worker: "background.js", type: "module" },
     side_panel: { default_path: "sidepanel.html" },
-    permissions: ["tabCapture", "offscreen", "activeTab", "tabs", "storage", "identity", "sidePanel"],
+    permissions: ["tabCapture", "offscreen", "activeTab", "tabs", "storage", "sidePanel"],
     host_permissions: ["https://*.calimero.network/*", "http://localhost/*", "http://127.0.0.1/*"],
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",

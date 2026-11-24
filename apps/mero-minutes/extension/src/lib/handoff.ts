@@ -5,8 +5,8 @@
  * the app's bundle, so the extension never asks for a passkey itself. It does
  * what the iOS and Android apps do (packages/passkey/src/native.ts, the Swift
  * SDK's `ServedPageHandoff`): it opens
- * `{origin}/{version}/#native-sign-in&state=…&key=…` in
- * `chrome.identity.launchWebAuthFlow`, the person signs in on the page, and
+ * `{origin}/{version}/#native-sign-in&state=…&key=…` in a sign-in window
+ * (`authWindow.ts`), the person signs in on the page, and
  * the page sends the session back to the extension's callback sealed to a key
  * made for this one sign-in:
  *
@@ -60,11 +60,20 @@ function escape(value: string): string {
  * `/.well-known/calimero.json`); `null` for a page served at the root, as
  * `vite` serves it in development.
  */
-export function signInUrl(origin: string, version: string | null, request: Pick<HandoffRequest, "state" | "key">): string {
+export function signInUrl(
+  origin: string,
+  version: string | null,
+  request: Pick<HandoffRequest, "state" | "key">,
+  intent?: SignInIntent,
+): string {
   const base = origin.replace(/\/+$/, "");
   const path = version ? `/${escape(version)}/` : "/";
-  return `${base}${path}#${SIGN_IN_FRAGMENT}&state=${request.state}&key=${request.key}`;
+  const extra = intent ? `&intent=${intent}` : "";
+  return `${base}${path}#${SIGN_IN_FRAGMENT}&state=${request.state}&key=${request.key}${extra}`;
 }
+
+/** `create`: the page offers a new workspace before it hands the session over. */
+export type SignInIntent = "create";
 
 export class HandoffError extends Error {
   constructor(message: string) {

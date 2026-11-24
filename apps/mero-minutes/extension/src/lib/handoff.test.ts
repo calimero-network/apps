@@ -77,6 +77,9 @@ describe("served-page handoff", () => {
     expect(signInUrl("http://localhost:5173", null, req)).toBe(
       `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}`,
     );
+    expect(signInUrl("http://localhost:5173", null, req, "create")).toBe(
+      `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=create`,
+    );
     // A version can't end the path.
     expect(signInUrl("https://a.b", "1/../x", req)).toContain("/1%2F..%2Fx/#");
   });

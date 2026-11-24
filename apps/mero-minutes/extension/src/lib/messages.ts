@@ -10,9 +10,11 @@ export interface Settings {
   mic: boolean;
   /** A development page to sign in on instead of Cloud's (e.g. http://localhost:5173). */
   pageOverride: string;
+  /** Add the action items found in the transcript when a meeting ends. */
+  autoActions: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { tier: "auto", language: "en", mic: true, pageOverride: "" };
+export const DEFAULT_SETTINGS: Settings = { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true };
 
 export interface Workspace {
   appId: string;
@@ -57,6 +59,8 @@ export interface RecorderStatus {
   error: string | null;
   /** The saved meeting's page. */
   link: string | null;
+  /** Action items added from the transcript when it ended. */
+  actions?: number;
 }
 
 export const IDLE: RecorderStatus = {
@@ -84,7 +88,7 @@ export const KEYS = {
 
 /** Popup / side panel → service worker. */
 export type Request =
-  | { type: "signIn" }
+  | { type: "signIn"; intent?: "create" }
   | { type: "signOut" }
   | { type: "listWorkspaces" }
   | { type: "chooseWorkspace"; workspace: Workspace }

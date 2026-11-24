@@ -75,25 +75,20 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
             onClick={() => void save({ mic: !settings.mic })}
           />
         </div>
-      </div>
-
-      {auth && (
-        <div className="list">
-          <div className="row" style={{ cursor: "default" }}>
-            <span className="grow">
-              <span className="meta" style={{ marginTop: 0 }}>
-                Signed in as
-              </span>
-              <span className="name" title={auth.accountId}>
-                {auth.accountId.length > 22 ? `${auth.accountId.slice(0, 10)}…${auth.accountId.slice(-8)}` : auth.accountId}
-              </span>
-            </span>
-            <button className="btn sm" onClick={() => void ask({ type: "signOut" })}>
-              <SignOutIcon size={13} /> Sign out
-            </button>
-          </div>
+        <div className="row" style={{ cursor: "default" }}>
+          <span className="grow">
+            <span className="name">Find action items</span>
+            <span className="meta">Added to the meeting when it ends.</span>
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={settings.autoActions}
+            aria-label="Find action items"
+            onClick={() => void save({ autoActions: !settings.autoActions })}
+          />
         </div>
-      )}
+      </div>
 
       <button
         className="btn ghost sm"
@@ -128,6 +123,12 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
           <hr className="divider" />
           <Diagnostics />
         </div>
+      )}
+
+      {auth && (
+        <button className="btn block lg" style={{ marginTop: "auto" }} onClick={() => void ask({ type: "signOut" })}>
+          <SignOutIcon size={14} /> Log out
+        </button>
       )}
     </main>
   );
