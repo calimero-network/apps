@@ -141,8 +141,20 @@ const flushMicrotasks = async () => {
 /** One stretch of speech after the room's quiet, then enough quiet to close it. */
 const phrase = (ms = 2_000) => [silence(700), tone(ms), silence(2_500)];
 
-beforeEach(boot);
+/** The recorder's level and tick timers, cleared after each test so none fires once `chrome` is gone. */
+const intervals: number[] = [];
+beforeEach(async () => {
+  const real = window.setInterval.bind(window);
+  vi.spyOn(window, "setInterval").mockImplementation(((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+    const id = real(fn, ms, ...args);
+    intervals.push(id);
+    return id;
+  }) as typeof window.setInterval);
+  await boot();
+});
 afterEach(() => {
+  for (const id of intervals.splice(0)) window.clearInterval(id);
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
