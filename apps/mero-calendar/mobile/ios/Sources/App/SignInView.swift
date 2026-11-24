@@ -154,14 +154,15 @@ struct SignInView: View {
 
     /// Reach the Cloud cluster the field names: a node URL directly, a
     /// cluster name through the node directory. Every node's attestation is
-    /// verified (`CloudPolicy.production`). `false` when no node was found.
+    /// verified under ``AppConfig/cloud``'s policy, and a cluster name is
+    /// looked up in that Cloud's directory. `false` when no node was found.
     private func connectCloud() async -> Bool {
         let raw = clusterURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if Self.isURL(raw) {
             session.connect(nodeURL: raw, allowMock: false)
             return true
         }
-        let found = await client.connect(cluster: raw)
+        let found = await client.connect(cluster: raw, directory: AppConfig.cloud.directory)
         session.rebuild()
         return found
     }

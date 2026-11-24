@@ -137,6 +137,13 @@ version in all three files.
   or `MeroCalendarCallbackHost` / `MeroCalendarCallbackPath` for a verified
   https return (Associated Domains): where the consent page sends the person back.
 
+The **MeroCalendar Staging** scheme runs the `Staging` configuration, a Debug
+build with the `MERO_STAGING` compilation condition: it reaches Calimero
+Cloud's staging, its node directory and its debug node images trusted
+(MeroKit's `CloudEnvironment.staging`). Release, the build people install from
+the App Store, is always production, and a non-Debug build with `MERO_STAGING`
+does not compile.
+
 ## Not supported yet
 
 - **Booking links**: the contract has them (and the client covers them), but

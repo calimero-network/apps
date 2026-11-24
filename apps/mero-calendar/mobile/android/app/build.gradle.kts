@@ -22,6 +22,11 @@ val consentHost: String =
         .substringBefore('#')
         .substringBefore('?')
 
+// A staging build (`-PmeroStaging=true`) reaches Calimero Cloud's staging and trusts its debug node
+// images (the SDK's CloudEnvironment.STAGING). Debug builds only: a release build, the one people
+// install from Google Play, is always production, whatever is passed.
+val meroStaging: Boolean = providers.gradleProperty("meroStaging").getOrElse("false").trim() == "true"
+
 android {
     namespace = "network.calimero.calendar"
     // The SDK modules compile against 34 (AGP 8.5.2's supported ceiling); stay in step with them.
@@ -40,6 +45,7 @@ android {
         val devNode = providers.gradleProperty("meroDevNodeUrl").getOrElse("http://10.0.2.2:2501").trim()
         buildConfigField("String", "DEV_NODE_URL", "\"$devNode\"")
         buildConfigField("String", "CONSENT_CALLBACK_URL", "\"$consentCallback\"")
+        buildConfigField("boolean", "MERO_STAGING", meroStaging.toString())
         manifestPlaceholders["consentScheme"] = consentScheme
         manifestPlaceholders["consentHost"] = consentHost
     }
@@ -47,6 +53,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Never staging: a store build trusts production's locked-read-only images only.
+            buildConfigField("boolean", "MERO_STAGING", "false")
         }
     }
 

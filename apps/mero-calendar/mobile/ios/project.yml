@@ -11,6 +11,15 @@
 # CalendarCore/Package.resolved).
 name: MeroCalendar
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -72,6 +81,9 @@ targets:
         SWIFT_VERSION: "5.9"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
     dependencies:
       - package: CalendarCore
         product: CalendarCore
@@ -97,6 +109,14 @@ targets:
         SWIFT_VERSION: "5.9"
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroCalendar Staging:
+    build:
+      targets:
+        MeroCalendar: all
+    run:
+      config: Staging
+
   MeroCalendar:
     build:
       targets:
