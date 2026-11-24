@@ -38,7 +38,13 @@ final class RecordingCluster: RoomCluster, @unchecked Sendable {
     func call(app: String, method: String, args: [String: JSONValue]) async throws -> JSONValue? {
         lock.withLock { _calls.append(Call(method: method, args: args)) }
         if let refuseWrites { throw FixtureCluster.Failure(status: 403, message: refuseWrites) }
-        return nil
+        // What the contract answers: `addObject` the object's id, `setRoomScan`
+        // the scan's version (a u64, so a decimal string); the rest nothing.
+        switch method {
+        case "addObject": return args["object"]?["id"]
+        case "setRoomScan": return .string(String(writes("setRoomScan").count))
+        default: return nil
+        }
     }
 
     func events(app: String) -> AsyncThrowingStream<CloudEvent, Error> { AsyncThrowingStream { $0.finish() } }
