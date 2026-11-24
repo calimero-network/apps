@@ -1,6 +1,6 @@
 import XCTest
 import simd
-@testable import MeroAR
+@testable import MeroARCore
 
 /// The AR layer must round-trip transforms through a decomposed
 /// position/quaternion/scale form (never raw matrices over the wire). These

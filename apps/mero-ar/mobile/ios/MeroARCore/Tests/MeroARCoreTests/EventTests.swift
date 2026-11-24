@@ -1,6 +1,6 @@
 import XCTest
 import MeroKit
-@testable import MeroAR
+@testable import MeroARCore
 
 /// Contract events as a core 1.0 node streams them on `GET /apps/{app}/events`:
 /// `event:` is the variant name and `data:` the named-field payload,

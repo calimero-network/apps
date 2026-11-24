@@ -1,5 +1,6 @@
 import SceneKit
 import SwiftUI
+import MeroARCore
 
 #if canImport(UIKit)
 import UIKit

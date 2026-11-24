@@ -1,6 +1,6 @@
 import XCTest
 import MeroKit
-@testable import MeroAR
+@testable import MeroARCore
 
 /// Top-level argument keys are the component ABI's camelCase parameter names,
 /// and nested structs carry serde's camelCase rename. `MeroJSON` applies no key strategy, so anything that silently

@@ -1,5 +1,6 @@
 #if canImport(ARKit) && os(iOS)
 import Foundation
+import MeroARCore
 import ARKit
 import RealityKit
 import Combine
@@ -197,11 +198,11 @@ public final class ARSessionManager: NSObject, ObservableObject, @preconcurrency
 
     /// Raycast from the screen centre onto detected geometry; returns the world
     /// transform to place a new object, or nil if nothing was hit.
-    func placementTransform(count: Int) -> Transform? {
+    func placementTransform(count: Int) -> MeroARCore.Transform? {
         let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
         let results = arView.raycast(from: center, allowing: .estimatedPlane, alignment: .any)
         guard let first = results.first else { return nil }
-        return Transform(matrix: first.worldTransform)
+        return MeroARCore.Transform(matrix: first.worldTransform)
     }
 
     public func entityID(at point: CGPoint) -> String? {

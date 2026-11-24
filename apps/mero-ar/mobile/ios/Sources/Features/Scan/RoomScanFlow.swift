@@ -1,4 +1,5 @@
 import SwiftUI
+import MeroARCore
 
 #if canImport(RoomPlan) && os(iOS)
 import RoomPlan

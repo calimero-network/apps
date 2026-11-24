@@ -1,6 +1,7 @@
 import XCTest
 import MeroKit
 @testable import MeroAR
+import MeroARCore
 
 /// The app's flows end to end, against ``FixtureCluster``: an in-memory
 /// Calimero 1.0 cluster with Mero AR's contract, so the real ``AppState``,

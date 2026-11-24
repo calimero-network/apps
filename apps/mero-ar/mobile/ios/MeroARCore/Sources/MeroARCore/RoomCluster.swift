@@ -3,6 +3,20 @@ import MeroKit
 
 /// A home: one Calimero organization running Mero AR, holding rooms (its app
 /// instances). People are invited to a home and can then open every room in it.
+/// A room in the lobby's list.
+public struct RoomSummary: Identifiable, Equatable, Codable {
+    public let id: String
+    public var name: String
+    public var lastOpened: Date?
+    public var objectCount: Int?
+    public var memberCount: Int?
+
+    public init(id: String, name: String, lastOpened: Date? = nil, objectCount: Int? = nil, memberCount: Int? = nil) {
+        self.id = id; self.name = name; self.lastOpened = lastOpened; self.objectCount = objectCount
+        self.memberCount = memberCount
+    }
+}
+
 public struct Home: Identifiable, Equatable {
     /// The organization id.
     public let id: String
@@ -78,6 +92,11 @@ public protocol RoomCluster: Sendable {
 public struct RoomUpdate: Equatable, Sendable {
     public let current: String
     public let latest: String
+
+    public init(current: String, latest: String) {
+        self.current = current
+        self.latest = latest
+    }
 }
 
 extension RoomCluster {
@@ -113,7 +132,7 @@ public struct CloudCluster: RoomCluster {
 
     public init(
         client: CalimeroClient, passkey: (any PasskeyProvider)?, endpoint: String,
-        package: String = AppState.package, consent: ConsentDecider? = nil
+        package: String = MeroARPackage.id, consent: ConsentDecider? = nil
     ) {
         self.client = client
         self.passkey = passkey
@@ -290,7 +309,7 @@ public enum MeroARError: LocalizedError, Equatable {
 
 /// The contract's own sentence for a refused call ("view-only: …"), else the
 /// cluster's, in words for a person.
-func userMessage(_ error: Error) -> String {
+public func userMessage(_ error: Error) -> String {
     switch error {
     case let error as AppError:
         // The contract's `Forbidden` / `Invalid` carry their sentence in a

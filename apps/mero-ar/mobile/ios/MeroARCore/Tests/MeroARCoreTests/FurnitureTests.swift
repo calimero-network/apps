@@ -1,6 +1,6 @@
 import XCTest
 import simd
-@testable import MeroAR
+@testable import MeroARCore
 
 final class FurnitureTests: XCTestCase {
     /// A furniture object goes over the wire as the contract's tagged variant:

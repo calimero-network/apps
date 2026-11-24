@@ -1,6 +1,7 @@
 import Foundation
 import MeroKit
 @testable import MeroAR
+import MeroARCore
 
 /// A ``RoomCluster`` that records what the app sends and answers what a test
 /// scripts: the contract calls, blob uploads and reads, with no network.

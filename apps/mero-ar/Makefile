@@ -1,5 +1,5 @@
 .PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
-        web-build web-test app-gen app-build app-test test clean
+        web-build web-test core-test app-gen app-build app-test test clean
 
 APP_DIR    := mobile/ios
 XCODEPROJ  := $(APP_DIR)/MeroAR.xcodeproj
@@ -25,6 +25,7 @@ help:
 	@echo "    logic-test   cargo test (pure helpers + the TestApp harness on core's engine)"
 	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
+	@echo "    core-test    swift test the MeroARCore package on macOS (no simulator)"
 	@echo "    app-gen      Generate MeroAR.xcodeproj from project.yml"
 	@echo "    app-build    Build the app for a generic iOS device (unsigned)"
 	@echo "    app-test     Run the unit tests (SIMULATOR=… to pick a device)"
@@ -34,7 +35,7 @@ help:
 	@echo "    dev-down     Stop the cluster (state is kept)"
 	@echo ""
 	@echo "  Aggregate"
-	@echo "    test         logic-test + app-test"
+	@echo "    test         logic-test + web-test + core-test + app-test"
 	@echo "    clean        Remove build artifacts"
 	@echo ""
 
@@ -73,6 +74,10 @@ web-test:
 	pnpm install --frozen-lockfile && pnpm -F mero-ar test
 
 # ── iOS app ─────────────────────────────────────────────────────────────────────
+# The non-UI layer: the generated contract client, models, the room service.
+core-test:
+	swift test --package-path $(APP_DIR)/MeroARCore
+
 app-gen:
 	@command -v xcodegen >/dev/null 2>&1 || { echo "xcodegen not found — run: brew install xcodegen"; exit 1; }
 	cd $(APP_DIR) && xcodegen generate
@@ -102,7 +107,7 @@ dev-down:
 # The Swift client itself is Calimero's Swift SDK, from core (declared in
 # mobile/ios/project.yml) and tested there; what this repo tests is the
 # contract, the served page, and this app against that SDK.
-test: logic-test web-test app-test
+test: logic-test web-test core-test app-test
 
 clean:
 	cd logic && rm -rf res target

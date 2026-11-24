@@ -2,6 +2,7 @@ import MeroKit
 import PhotosUI
 import SwiftUI
 import simd
+import MeroARCore
 
 /// The room: the live AR camera on an ARKit device, a 3D preview of the same
 /// shared scene everywhere else (the Simulator, a Mac, older devices). Both

@@ -30,6 +30,9 @@ public final class SceneStore: ObservableObject {
     @Published public var lastError: String?
 
     public let service: MeroARService
+    /// Told about a picture this store just uploaded (blob id, JPEG), so the
+    /// app's image cache has it before the room's event comes back.
+    public var pictureUploaded: ((String, Data) -> Void)?
     private var eventTask: Task<Void, Never>?
 
     /// Object ids we just mutated locally — used to ignore our own SSE echoes.
@@ -238,7 +241,7 @@ public final class SceneStore: ObservableObject {
         defer { isUploadingPicture = false }
         do {
             let blobId = try await service.uploadBlob(jpeg)
-            PictureCache.shared.seed(blobId: blobId, data: jpeg)
+            pictureUploaded?(blobId, jpeg)
             await addObject(
                 data: ObjectData(kind: "image", blobId: blobId, naturalWidth: width, naturalHeight: height),
                 transform: transform, color: FurnitureItem.picture.defaultColor)

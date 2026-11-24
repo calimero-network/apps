@@ -1,5 +1,5 @@
 import XCTest
-@testable import MeroAR
+@testable import MeroARCore
 
 final class ModelsTests: XCTestCase {
     private let dec = JSONDecoder()

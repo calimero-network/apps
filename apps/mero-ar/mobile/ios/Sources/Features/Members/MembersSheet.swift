@@ -1,4 +1,5 @@
 import SwiftUI
+import MeroARCore
 
 /// Who's in the room and what they may do, plus invitations.
 ///
