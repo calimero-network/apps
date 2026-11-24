@@ -68,6 +68,8 @@ export interface RecorderStatus {
   notes?: { model: NotesModelId; fraction: number; step: "download" | "write" } | null;
   /** The notes model wrote the summary (and the action items). */
   wroteSummary?: boolean;
+  /** Who found the action items: the notes model, or phrase matching (with why). */
+  notesBy?: { kind: "model"; model: NotesModelId } | { kind: "phrases"; why: string } | null;
 }
 
 export const IDLE: RecorderStatus = {

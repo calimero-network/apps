@@ -751,3 +751,33 @@ body.panel {
   gap: 16px;
   text-align: center;
 }
+
+/* ── settings sections ──────────────────────────────────────────────────── */
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px 0;
+}
+.section-head h2 {
+  margin: 0;
+}
+.notes-download {
+  padding: 10px 12px;
+}
+.notes-download .btn {
+  flex: none;
+}
+.by-line {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.by-line svg {
+  flex: none;
+  margin-top: 2px;
+}

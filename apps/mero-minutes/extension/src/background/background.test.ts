@@ -633,6 +633,7 @@ describe("service worker: when recording goes wrong", () => {
       expect(st.phase).toBe("saved");
       expect(st.actions).toBe(2);
       expect(st.wroteSummary).toBe(true);
+      expect(st.notesBy).toEqual({ kind: "model", model: "better" });
       expect(st.notes).toBeNull();
       expect(h.offscreenOpen).toBe(false);
     });
@@ -643,6 +644,7 @@ describe("service worker: when recording goes wrong", () => {
       expect(status().phase).toBe("saved");
       expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
       expect(status().wroteSummary).toBe(false);
+      expect(status().notesBy).toEqual({ kind: "phrases", why: "The notes model failed: WebGPU device lost" });
       expect(logLines().some((l) => l.includes("phrase matching instead"))).toBe(true);
     });
 
@@ -658,6 +660,7 @@ describe("service worker: when recording goes wrong", () => {
       await record(["Ana, can you send the deck by Friday?", "Sure."]);
       expect(h.toOffscreen.some((c) => c.type === "notes")).toBe(false);
       expect(node.actions).toHaveLength(1);
+      expect(status().notesBy).toEqual({ kind: "phrases", why: "This browser doesn't offer WebGPU, which Smart notes need." });
     });
   });
 });

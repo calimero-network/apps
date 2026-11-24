@@ -1,18 +1,16 @@
 import { useState } from "react";
 import { readLog } from "../../lib/diagnostics";
-import { sizeLabel, validOverride } from "../../lib/format";
-import { KEYS, type AuthState, type RecorderStatus, type Settings } from "../../lib/messages";
+import { validOverride } from "../../lib/format";
+import { KEYS, type AuthState, type Settings } from "../../lib/messages";
 import { write } from "../../lib/storage";
 import { LANGUAGES, TIERS, TIER_ORDER, type TierId } from "../../lib/tiers";
-import { NOTES_MODELS, notesModelFor, type NotesSetting } from "../../lib/notes";
-import { useCaps, useStored } from "../hooks";
+import { useCaps } from "../hooks";
+import { NotesSettings } from "./NotesSettings";
 import { BackIcon, ChevronRightIcon, SignOutIcon } from "../icons";
 import { ask } from "../rpc";
 
 export function SettingsView({ auth, settings, onBack }: { auth: AuthState | null; settings: Settings; onBack: () => void }) {
   const caps = useCaps();
-  const status = useStored<RecorderStatus>("session", KEYS.status);
-  const notesDownload = status?.phase !== "notes" ? (status?.notes ?? null) : null;
   const save = (s: Partial<Settings>) => write("local", KEYS.settings, { ...settings, ...s });
   const [override, setOverride] = useState(settings.pageOverride);
   const [advanced, setAdvanced] = useState(!!settings.pageOverride);
@@ -93,44 +91,9 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
             onClick={() => void save({ autoActions: !settings.autoActions })}
           />
         </div>
-        <div className="row" style={{ cursor: "default", flexWrap: "wrap" }}>
-          <label className="grow" htmlFor="notes-model">
-            <span className="name">Smart notes</span>
-            <span className="meta">
-              {caps && !caps.webgpu
-                ? "Needs WebGPU, which this browser doesn't offer: action items come from phrase matching."
-                : "A small AI model on this laptop writes the summary and action items."}
-            </span>
-          </label>
-          <select
-            id="notes-model"
-            className="select"
-            style={{ width: 168 }}
-            value={settings.notesModel}
-            disabled={!settings.autoActions}
-            onChange={(e) => void save({ notesModel: e.target.value as NotesSetting })}
-          >
-            <option value="auto">Automatic</option>
-            <option value="off">Off</option>
-            <option value="small">{`${NOTES_MODELS.small.name} · ${sizeLabel(NOTES_MODELS.small.sizeMb)}`}</option>
-            <option value="better">{`${NOTES_MODELS.better.name} · ${sizeLabel(NOTES_MODELS.better.sizeMb)}`}</option>
-          </select>
-          {settings.notesModel !== "off" && settings.autoActions && caps?.webgpu !== false && (
-            <button
-              className="btn sm"
-              style={{ marginLeft: "auto" }}
-              disabled={!!notesDownload && notesDownload.fraction < 1}
-              onClick={() => void ask({ type: "preloadNotes", model: (caps && notesModelFor(settings.notesModel, caps)) || "small" })}
-            >
-              {!notesDownload
-                ? "Download now"
-                : notesDownload.fraction >= 1
-                  ? "Downloaded"
-                  : `Downloading ${Math.round(notesDownload.fraction * 100)}%`}
-            </button>
-          )}
-        </div>
       </div>
+
+      <NotesSettings settings={settings} caps={caps} />
 
       <button
         className="btn ghost sm"

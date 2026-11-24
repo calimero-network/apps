@@ -27,6 +27,8 @@ describe("notes", () => {
         "* Record the demo video | - | -",
         "- Celebrate | Others | not specified",
         "- Book the venue | Me | Before launch",
+        "- Record the demo video for the page | You (I) | Friday",
+        "- Merge the release branch | Ana (Guest) | -",
       ].join("\n"),
     );
     expect(notes.summary).toBe("The team reviewed the launch. Brave still needs testing.");
@@ -36,6 +38,8 @@ describe("notes", () => {
       { text: "Record the demo video", assignee: "", due: "" },
       { text: "Celebrate", assignee: "", due: "" },
       { text: "Book the venue", assignee: "", due: "Before launch" },
+      { text: "Record the demo video for the page", assignee: "", due: "Friday" },
+      { text: "Merge the release branch", assignee: "Ana", due: "" },
     ]);
   });
 

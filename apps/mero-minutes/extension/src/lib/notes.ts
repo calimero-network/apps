@@ -14,7 +14,7 @@
  *   - Send the deck to the design team | Ana | Friday
  *   - Book the venue | - | -
  */
-import { MAX_ACTIONS, type TranscriptLine } from "./actionItems";
+import { MAX_ACTIONS, isTask, type TranscriptLine } from "./actionItems";
 
 export type NotesModelId = "small" | "better";
 export type NotesSetting = NotesModelId | "auto" | "off";
@@ -75,7 +75,8 @@ const SYSTEM = [
   "<two to four sentences: what was discussed and decided>",
   "ACTION ITEMS:",
   "- <task, starting with a verb> | <who does it, or -> | <when it is due, or ->",
-  "List only real tasks someone agreed to do or was asked to do. Never invent dates, times or places.",
+  "List only real tasks someone agreed to do or was asked to do: at most 8, each a complete instruction that starts with a verb.",
+  "The transcript comes from speech recognition and has mistakes: skip lines that make no sense. Never invent tasks, names, dates, times or places.",
   "Use the names said in the call for who. If nobody is named, write -.",
   "If there are no tasks, write one line: - none",
 ].join("\n");
@@ -178,7 +179,8 @@ export function parseNotes(answer: string): Notes {
       const [task, who, due] = body.split("|").map((p) => p.trim());
       const t = clean(task).replace(/[.;]+$/, "");
       if (!t) continue;
-      const assignee = clean(who);
+      // "You (I)", "Ana (Guest)": the name without what the model or the call adds in brackets.
+      const assignee = clean(who).replace(/\s*\([^)]*\)\s*/g, " ").trim();
       actions.push({ text: t, assignee: NOBODY_IN_PARTICULAR.test(assignee) ? "" : assignee, due: clean(due) });
     }
   }
@@ -220,8 +222,7 @@ export function actionsToAdd(found: readonly NoteAction[], existing: readonly st
     let text = a.text.charAt(0).toUpperCase() + a.text.slice(1);
     const due = dueWords(a.due);
     if (due && !text.toLowerCase().includes(due.replace(/^(by|before) /, "").toLowerCase())) text = `${text} (${due})`;
-    const words = text.split(/\s+/).length;
-    if (words < 2 || text.length > 300) continue;
+    if (!isTask(text) || text.length > 300) continue;
     const k = key(text);
     if (!k || seen.has(k)) continue;
     seen.add(k);

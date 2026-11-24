@@ -1,4 +1,5 @@
 import type { RecorderStatus } from "../../lib/messages";
+import { NOTES_MODELS } from "../../lib/notes";
 import { AlertIcon, CheckIcon, ExternalIcon } from "../icons";
 import { ask } from "../rpc";
 
@@ -24,6 +25,13 @@ export function Saved({ status }: { status: RecorderStatus }) {
             {savedNote(status.actions ?? 0, !!status.wroteSummary)}
           </span>
         </div>
+      )}
+      {status.notesBy && (
+        <p className="by-line" data-testid="notes-by">
+          {status.notesBy.kind === "model"
+            ? `Written by ${NOTES_MODELS[status.notesBy.model].name} on this laptop.`
+            : `Found from phrases said in the call. ${status.notesBy.why}`}
+        </p>
       )}
       {status.error && (
         <div className="banner bad">

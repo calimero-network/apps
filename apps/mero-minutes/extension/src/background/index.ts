@@ -345,9 +345,12 @@ async function addFoundActions(meeting: { id: string; appId: string }, read?: Tr
  * model finds no task, phrase matching still looks. Throws when the model
  * could not run, and the caller falls back to phrase matching.
  */
-async function writeMeetingNotes(meeting: { id: string; appId: string }, model: NotesModelId): Promise<{ actions: number; wroteSummary: boolean }> {
+async function writeMeetingNotes(
+  meeting: { id: string; appId: string },
+  model: NotesModelId,
+): Promise<{ actions: number; wroteSummary: boolean; byModel: boolean }> {
   const lines = await savedTranscript(meeting);
-  if (lines.length === 0) return { actions: 0, wroteSummary: false };
+  if (lines.length === 0) return { actions: 0, wroteSummary: false, byModel: true };
   await setStatus((st) => ({ ...st, phase: "notes", notes: { model, fraction: 0, step: "download" } }));
   const result = new Promise<Notes>((resolve, reject) => {
     notesWait = { resolve, reject };
@@ -377,7 +380,7 @@ async function writeMeetingNotes(meeting: { id: string; appId: string }, model: 
       wroteSummary = true;
     }
   }
-  return { actions, wroteSummary };
+  return { actions, wroteSummary, byModel: add.length > 0 || wroteSummary };
 }
 
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
@@ -390,6 +393,7 @@ function finish(durationMs: number): Promise<void> {
     let error: string | null = null;
     let actions = 0;
     let wroteSummary = false;
+    let notesBy: RecorderStatus["notesBy"] = null;
     const a = await auth();
     const meeting = s.meeting;
     if (a && meeting) {
@@ -406,14 +410,25 @@ function finish(durationMs: number): Promise<void> {
       if (all && !error && s.autoActions) {
         const model = lastCaps ? notesModelFor(s.notesModel, lastCaps) : null;
         let written = false;
+        notesBy = {
+          kind: "phrases",
+          why:
+            s.notesModel === "off"
+              ? "Smart notes are off."
+              : lastCaps && !lastCaps.webgpu
+                ? "This browser doesn't offer WebGPU, which Smart notes need."
+                : "Smart notes didn't run.",
+        };
         if (model) {
           try {
             const r = await writeMeetingNotes(meeting, model);
             actions = r.actions;
             wroteSummary = r.wroteSummary;
             written = true;
+            notesBy = r.byModel ? { kind: "model", model } : { kind: "phrases", why: "The notes model found no task." };
           } catch (e) {
             await log(`notes: ${describe(e)}; phrase matching instead`);
+            notesBy = { kind: "phrases", why: `The notes model failed: ${describe(e)}` };
           }
         }
         if (!written) {
@@ -435,6 +450,7 @@ function finish(durationMs: number): Promise<void> {
       link,
       actions,
       wroteSummary,
+      notesBy,
       notes: null,
       pending: q && !all ? q.pending : 0,
       uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",

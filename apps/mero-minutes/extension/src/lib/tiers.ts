@@ -76,6 +76,8 @@ export interface Capabilities {
   webgpu: boolean;
   /** The adapter's `maxBufferSize`, bytes; 0 when unknown. */
   maxBufferSize: number;
+  /** Notes models already downloaded (lib/notes.ts). */
+  cachedNotes?: ("small" | "better")[];
   /** `navigator.deviceMemory`, GB (Chrome caps it at 8); 0 when unknown. */
   deviceMemoryGb: number;
   cores: number;

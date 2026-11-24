@@ -16,6 +16,8 @@ export interface TranscriptLine {
   seq: number;
   speaker: string;
   text: string;
+  startMs?: number;
+  endMs?: number;
 }
 
 export interface FoundAction {
@@ -48,8 +50,6 @@ const NAMED_ASK = /^([A-Z][a-z]+),\s+(?:please\s+|you(?:'ll| will| need to| shou
 const TEAM =
   /^(?:we(?:'ll| will| need to| have to| should| must|'ve got to)|let's|lets|someone (?:needs|has) to|somebody (?:needs|has) to)\s+(.+)$/i;
 
-/** "We need a demo video", "we still need the Brave check": kept whole. */
-const TEAM_NEED = /^we(?: still)? need (?:a|an|the|some|to have)\s+.+$/i;
 
 /** Openers before the part that matters: "Okay, so", "Last thing,", "Perfect." */
 const LEAD =
@@ -62,6 +62,92 @@ const EXPLICIT =
 /** Words a commitment can start with that are not tasks ("I'll be honest", "I can see it"). */
 const NOT_A_TASK =
   /^(be |see |hear |think |guess |say |tell you |try to remember|probably |just |definitely |go ahead|leave it|let you|pass|stop sharing|share my screen)/i;
+
+/**
+ * Words a task starts with. A task is something to do, so it opens with a
+ * verb; anything else ("We need a way…", "Have a branch…", "Say, can you
+ * say") is talk, not a task. Deliberately leaves out verbs that are mostly
+ * filler in speech (have, do, be, say, see, go, think, know, need).
+ */
+export const TASK_VERBS = new Set(
+  (
+    "add address adjust agree analyse analyze announce answer apply approve archive arrange ask assign attach audit automate " +
+    "back-up backup book brief build buy calculate call cancel change chase check clarify clean close collect commit compare " +
+    "complete configure confirm connect contact convert copy cover create debug decide define delete deliver demo deploy describe " +
+    "design document double-check download draft drop edit email enable estimate evaluate explain export extend fetch file " +
+    "fill finalise finalize find finish fix follow forward gather generate get give handle hire host identify implement import " +
+    "improve include inform install integrate interview introduce investigate invite invoice issue join label launch lead list " +
+    "load lock log look make map mark measure meet mention merge message migrate monitor move notify onboard open order " +
+    "organise organize outline own pay pick ping plan polish post prepare present price print prioritise prioritize produce " +
+    "promote propose prototype provide publish pull purchase push put raise reach read rebuild record reduce refactor refund " +
+    "register reject release remind remove rename renew reorganize repair replace reply report request research reschedule " +
+    "resolve respond restart restore resubmit return review revise rewrite rollout run schedule scope screen send set setup " +
+    "share ship show sign simplify sketch sort source specify split start submit summarise summarize support swap switch sync " +
+    "take talk tell test think-through track train transfer translate triage try turn update upgrade upload validate verify " +
+    "visit wrap write"
+  ).split(" "),
+);
+
+/** Words a task cannot end on: the sentence was cut off ("Check if you", "Send it to"). */
+const DANGLING = /\b(you|it|this|that|these|those|to|if|and|or|but|the|a|an|of|for|with|at|in|on|about|so|say|like|um|uh)$/i;
+
+/** True for text that reads as a task: a verb first, an object, a sane length, not cut off. */
+export function isTask(text: string): boolean {
+  const t = text.trim().replace(/[.!]+$/, "");
+  if (!t || /\?$/.test(t)) return false;
+  const ws = t.split(/\s+/);
+  if (ws.length < 3 || ws.length > 30) return false;
+  if (!TASK_VERBS.has(ws[0]!.toLowerCase().replace(/[^a-z-]/g, ""))) return false;
+  if (DANGLING.test(t.replace(/\s*\([^)]*\)$/, ""))) return false;
+  // Title Case is a heading ("Release Notes for Store Listing"), not an instruction.
+  const rest = ws.slice(1).filter((w) => w.length > 3);
+  if (rest.length >= 2 && rest.filter((w) => /^[A-Z]/.test(w)).length / rest.length > 0.6) return false;
+  // At least two real words after the verb ("Check it" is not a task).
+  return ws.slice(1).filter((w) => w.replace(/[^a-z]/gi, "").length >= 3).length >= 2;
+}
+
+/**
+ * One person's speech, as sentences: the speech detector cuts at pauses, so a
+ * sentence often spans two or three lines. Lines of the same speaker less
+ * than `gapMs` apart are joined, then split at sentence ends; each sentence
+ * remembers the line it starts in.
+ */
+export function utterances(lines: readonly TranscriptLine[], gapMs = 1_500): { seq: number; speaker: string; text: string }[] {
+  const out: { seq: number; speaker: string; text: string }[] = [];
+  let group: TranscriptLine[] = [];
+  const flush = () => {
+    if (group.length === 0) return;
+    // Character offset where each line starts, to give a sentence its line.
+    let text = "";
+    const starts: { at: number; seq: number }[] = [];
+    for (const l of group) {
+      const piece = l.text.replace(/\s+/g, " ").trim();
+      if (!piece) continue;
+      if (text) text += " ";
+      starts.push({ at: text.length, seq: l.seq });
+      text += piece;
+    }
+    let from = 0;
+    for (const sentence of sentences(text)) {
+      const at = text.indexOf(sentence, from);
+      from = at + sentence.length;
+      const seq = [...starts].reverse().find((st) => st.at <= at)?.seq ?? group[0]!.seq;
+      out.push({ seq, speaker: group[0]!.speaker, text: sentence });
+    }
+    group = [];
+  };
+  for (const line of lines) {
+    const prev = group.at(-1);
+    const near =
+      prev !== undefined &&
+      prev.speaker === line.speaker &&
+      (prev.endMs === undefined || line.startMs === undefined || line.startMs - prev.endMs <= gapMs);
+    if (!near) flush();
+    group.push(line);
+  }
+  flush();
+  return out;
+}
 
 /** Splits on sentence ends, keeping "e.g." and decimals. */
 export function sentences(text: string): string[] {
@@ -113,7 +199,6 @@ export function actionIn(sentence: string, speaker: string): Omit<FoundAction, "
   const request = REQUEST.exec(s);
   const commit = COMMIT.exec(s);
   const team = TEAM.exec(rest);
-  const need = TEAM_NEED.exec(rest);
 
   if (explicit) {
     task = explicit[1]!;
@@ -137,15 +222,13 @@ export function actionIn(sentence: string, speaker: string): Omit<FoundAction, "
   } else if (team) {
     task = team[1]!;
     assignee = addressed?.[1] ?? "";
-  } else if (need) {
-    task = need[0];
-    assignee = addressed?.[1] ?? "";
   }
   if (!task) return null;
   const text = tidy(task);
   if (words(text) < MIN_WORDS || text.length > MAX_CHARS) return null;
   if (NOT_A_TASK.test(text)) return null;
   if (SMALL_TALK.test(text)) return null;
+  if (!isTask(text)) return null;
   return { text, assignee };
 }
 
@@ -153,16 +236,14 @@ export function actionIn(sentence: string, speaker: string): Omit<FoundAction, "
 export function findActions(lines: TranscriptLine[], existing: string[] = []): FoundAction[] {
   const seen = new Set(existing.map(key));
   const out: FoundAction[] = [];
-  for (const line of lines) {
-    for (const sentence of sentences(line.text)) {
-      const found = actionIn(sentence, line.speaker);
-      if (!found) continue;
-      const k = key(found.text);
-      if (!k || seen.has(k)) continue;
-      seen.add(k);
-      out.push({ ...found, sourceSeq: line.seq });
-      if (out.length >= MAX_ACTIONS) return out;
-    }
+  for (const sentence of utterances(lines)) {
+    const found = actionIn(sentence.text, sentence.speaker);
+    if (!found) continue;
+    const k = key(found.text);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push({ ...found, sourceSeq: sentence.seq });
+    if (out.length >= MAX_ACTIONS) return out;
   }
   return out;
 }
