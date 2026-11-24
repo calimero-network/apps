@@ -2,7 +2,7 @@ import { MotionConfig, motion, useScroll, useTransform, type Variants } from "fr
 import { useRef, type ReactNode } from "react";
 import * as I from "./components/Icons";
 
-const GITHUB = "https://github.com/calimero-network/mero-ar";
+const GITHUB = "https://github.com/calimero-network/apps/tree/main/apps/mero-ar";
 const media = (file: string) => `/media/${file}`;
 
 const rise: Variants = {

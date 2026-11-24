@@ -21,13 +21,13 @@ check swift   "install Xcode or Command Line Tools"
 [[ ${#MISSING[@]} -gt 0 ]] && { err "Missing: ${MISSING[*]}"; exit 1; }
 
 step "Checking Rust wasm target…"
-# logic/rust-toolchain.toml pins core's toolchain; add its component target.
+# The contract builds for core's component target.
 (cd "$REPO_ROOT/logic" && rustup target list --installed | grep -q wasm32-wasip2) \
   && ok "wasm32-wasip2 installed" \
   || { (cd "$REPO_ROOT/logic" && rustup target add wasm32-wasip2) && ok "wasm32-wasip2 added"; }
 
 step "Checking meroctl…"
-"$REPO_ROOT/scripts/install-meroctl.sh" && export PATH="${MEROCTL_ROOT:-$HOME/.local}/bin:$PATH"
+"$REPO_ROOT/../../scripts/install-meroctl.sh" && export PATH="${MEROCTL_ROOT:-$HOME/.local}/bin:$PATH"
 command -v meroctl >/dev/null 2>&1 && ok "meroctl $(meroctl --version | head -1)" \
   || { err "meroctl is not on PATH"; exit 1; }
 
@@ -40,7 +40,7 @@ command -v xcodegen >/dev/null 2>&1 && ok "xcodegen found" || warn "xcodegen not
 command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1 \
   && ok "full Xcode found" \
   || warn "full Xcode not active — needed to build/run the iOS app and XCTest suite (Command Line Tools alone can't)"
-command -v npm >/dev/null 2>&1 && ok "npm found" || warn "npm not found — needed to build the served page (web/) for a release bundle"
+command -v pnpm >/dev/null 2>&1 && ok "pnpm found" || warn "pnpm not found — needed to build the served page (app/) for a release bundle"
 
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"

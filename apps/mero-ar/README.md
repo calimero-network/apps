@@ -9,17 +9,16 @@ works, with real recordings from the app and a promo film. `cd landing && npm
 install && npm run dev`; deploys to Vercel as-is (`landing/vercel.json`).
 
 ```
-logic/      Rust contract, a calimero:app component (scene graph: objects, transforms, presence, comments, locks, roles)
-app/
-  MeroAR/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
-web/        the served page the bundle carries: the iOS app's Calimero Cloud sign-in, approvals, consent returns
-landing/    the landing page (Vite + React + Framer Motion), media in landing/public/media
-promo/      the promo film (Remotion), rendered into landing/public/media
-scripts/    setup.sh
+logic/        Rust contract, a calimero:app component (scene graph: objects, transforms, presence, comments, locks, roles)
+mobile/ios/   SwiftUI + ARKit + RealityKit app (SceneKit 3D preview where ARKit isn't available)
+app/          the served page the bundle carries: the iOS app's Calimero Cloud sign-in, approvals, consent returns
+landing/      the landing page (Vite + React + Framer Motion), media in landing/public/media
+promo/        the promo film (Remotion), rendered into landing/public/media
+scripts/      setup.sh, the development cluster
 Makefile    every command has a `make` shortcut
 ```
 
-Built for **Calimero core 1.0** (`1.0.0-rc.35`, named in `ci/core-version`):
+Built for **Calimero core 1.0** (`component-core-tag` in the root `Cargo.toml`):
 the contract is a `calimero:app` WebAssembly component on core's **component
 SDK** (`calimero-sdk`, pinned to that tag in `logic/Cargo.toml`,
 `min-runtime-version` too) that runs on the node's wasmtime runtime, and the app
@@ -31,7 +30,7 @@ passkeys).
 A dark, spatial design of its own: glass panels over the camera, an aurora
 (violet → cyan) accent, SF Symbols, spring animations and haptics.
 
-- **Sign in with Calimero** opens Mero AR's served page (`web/`) in the system
+- **Sign in with Calimero** opens Mero AR's served page (`app/`) in the system
   sign-in sheet: sign in with your passkey, or create an account with a new
   one, as on the web. The page hands a session bound to Mero AR's package back
   to `mero-ar://signed-in`. **Development cluster** takes a `merod local` node
@@ -109,7 +108,7 @@ room from the model, not the USDZ.
 ### Run it against a development cluster
 
 ```bash
-make tools        # once: core's meroctl, at the release ci/core-version names
+make tools        # once: core's meroctl, at the release ../../scripts/install-meroctl.sh pins
 make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
 make app-gen      # then run from Xcode
 ```
@@ -132,7 +131,7 @@ The Swift client is **not** vendored here: the app depends on Calimero's Swift
 SDK (`MeroKit` + `MeroKitUI`), which lives in
 [calimero-network/core](https://github.com/calimero-network/core)
 (`sdks/clients/mero-swift`) and is versioned with it, declared in
-`app/MeroAR/project.yml` at core `1.0.0-rc.35` (`exactVersion`).
+`mobile/ios/project.yml` at core `1.0.0-rc.35` (`exactVersion`).
 
 The app first verifies the node's TDX quote (`GET /attestation`, against signed
 mero-tee releases) and opens the sealed channel; everything else goes through
@@ -143,7 +142,7 @@ it. The session and its refresh token live in the Keychain (service
 AR's passkey ceremonies only from the package's own origin
 (`https://{label}.apps.calimero.network`), which the cluster serves from the
 bundle, and iOS refuses a `calimero.network` passkey for them. So the bundle
-carries a small page (`web/`, `frontend-dir` in `logic/Cargo.toml`) and the
+carries a small page (`app/`, `frontend-dir` in `logic/Cargo.toml`) and the
 app opens it in the system sign-in sheet (`MeroClient.signInWithServedPage`):
 
 - `#native-sign-in`: sign in or create an account; the session comes back to
@@ -157,7 +156,7 @@ Such a session is bound to Mero AR's package: the node refuses it organization
 routes, so founding a home, inviting and joining are approved on the node's
 consent page (`createOrg`, `createInvite`, `acceptInvite`), as are upgrades. A
 development cluster's session does them itself. No associated domains are
-needed; device builds need only a signing team (`app/MeroAR/Config/Signing.xcconfig`).
+needed; device builds need only a signing team (`mobile/ios/Config/Signing.xcconfig`).
 
 | What | How |
 | --- | --- |
@@ -214,7 +213,7 @@ keep their numbers. A refused call is `422 APP_ERROR` with code `Forbidden` or
 ### Building against an unmerged SDK
 
 To try an SDK change that isn't released yet, build against a local core
-checkout: in `app/MeroAR/project.yml` replace the package's
+checkout: in `mobile/ios/project.yml` replace the package's
 `url:`/`exactVersion:` with `path: /path/to/core-checkout`, run `make app-gen`,
 and **don't commit that change**.
 

@@ -5,18 +5,17 @@ scan the same room and edit one shared 3D scene, kept by the organization's
 Calimero 1.0 cluster. This is the end-to-end guide to building and running it.
 
 ```
-mero-ar/
-  logic/      Rust WASM contract (the scene-graph backend, runs as an app instance on the cluster)
-  app/
-    MeroAR/   the SwiftUI + ARKit + RealityKit app (depends on core's Swift SDK)
-  web/        the served page the bundle carries: the app's Calimero Cloud sign-in
-  scripts/    setup.sh
+apps/mero-ar/
+  logic/        Rust WASM contract (the scene-graph backend, runs as an app instance on the cluster)
+  mobile/ios/   the SwiftUI + ARKit + RealityKit app (depends on core's Swift SDK)
+  app/          the served page the bundle carries: the app's Calimero Cloud sign-in
+  scripts/      setup.sh, the development cluster
   Makefile    every command below has a `make` shortcut
 ```
 
 > **What talks to what:** the iOS app → **MeroKit**, Calimero's Swift SDK (in
 > [calimero-network/core](https://github.com/calimero-network/core), pinned to a
-> core release in `app/MeroAR/project.yml`) → a **node of your cluster**,
+> core release in `mobile/ios/project.yml`) → a **node of your cluster**,
 > after verifying its TDX quote, over the sealed channel (`/apps/{room}/intents`
 > for writes, `/views` for reads, `/events` for live changes, `/blobs` for the
 > world map and scans) → the **WASM contract** running as the room's app
@@ -37,9 +36,9 @@ a 3D preview with the same tools.
 
 | Tool | Needed for | Install |
 |------|-----------|---------|
-| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
-| **`meroctl`** | building and bundling the contract | `make tools` (core's release, from `ci/core-version`) |
-| **Node.js 22** | building the served page (`web/`) for a release bundle | <https://nodejs.org> |
+| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>, then `rustup target add wasm32-wasip2` |
+| **`meroctl`** | building and bundling the contract | `make tools` (core's release `scripts/install-meroctl.sh` pins at the repository root) |
+| **Node.js 22** + pnpm | building the served page (`app/`) for a release bundle | <https://nodejs.org>, <https://pnpm.io> |
 | **Full Xcode** (16+) | building the app, device deploy | Mac App Store |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero cluster** | running rooms | Calimero Cloud, or `merod local` for development |
@@ -62,8 +61,8 @@ Verify everything with `make setup`.
 
 ## 4. Build & run on your iPhone/iPad
 
-1. `make app-gen` and open `app/MeroAR/MeroAR.xcodeproj`.
-2. **Signing:** set your team in `app/MeroAR/Config/Signing.local.xcconfig`
+1. `make app-gen` and open `mobile/ios/MeroAR.xcodeproj`.
+2. **Signing:** set your team in `mobile/ios/Config/Signing.local.xcconfig`
    (`DEVELOPMENT_TEAM = ABCDE12345`, gitignored), or export
    `MEROAR_DEVELOPMENT_TEAM`, or choose it on the **MeroAR** target. No
    associated domains are needed.
