@@ -21,7 +21,7 @@ const app = await client.createApp("my-app", appSource(import.meta.env, "com.cal
 |---|---|---|---|
 | chosen when | `vite` (`DEV`), or `VITE_CALIMERO_TARGET=local` | `vite build`, or `VITE_CALIMERO_TARGET=cloud` | `VITE_CALIMERO_TARGET=node` |
 | nodes | `VITE_CALIMERO_NODES`, default `127.0.0.1:2501-2503` | the cluster serving the page; else `VITE_CALIMERO_CLUSTER` (optional override) via the node directory; else the primary cluster running the app's package (`GET {directory}/package/{package}`); `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | `VITE_CALIMERO_NODES` (required, `https`), no directory |
-| trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required) | the same as cloud |
+| trust | mock quotes (`allowMock`) | signed mero-tee release `>= VITE_CALIMERO_MIN_RELEASE` (required), `locked-read-only`; on staging any of its image profiles (below) | the same as cloud |
 | instances from | `VITE_CALIMERO_BUNDLE` (written by `pnpm dev:local`) | the package (`VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION`) | the same as cloud |
 
 The target is fixed when the service starts, from its build's environment. The
@@ -45,6 +45,14 @@ without a cluster asks the directory where the app's package runs
 the package from `VITE_CALIMERO_PACKAGE` or `connectTarget`'s `package` option)
 and connects to its primary cluster's nodes, the build's zone first, then
 heaviest first: a frontend the developer hosts needs no cluster name.
+Staging is recognised from the served page's own hostname (under
+`apps.relay.staging.cloud.calimero.network`, mero-js's `cloudEnvironment()`),
+never from the manifest, or off a served page from `VITE_CALIMERO_ENV=staging`
+(a Vercel preview). A staging target asks staging's directory (unless
+`VITE_CALIMERO_DIRECTORY` names another) and trusts any of staging's image
+profiles, debug ones included (mero-js's `CLOUD_ENVIRONMENTS.staging.trust`):
+the node's own, whose signed image its quote must still be. Production trusts
+`locked-read-only` alone.
 When nothing runs the package (404), or the build has no floor or package,
 it throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
 from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured

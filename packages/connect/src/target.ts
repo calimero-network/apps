@@ -7,7 +7,13 @@
  * trust a mock quote.
  */
 
-import { DEFAULT_DIRECTORY, type NodePolicy } from "@calimero-network/mero-js";
+import {
+  CLOUD_ENVIRONMENTS,
+  DEFAULT_DIRECTORY,
+  cloudEnvironment,
+  type CloudEnvironment,
+  type NodePolicy,
+} from "@calimero-network/mero-js";
 
 /** The nodes `merod local` starts: node i listens on 2500 + i. */
 export const LOCAL_NODES: readonly string[] = [
@@ -39,6 +45,12 @@ export type Target =
       /** The lowest mero-tee release a node may run. */
       minReleaseVersion: string;
       /**
+       * Which Calimero Cloud the cluster is in, when it is not production: from
+       * the served page's hostname ({@link cloudEnvironment}), or from the build
+       * (`VITE_CALIMERO_ENV`). Never from anything a server answers.
+       */
+      environment?: "staging";
+      /**
        * The cluster's API URLs when the page already knows them (it is served by
        * the cluster: {@link servedNodes}); otherwise the node directory is asked.
        */
@@ -55,6 +67,10 @@ export type Target =
  *   {@link LOCAL_NODES}) and `node` (required).
  * - `VITE_CALIMERO_CLUSTER`, `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY`,
  *   `VITE_CALIMERO_MIN_RELEASE`: the cloud cluster and its trust floor.
+ * - `VITE_CALIMERO_ENV` `production` (default) | `staging`: which Calimero Cloud
+ *   a build that is not served by a cluster (Vercel, a dev server) reaches;
+ *   `staging` asks staging's directory and trusts its debug node images. A
+ *   page a cluster serves reads it from its own hostname instead.
  */
 export interface ConnectEnv {
   DEV?: boolean;
@@ -64,6 +80,7 @@ export interface ConnectEnv {
   VITE_CALIMERO_ZONE?: string;
   VITE_CALIMERO_DIRECTORY?: string;
   VITE_CALIMERO_MIN_RELEASE?: string;
+  VITE_CALIMERO_ENV?: string;
   VITE_CALIMERO_BUNDLE?: string;
   VITE_CALIMERO_PACKAGE?: string;
   VITE_CALIMERO_VERSION?: string;
@@ -135,6 +152,24 @@ function targetKind(env: ConnectEnv): "local" | "cloud" | "node" {
   return asked ?? (env.DEV ? "local" : "cloud");
 }
 
+/** The Calimero Cloud the build names (`VITE_CALIMERO_ENV`), `production` when it names none. */
+function buildEnvironment(env: ConnectEnv): CloudEnvironment {
+  const asked = text(env.VITE_CALIMERO_ENV);
+  if (asked === undefined) return "production";
+  if (asked !== "production" && asked !== "staging") {
+    throw new ConfigError(`VITE_CALIMERO_ENV is ${JSON.stringify(asked)}; use "production" or "staging"`);
+  }
+  return asked;
+}
+
+/**
+ * The node directory to ask: `VITE_CALIMERO_DIRECTORY`, else the environment's
+ * (`undefined` for production, which is mero-js's default).
+ */
+function directoryFor(env: ConnectEnv, environment: CloudEnvironment): string | undefined {
+  return text(env.VITE_CALIMERO_DIRECTORY) ?? (environment === "staging" ? CLOUD_ENVIRONMENTS.staging.directory : undefined);
+}
+
 function minRelease(env: ConnectEnv): string {
   const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
   if (!minReleaseVersion) {
@@ -186,26 +221,31 @@ export function resolveTarget(env: ConnectEnv): Target {
     );
   }
   const minReleaseVersion = minRelease(env);
+  const environment = buildEnvironment(env);
   const zone = text(env.VITE_CALIMERO_ZONE);
-  const directory = text(env.VITE_CALIMERO_DIRECTORY);
+  const directory = directoryFor(env, environment);
   return {
     kind,
     cluster,
     minReleaseVersion,
     ...(zone ? { zone } : {}),
     ...(directory ? { directory } : {}),
+    ...(environment === "staging" ? { environment } : {}),
   };
 }
 
 /**
  * What every node must attest to. Mock quotes (what `merod local` sends) pass
  * for a local target only; a cloud node must run a signed mero-tee release at
- * or above the floor.
+ * or above the floor. On staging, whose clusters run debug images too, that is
+ * any of its image profiles (mero-js's `CLOUD_ENVIRONMENTS.staging.trust`): the
+ * node's own, whose signed image its quote must still be. Production trusts
+ * `locked-read-only` alone.
  */
 export function policyFor(target: Target): NodePolicy {
-  return target.kind === "local"
-    ? { allowMock: true }
-    : { release: { minReleaseVersion: target.minReleaseVersion } };
+  if (target.kind === "local") return { allowMock: true };
+  const trust = target.environment === "staging" ? CLOUD_ENVIRONMENTS.staging.trust : {};
+  return { release: { minReleaseVersion: target.minReleaseVersion, ...trust } };
 }
 
 /** A stable name for the target, for keying what is stored per cluster. */
@@ -354,14 +394,24 @@ export async function connectTarget(env: ConnectEnv, options: ConnectOptions = {
   const served = await find();
   if (served) {
     const minReleaseVersion = minRelease(env);
-    const host = text(options.host ?? globalThis.location?.host) ?? new URL(served[0] as string).host;
-    return { kind: "cloud", cluster: host, nodes: served, minReleaseVersion };
+    const pageHost = text(options.host ?? globalThis.location?.host);
+    const host = pageHost ?? new URL(served[0] as string).host;
+    // The page's own hostname, which the browser checked, says which Cloud this is.
+    const onStaging = pageHost !== undefined && cloudEnvironment(new URL(`https://${pageHost}`).hostname) === "staging";
+    return {
+      kind: "cloud",
+      cluster: host,
+      nodes: served,
+      minReleaseVersion,
+      ...(onStaging ? { environment: "staging" as const } : {}),
+    };
   }
   const minReleaseVersion = text(env.VITE_CALIMERO_MIN_RELEASE);
   const pkg = text(env.VITE_CALIMERO_PACKAGE) ?? text(options.package);
   if (!minReleaseVersion || !pkg) throw new NotServedError(options.app);
+  const environment = buildEnvironment(env);
   const zone = text(env.VITE_CALIMERO_ZONE);
-  const directory = text(env.VITE_CALIMERO_DIRECTORY);
+  const directory = directoryFor(env, environment);
   const found = await packageCluster(
     directory ?? DEFAULT_DIRECTORY,
     pkg,
@@ -376,5 +426,6 @@ export async function connectTarget(env: ConnectEnv, options: ConnectOptions = {
     minReleaseVersion,
     ...(zone ? { zone } : {}),
     ...(directory ? { directory } : {}),
+    ...(environment === "staging" ? { environment } : {}),
   };
 }
