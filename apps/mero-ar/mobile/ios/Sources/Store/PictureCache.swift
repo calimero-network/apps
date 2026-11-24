@@ -55,4 +55,15 @@ final class PictureCache: ObservableObject {
         return (jpeg, Int(size.width), Int(size.height))
     }
 }
+
+extension SceneStore {
+    /// The app's store for a room: a picture it uploads goes into
+    /// ``PictureCache`` at once, so the uploader sees it without downloading it.
+    @MainActor
+    static func withPictureCache(service: MeroARService) -> SceneStore {
+        let store = SceneStore(service: service)
+        store.pictureUploaded = { PictureCache.shared.seed(blobId: $0, data: $1) }
+        return store
+    }
+}
 #endif
