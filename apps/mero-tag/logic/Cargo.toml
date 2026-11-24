@@ -1,0 +1,54 @@
+[package]
+name = "mero-tag"
+description = "Mero Tag — distributed real-time location sharing on Calimero, on the component SDK"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch.
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# A `calimero:app` component. No `rlib`: the tests run the BUILT component on
+# core's engine (tests/common/mod.rs), not the crate linked natively.
+crate-type = ["cdylib"]
+
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release, and a moving dep means the
+# signed bundle is not reproducible. Every core crate shares the exact same tag.
+[dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+serde = { version = "1", features = ["derive"] }
+
+# The harness (`TestApp`, `run_scenario`) and the builder the tests build this
+# crate with, for `cargo test` on the host only.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+serde_json = "1"
+
+# Read by `meroctl app pack`. The served page (`frontend-dir`) is the iOS app's
+# Calimero Cloud sign-in, not a web app of its own.
+[package.metadata.calimero]
+package = "com.calimero.mero-tag"
+name = "Mero Tag"
+description = "Mero Tag — private, real-time location sharing for your organization on Calimero."
+author = "Calimero"
+# The slug IS the package id: the registry and the node's `/packages/install
+# {package, version}` both name the app by it.
+slug = "com.calimero.mero-tag"
+tags = ["location", "tracking", "geofencing"]
+github = "https://github.com/calimero-network/mero-tag"
+# The page the bundle carries, which the cluster serves from the package's own
+# origin: the iOS app's sign-in, passkey approvals and consent returns go
+# through it (web/). Build it first: `cd web && npm ci && npm run build`.
+frontend-dir = "../web/dist"
+# The oldest node that can run this bundle: a `calimero:app` component on the
+# core 1.0 wasmtime runtime, built against the rc.32 SDK. Older nodes, and
+# every 0.x node, must refuse the install.
+min-runtime-version = "1.0.0-rc.35"
+# No `outbound`: the contract makes no outbound HTTP calls. Core 1.0 refuses any
+# that are not declared here (as URL prefixes) and approved.
+
+# Standalone: its own Cargo.lock.
+[workspace]

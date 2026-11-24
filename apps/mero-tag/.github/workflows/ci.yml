@@ -1,0 +1,139 @@
+# CI for Mero Tag.
+#
+# This replaces workflows/ci.yml, which sat next to the merobox scenarios with a
+# comment reading "Mirror into .github/workflows/ to enable on GitHub" — so it
+# was never active. It also declared `branches: [main]` while this repo's default
+# is `master`, which is the failure mode that hides itself: mirroring it as-is
+# would have produced a workflow that runs on no push at all.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Without this, a push landing on top of an in-flight push leaves BOTH runs to
+# completion — and this repo's `app` job is a macOS runner, billed at ten times
+# the Linux rate. Superseded runs are the most expensive thing here.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  logic:
+    name: Component contract (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: logic
+    steps:
+      - uses: actions/checkout@v4
+      # logic/rust-toolchain.toml (core's) picks the toolchain and
+      # adds wasm32-wasip2.
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock', 'logic/rust-toolchain.toml') }}
+          restore-keys: logic-${{ runner.os }}-
+      - run: cargo fmt --check
+      # The unit tests of the pure helpers, then tests/harness.rs and
+      # tests/scenarios.rs on core's wasmtime engine. The harness builds the
+      # crate into a `calimero:app` component first (calimero-app-build), so a
+      # contract that does not build as a component fails here.
+      - run: cargo test --locked
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-wasip2 -- -D warnings
+
+  landing:
+    name: Landing page build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  web:
+    name: Served page build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # Any floor: this checks the page builds with its client in it.
+      - run: npm run build
+        env:
+          VITE_CALIMERO_MIN_RELEASE: 0.0.0
+
+  app:
+    name: iOS app build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - working-directory: app/MeroTag
+        run: xcodegen generate
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      # Addressed by UDID after waiting, not by name. On a cold runner
+      # CoreSimulator is often not up yet, so xcodebuild's device list comes back
+      # EMPTY and it fails after a 60s search with "no available devices matched"
+      # even though the image ships plenty. Touching simctl starts the service.
+      # A name like 'iPhone 17' additionally breaks whenever the image renames
+      # its models.
+      - name: Wait for a simulator, then run app tests
+        working-directory: app/MeroTag
+        env:
+          # Empty on a debug re-run, so the full build transcript comes back.
+          XCB_QUIET: ${{ runner.debug == '1' && '' || '-quiet' }}
+        run: |
+          set -euo pipefail
+          udid=""
+          for attempt in $(seq 1 20); do
+            udid=$(xcrun simctl list devices available -j \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next((x["udid"] for rt in d for x in d[rt] if "iPhone" in x["name"]), ""))')
+            [ -n "$udid" ] && break
+            echo "attempt $attempt: no iPhone simulator yet, waiting…"
+            sleep 5
+          done
+          if [ -z "$udid" ]; then
+            echo "::error::no iOS simulator became available — tests did NOT run"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "using simulator $udid"
+          xcrun simctl boot "$udid" || true
+          # -quiet drops xcodebuild's build graph — the SwiftCompile /
+          # WriteAuxiliaryFile / `cd …` lines that are 95% of this job's log and
+          # tell you nothing when it passes. Warnings, errors and the test
+          # summary still print. A debug re-run gets the full transcript back.
+          xcodebuild test $XCB_QUIET -project MeroTag.xcodeproj -scheme MeroTag \
+            -destination "platform=iOS Simulator,id=$udid" \
+            -derivedDataPath .build -only-testing:MeroTagTests \
+            CODE_SIGNING_ALLOWED=NO
+
+  # No merobox lane: merobox is archived and cannot boot a core 1.0 node (no
+  # admin API, sealed channel, passkeys). The contract's 1.0 behaviour is
+  # covered by the TestApp harness `cargo test` runs above (core's real
+  # engine); logic/scenarios/*.json are written to run on `merod local` too,
+  # and an end-to-end lane for them is follow-up work.
