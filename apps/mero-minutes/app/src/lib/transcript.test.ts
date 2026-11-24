@@ -3,6 +3,9 @@ import type { SegmentView } from "../generated/client";
 import {
   formatClock,
   formatDuration,
+  highlightParts,
+  matchesAll,
+  queryWords,
   markdownFileName,
   mergeSegments,
   platformName,
@@ -141,5 +144,19 @@ describe("toMarkdown", () => {
   it("says so when there is no transcript, and skips empty sections", () => {
     const md = toMarkdown({ title: "Empty", platform: "zoom", startedAt: "0", durationMs: 0, summary: "" }, [], [], "You");
     expect(md).toBe("# Empty\n\nZoom\n\n## Transcript\n\n_No transcript yet._\n");
+  });
+
+  it("matches every word and marks them for highlighting", () => {
+    expect(queryWords("  Pricing  PAGE ")).toEqual(["pricing", "page"]);
+    expect(matchesAll("The new pricing page", ["page", "pricing"])).toBe(true);
+    expect(matchesAll("The new pricing", ["page", "pricing"])).toBe(false);
+    expect(highlightParts("Price (beta) and PRICE", ["price", "(beta)"])).toEqual([
+      { text: "Price", hit: true },
+      { text: " ", hit: false },
+      { text: "(beta)", hit: true },
+      { text: " and ", hit: false },
+      { text: "PRICE", hit: true },
+    ]);
+    expect(highlightParts("plain", [])).toEqual([{ text: "plain", hit: false }]);
   });
 });

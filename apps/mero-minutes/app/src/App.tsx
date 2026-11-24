@@ -359,6 +359,18 @@ function WorkspaceView({
   }, [calimero, source, appId, after]);
 
   const openActions = meetings.data?.reduce((n, m) => n + m.openActions, 0) ?? 0;
+  const searchClient = workspace.client;
+  const searchTranscripts = useCallback(
+    async (query: string) => {
+      if (!searchClient) return { hits: [], more: false };
+      try {
+        return await searchClient.search({ query, limit: 30 });
+      } finally {
+        after();
+      }
+    },
+    [searchClient, after],
+  );
 
   return (
     <Shell
@@ -394,7 +406,12 @@ function WorkspaceView({
         </nav>
       )}
       {route.page === "meetings" && (
-        <MeetingsList meetings={meetings.data} error={meetings.error} onOpen={(id) => go({ page: "meeting", id })} />
+        <MeetingsList
+          meetings={meetings.data}
+          error={meetings.error}
+          onOpen={(id, seq) => go(seq === undefined ? { page: "meeting", id } : { page: "meeting", id, seq })}
+          searchTranscripts={searchTranscripts}
+        />
       )}
       {route.page === "actions" && <OpenActions workspace={workspace} onOpen={(id) => go({ page: "meeting", id })} />}
       {route.page === "meeting" && (
@@ -402,6 +419,7 @@ function WorkspaceView({
           key={route.id}
           workspace={workspace}
           meetingId={route.id}
+          focusSeq={route.seq}
           me={accountId}
           isOwner={owner === accountId}
           onBack={() => go({ page: "meetings" })}

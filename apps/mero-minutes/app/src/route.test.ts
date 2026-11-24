@@ -20,4 +20,12 @@ describe("routes", () => {
     expect(linkedWorkspace("#/m/ab12")).toBeNull();
     expect(linkedWorkspace("#/w/<script>")).toBeNull();
   });
+
+  it("reads and writes a link to one line of a meeting", () => {
+    expect(parseRoute("#/m/ab12/7")).toEqual({ page: "meeting", id: "ab12", seq: 7 });
+    expect(parseRoute("#/w/app1/m/ab12/0")).toEqual({ page: "meeting", id: "ab12", seq: 0 });
+    expect(parseRoute("#/m/ab12/x")).toEqual({ page: "meeting", id: "ab12" });
+    expect(routeHash({ page: "meeting", id: "ab12", seq: 7 })).toBe("#/m/ab12/7");
+    expect(routeHash({ page: "meeting", id: "ab12" })).toBe("#/m/ab12");
+  });
 });

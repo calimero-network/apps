@@ -1,27 +1,36 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckSquare, Clock, FileText } from "@calimero-network/mero-icons";
 import type { MeetingView } from "./minutesApi";
-import { formatDuration, formatWhen, platformName, searchMeetings } from "./lib/transcript";
+import type { SearchHit, SearchResult } from "./generated/client";
+import { formatClock, formatDuration, formatWhen, highlightParts, platformName, queryWords, searchMeetings } from "./lib/transcript";
 import { EXTENSION_URL } from "./native";
 import { PlatformMark } from "./PlatformMark";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
 
+/** How long typing pauses before the transcripts are searched. */
+export const SEARCH_DELAY_MS = 250;
+
 /**
- * Every meeting in the workspace, newest first, with a search over titles.
- * Presentational: `MeetingsHome` reads the list, the tests hand it one.
+ * Every meeting in the workspace, newest first. The search box filters the
+ * titles at once and, given `searchTranscripts` (the contract's `search`),
+ * lists the transcript lines that match too; a line opens its meeting there.
  */
 export function MeetingsList({
   meetings,
   error,
   onOpen,
+  searchTranscripts,
 }: {
   meetings: MeetingView[] | null;
   error?: string | null;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, seq?: number) => void;
+  searchTranscripts?: (query: string) => Promise<SearchResult>;
 }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => (meetings ? searchMeetings(meetings, query) : null), [meetings, query]);
+  const lines = useTranscriptSearch(query, searchTranscripts);
+  const searching = queryWords(query).length > 0;
 
   if (error && !meetings) return <pre className="err">{error}</pre>;
   if (!meetings) {
@@ -45,12 +54,13 @@ export function MeetingsList({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      {shown && shown.length === 0 && (
+      {searching && shown && shown.length === 0 && (!lines.hits || lines.hits.length === 0) && !lines.loading && (
         <p className="empty" data-testid="no-match">
-          No meeting title matches &ldquo;{query.trim()}&rdquo;.
+          Nothing matches &ldquo;{query.trim()}&rdquo;{searchTranscripts ? " in titles or transcripts" : ""}.
         </p>
       )}
-      <ul className="meeting-list">
+      {searching && shown && shown.length > 0 && <h3 className="list-label">Meetings</h3>}
+      <ul className="meeting-list" hidden={shown?.length === 0}>
         {shown?.map((m) => (
           <li key={m.id}>
             <button className="meeting-row" onClick={() => onOpen(m.id)} data-testid="meeting-row">
@@ -85,6 +95,87 @@ export function MeetingsList({
           </li>
         ))}
       </ul>
+      {searching && searchTranscripts && (
+        <TranscriptHits query={query} state={lines} onOpen={onOpen} />
+      )}
+    </section>
+  );
+}
+
+interface SearchState {
+  hits: SearchHit[] | null;
+  more: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+/** The contract's search for `query`, after a pause in typing; the last answer wins. */
+function useTranscriptSearch(query: string, search?: (q: string) => Promise<SearchResult>): SearchState {
+  const [state, setState] = useState<SearchState>({ hits: null, more: false, loading: false, error: null });
+  useEffect(() => {
+    const q = query.trim();
+    if (!search || queryWords(q).length === 0) {
+      setState({ hits: null, more: false, loading: false, error: null });
+      return;
+    }
+    let live = true;
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const t = setTimeout(() => {
+      search(q)
+        .then((r) => live && setState({ hits: r.hits.filter((h) => h.seq !== null && h.seq !== undefined), more: r.more, loading: false, error: null }))
+        .catch((e: unknown) => live && setState({ hits: null, more: false, loading: false, error: e instanceof Error ? e.message : String(e) }));
+    }, SEARCH_DELAY_MS);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [query, search]);
+  return state;
+}
+
+function TranscriptHits({
+  query,
+  state,
+  onOpen,
+}: {
+  query: string;
+  state: SearchState;
+  onOpen: (id: string, seq?: number) => void;
+}) {
+  const words = queryWords(query);
+  return (
+    <section className="hits" aria-label="Matching lines" aria-busy={state.loading}>
+      <h3 className="list-label">
+        In transcripts
+        {state.loading && <span className="dim"> · searching…</span>}
+      </h3>
+      {state.error && <p className="err">{state.error}</p>}
+      {state.hits && state.hits.length === 0 && !state.loading && <p className="empty">No transcript line matches.</p>}
+      {state.hits && state.hits.length > 0 && (
+        <ul className="meeting-list">
+          {state.hits.map((h) => (
+            <li key={`${h.meetingId}-${h.seq}`}>
+              <button className="meeting-row hit-row" data-testid="search-hit" onClick={() => onOpen(h.meetingId, h.seq ?? undefined)}>
+                <span className="meeting-main">
+                  <span className="hit-text">
+                    {highlightParts(h.text ?? "", words).map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
+                  </span>
+                  <span className="meeting-meta">
+                    <span className="strong-meta">{h.title}</span>
+                    <span className="dot" aria-hidden="true" />
+                    <span>{formatWhen(h.startedAt)}</span>
+                    <span className="dot" aria-hidden="true" />
+                    <span className="mono">{formatClock(h.startMs ?? 0)}</span>
+                    <span className="dot" aria-hidden="true" />
+                    <span>{h.speaker === "you" ? "Recorder" : "Others"}</span>
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {state.more && <p className="dim">Showing the first {state.hits?.length ?? 0} lines. Add a word to narrow it down.</p>}
     </section>
   );
 }

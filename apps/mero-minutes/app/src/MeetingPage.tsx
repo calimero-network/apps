@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckSquare, Clock, Download, FileText, Trash } from "@calimero-network/mero-icons";
 import type { MeetingView, SegmentView } from "./minutesApi";
 import { deleteMeetingFully } from "./minutesApi";
@@ -11,8 +11,11 @@ import {
   formatClock,
   formatDuration,
   formatWhen,
+  highlightParts,
   markdownFileName,
+  matchesAll,
   platformName,
+  queryWords,
   speakerLabel,
   toMarkdown,
 } from "./lib/transcript";
@@ -27,6 +30,7 @@ export function MeetingPage({
   me,
   isOwner,
   onBack,
+  focusSeq,
 }: {
   workspace: Workspace;
   meetingId: string;
@@ -34,6 +38,8 @@ export function MeetingPage({
   /** The signed-in account owns the workspace: it may delete any meeting. */
   isOwner: boolean;
   onBack: () => void;
+  /** A line to scroll to and mark (a search hit, `#/m/<id>/<seq>`). */
+  focusSeq?: number;
 }) {
   const meeting = useRead(workspace.client, workspace.version, (c) => c.getMeeting({ meetingId }), [meetingId]);
   const actions = useRead(workspace.client, workspace.version, (c) => c.listActions({ meetingId }), [meetingId]);
@@ -75,6 +81,7 @@ export function MeetingPage({
       isOwner={isOwner}
       recorderName={recorderName}
       onBack={onBack}
+      focusSeq={focusSeq}
     />
   );
 }
@@ -94,6 +101,7 @@ export function MeetingBody({
   isOwner,
   recorderName,
   onBack,
+  focusSeq,
 }: {
   workspace: Pick<Workspace, "act">;
   meeting: MeetingView;
@@ -108,8 +116,26 @@ export function MeetingBody({
   isOwner: boolean;
   recorderName: string;
   onBack: () => void;
+  focusSeq?: number;
 }) {
   const recorder = m.recorder === me;
+  const [find, setFind] = useState("");
+  const findWords = useMemo(() => queryWords(find), [find]);
+  const shownSegments = useMemo(
+    () => (findWords.length ? segments.filter((s) => matchesAll(s.text, findWords)) : segments),
+    [segments, findWords],
+  );
+  const lastSeq = segments.length ? segments[segments.length - 1]!.seq : -1;
+  // Finding reads the whole transcript; a linked line reads up to it.
+  const wantsMore = more && !loadingMore && (findWords.length > 0 || (focusSeq !== undefined && focusSeq > lastSeq));
+  useEffect(() => {
+    if (wantsMore) onLoadMore();
+  }, [wantsMore, onLoadMore]);
+  const focusedRef = useRef<HTMLLIElement | null>(null);
+  const focusLoaded = focusSeq !== undefined && segments.some((s) => s.seq === focusSeq);
+  useEffect(() => {
+    if (focusLoaded) focusedRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focusLoaded]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const segmentStart = useCallback((seq: number) => segments.find((s) => s.seq === seq)?.startMs, [segments]);
@@ -205,15 +231,35 @@ export function MeetingBody({
         <section className="card transcript-card" aria-labelledby="transcript-title">
           <div className="card-head">
             <h2 id="transcript-title">Transcript</h2>
-            <span className="dim">{m.segments.toLocaleString()} lines</span>
+            <span className="dim" data-testid="line-count">
+              {findWords.length
+                ? `${shownSegments.length.toLocaleString()} of ${m.segments.toLocaleString()} lines`
+                : `${m.segments.toLocaleString()} lines`}
+            </span>
+            <div className="search find">
+              <Icon name="search" size={14} />
+              <input
+                type="search"
+                aria-label="Find in transcript"
+                placeholder="Find in transcript"
+                value={find}
+                onChange={(e) => setFind(e.target.value)}
+              />
+            </div>
           </div>
+          {findWords.length > 0 && shownSegments.length === 0 && !loadingMore && (
+            <p className="empty">No line contains &ldquo;{find.trim()}&rdquo;.</p>
+          )}
           {segments.length === 0 && !loadingMore && (
             <p className="empty">{m.live ? "Listening… the first lines appear here in a few seconds." : "No transcript was saved for this meeting."}</p>
           )}
           <ol className="transcript" aria-live={m.live ? "polite" : undefined}>
-            {segments.map((s) => (
+            {shownSegments.map((s) => (
               <SegmentRow
                 key={s.seq}
+                ref={s.seq === focusSeq ? focusedRef : undefined}
+                focused={s.seq === focusSeq}
+                highlight={findWords}
                 segment={s}
                 speaker={speakerLabel(s.speaker, recorderName)}
                 editable={recorder}
@@ -377,12 +423,18 @@ function Summary({ summary, editable, onSave }: { summary: string; editable: boo
 }
 
 function SegmentRow({
+  ref,
+  focused = false,
+  highlight = [],
   segment,
   speaker,
   editable,
   onSave,
   onMakeAction,
 }: {
+  ref?: React.Ref<HTMLLIElement>;
+  focused?: boolean;
+  highlight?: readonly string[];
   segment: SegmentView;
   speaker: string;
   editable: boolean;
@@ -397,7 +449,12 @@ function SegmentRow({
     return () => clearTimeout(t);
   }, [made]);
   return (
-    <li className={`segment speaker-${segment.speaker === "you" ? "you" : "others"}`} data-testid="segment">
+    <li
+      ref={ref}
+      id={`line-${segment.seq}`}
+      className={`segment speaker-${segment.speaker === "you" ? "you" : "others"}${focused ? " focused" : ""}`}
+      data-testid="segment"
+    >
       <span className="segment-time mono">{formatClock(segment.startMs)}</span>
       <span className={`speaker-chip ${segment.speaker === "you" ? "you" : "others"}`}>{speaker}</span>
       {draft !== null ? (
@@ -429,7 +486,7 @@ function SegmentRow({
         </form>
       ) : (
         <p className="segment-text">
-          {segment.text}
+          {highlightParts(segment.text, highlight).map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
           {segment.edited && <span className="edited"> (edited)</span>}
         </p>
       )}

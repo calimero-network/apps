@@ -83,6 +83,29 @@ export function speakerLabel(speaker: string, recorderName: string): string {
 }
 
 /** Meetings whose title holds every word of `query` (any case, any order). */
+/** The words of a search, lowercased; empty when there is nothing to look for. */
+export function queryWords(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/** True when `text` contains every word (any case), as the contract's `search` matches. */
+export function matchesAll(text: string, words: readonly string[]): boolean {
+  if (words.length === 0) return true;
+  const t = text.toLowerCase();
+  return words.every((w) => t.includes(w));
+}
+
+/** `text` cut into plain and matching parts, for <mark>. */
+export function highlightParts(text: string, words: readonly string[]): { text: string; hit: boolean }[] {
+  const ws = words.filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (ws.length === 0) return [{ text, hit: false }];
+  const re = new RegExp(`(${ws.sort((a, b) => b.length - a.length).join("|")})`, "gi");
+  return text
+    .split(re)
+    .filter((part) => part !== "")
+    .map((part) => ({ text: part, hit: ws.some((w) => new RegExp(`^${w}$`, "i").test(part)) }));
+}
+
 export function searchMeetings<T extends Pick<MeetingView, "title">>(meetings: readonly T[], query: string): T[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return meetings as T[];

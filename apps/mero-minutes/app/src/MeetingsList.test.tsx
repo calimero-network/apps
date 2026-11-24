@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SearchResult } from "./generated/client";
 import { MeetingsList } from "./MeetingsList";
 import { meeting } from "./test/workspace";
 
@@ -56,5 +57,50 @@ describe("MeetingsList", () => {
     expect(screen.getByText("Loading meetings…")).toBeTruthy();
     rerender(<MeetingsList meetings={null} error="no route to node" onOpen={() => {}} />);
     expect(screen.getByText("no route to node")).toBeTruthy();
+  });
+
+  it("searches the transcripts too and opens a meeting at the matching line", async () => {
+    const result: SearchResult = {
+      hits: [
+        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: null, startMs: null, speaker: null, text: null },
+        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: 4, startMs: 65_000, speaker: "others", text: "The pricing page ships Friday" },
+      ],
+      more: false,
+    };
+    const search = vi.fn(async () => result);
+    const onOpen = vi.fn();
+    render(<MeetingsList meetings={meetings} onOpen={onOpen} searchTranscripts={search} />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search meetings" }), { target: { value: "pricing" } });
+    const hit = await screen.findByTestId("search-hit");
+    expect(search).toHaveBeenCalledWith("pricing");
+    // Title hits are the list above; only lines are listed here.
+    expect(screen.getAllByTestId("search-hit")).toHaveLength(1);
+    expect(hit.querySelector("mark")!.textContent).toBe("pricing");
+    expect(hit.textContent).toContain("1:05");
+    fireEvent.click(hit);
+    expect(onOpen).toHaveBeenCalledWith("b2", 4);
+  });
+
+  it("waits for a pause in typing and keeps only the last answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const search = vi.fn(async (q: string) => ({ hits: [], more: false, q }));
+      render(<MeetingsList meetings={meetings} onOpen={() => {}} searchTranscripts={search} />);
+      const box = screen.getByRole("searchbox", { name: "Search meetings" });
+      fireEvent.change(box, { target: { value: "p" } });
+      fireEvent.change(box, { target: { value: "pr" } });
+      fireEvent.change(box, { target: { value: "pri" } });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(search).toHaveBeenCalledTimes(1);
+      expect(search).toHaveBeenCalledWith("pri");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says when nothing matches titles or transcripts", async () => {
+    render(<MeetingsList meetings={meetings} onOpen={() => {}} searchTranscripts={async () => ({ hits: [], more: false })} />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search meetings" }), { target: { value: "zebra" } });
+    expect((await screen.findByTestId("no-match")).textContent).toContain("in titles or transcripts");
   });
 });

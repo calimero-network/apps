@@ -28,7 +28,13 @@ const action = (over: Partial<ActionView> = {}): ActionView => ({
   ...over,
 });
 
-function setup({ me = "bob", isOwner = false, live = false, pages = [[seg(0, "Morning all", "you"), seg(1, "Cy will send the deck")]] } = {}) {
+function setup({
+  me = "bob",
+  isOwner = false,
+  live = false,
+  pages = [[seg(0, "Morning all", "you"), seg(1, "Cy will send the deck")]],
+  focusSeq,
+}: { me?: string; isOwner?: boolean; live?: boolean; pages?: SegmentView[][]; focusSeq?: number } = {}) {
   let actions: ActionView[] = [action()];
   let page = 0;
   const transcriptLines = new Map<number, SegmentView>();
@@ -66,7 +72,7 @@ function setup({ me = "bob", isOwner = false, live = false, pages = [[seg(0, "Mo
     })(),
   });
   const onBack = vi.fn();
-  render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me={me} isOwner={isOwner} onBack={onBack} />);
+  render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me={me} isOwner={isOwner} onBack={onBack} focusSeq={focusSeq} />);
   return { ...fake, onBack, addLine: (s: SegmentView) => transcriptLines.set(s.seq, s) };
 }
 
@@ -168,5 +174,27 @@ describe("MeetingPage", () => {
     // Another meeting's change is not read.
     act(() => emit({ kind: "TranscriptChanged", data: { meetingId: "other", from: 0, to: 9 } }));
     expect(sent.filter((s) => s.method === "transcript")).toHaveLength(reads.length);
+  });
+
+  it("finds in the transcript: reads every page, keeps matching lines, marks the words", async () => {
+    setup({ pages: [[seg(0, "Morning all", "you"), seg(1, "Cy will send the deck")], [seg(2, "The DECK is late"), seg(3, "Fine")]] });
+    await screen.findAllByTestId("segment");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find in transcript" }), { target: { value: "deck" } });
+    await waitFor(() => expect(screen.getAllByTestId("segment")).toHaveLength(2));
+    const lines = screen.getAllByTestId("segment");
+    expect(lines.map((l) => l.querySelector(".segment-text")!.textContent)).toEqual(["Cy will send the deck", "The DECK is late"]);
+    expect([...document.querySelectorAll(".segment-text mark")].map((m) => m.textContent)).toEqual(["deck", "DECK"]);
+    expect(screen.getByTestId("line-count").textContent).toContain("2 of");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find in transcript" }), { target: { value: "zebra" } });
+    expect(await screen.findByText(/No line contains/)).toBeTruthy();
+  });
+
+  it("opens at a linked line: reads up to it and marks it", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    setup({ pages: [[seg(0, "Morning all", "you"), seg(1, "One")], [seg(2, "Two"), seg(3, "The line we want")]], focusSeq: 3 });
+    await waitFor(() => expect(document.getElementById("line-3")).toBeTruthy());
+    expect(document.getElementById("line-3")!.className).toContain("focused");
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
   });
 });
