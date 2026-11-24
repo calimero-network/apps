@@ -70,7 +70,10 @@ function onNode<T>(
     try {
       return await withClient({ ...a, workspace }, async (next) => saveAuth({ ...next, workspace: a.workspace }), work);
     } catch (e) {
-      if (isSignedOut(e)) await saveAuth(null);
+      if (isSignedOut(e)) {
+        await saveAuth(null);
+        await write("session", KEYS.signedOutReason, "Your session ended or the account no longer exists. Sign in again.");
+      }
       throw e;
     }
   };
@@ -151,7 +154,38 @@ async function signIn(intent?: SignInIntent): Promise<AuthState> {
     workspace: previous && previous.accountId === session.accountId ? previous.workspace : null,
   };
   await saveAuth(next);
+  await write("session", KEYS.signedOutReason, null);
   return next;
+}
+
+/**
+ * Is the signed-in account still there? Opening the popup asks: the node
+ * refuses a session whose account is gone (a wiped cluster, a removed
+ * account, a revoked session), and `onNode` signs out on that. A workspace
+ * the account no longer reaches is unchosen, so the popup offers the list.
+ * A node that does not answer changes nothing: offline is not signed out.
+ */
+async function checkSession(): Promise<{ signedIn: boolean }> {
+  const a = await auth();
+  if (!a) return { signedIn: false };
+  const current = await status();
+  if (current.phase !== "idle" && current.phase !== "saved" && current.phase !== "error") return { signedIn: true };
+  try {
+    const list = await listWorkspaces();
+    const chosen = a.workspace;
+    if (chosen && !list.some((w) => w.appId === chosen.appId)) {
+      const now = await auth();
+      if (now) await saveAuth({ ...now, workspace: null });
+      await log(`checkSession: workspace ${chosen.appId} is gone`);
+    }
+    return { signedIn: true };
+  } catch (e) {
+    if (isSignedOut(e)) {
+      await log("checkSession: signed out by the node");
+      return { signedIn: false };
+    }
+    return { signedIn: true };
+  }
 }
 
 async function listWorkspaces(): Promise<Workspace[]> {
@@ -408,6 +442,8 @@ async function handle(req: Request): Promise<unknown> {
       return null;
     case "listWorkspaces":
       return listWorkspaces();
+    case "checkSession":
+      return checkSession();
     case "chooseWorkspace": {
       const a = await auth();
       if (!a) throw new Error("Sign in first.");

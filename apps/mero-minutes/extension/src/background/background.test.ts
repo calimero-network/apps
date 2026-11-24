@@ -30,6 +30,7 @@ class FakeNode {
   down = false;
   signedOut = false;
   actions: Array<{ meetingId: string; text: string; assignee: string; sourceSeq: number }> = [];
+  apps: Array<{ appId: string; name: string; package: string }> = [{ appId: "app1", name: "Team", package: "com.calimero.mero-minutes" }];
   private n = 0;
 
   private gate(): void {
@@ -100,7 +101,11 @@ vi.mock("../lib/session", () => ({
     work: (client: unknown, app: unknown) => Promise<unknown>,
   ) => {
     if (node.signedOut) throw new LoginRequired("session over");
-    const client = { apps: { list: async () => ({ apps: [] }) } };
+    if (node.offline > 0) {
+      node.offline -= 1;
+      throw new Error("offline");
+    }
+    const client = { apps: { list: async () => ({ apps: node.apps }) } };
     return work(client, node.app(auth.workspace?.appId ?? ""));
   },
   isSignedOut: (e: unknown) => e instanceof LoginRequired,
@@ -540,5 +545,34 @@ describe("service worker: when recording goes wrong", () => {
     await request({ type: "start", tabId: 7 });
     await request({ type: "dismiss" });
     expect(status().phase).toBe("idle");
+  });
+
+  describe("checking the session when the popup opens", () => {
+    it("signs out an account the node no longer knows, and says why", async () => {
+      node.signedOut = true;
+      const r = await request({ type: "checkSession" });
+      expect(r).toEqual({ ok: true, value: { signedIn: false } });
+      expect(h.local.get("minutes:auth") ?? null).toBeNull();
+      expect(h.session.get("minutes:signed-out-reason")).toMatch(/Sign in again/);
+    });
+
+    it("keeps a live session and unchooses a workspace that is gone", async () => {
+      node.apps = [{ appId: "other", name: "Other", package: "com.calimero.mero-minutes" }];
+      const r = await request({ type: "checkSession" });
+      expect(r).toEqual({ ok: true, value: { signedIn: true } });
+      expect((h.local.get("minutes:auth") as AuthState).workspace).toBeNull();
+    });
+
+    it("keeps the workspace it still reaches", async () => {
+      await request({ type: "checkSession" });
+      expect((h.local.get("minutes:auth") as AuthState).workspace).toEqual(AUTH.workspace);
+    });
+
+    it("does not sign out when the node does not answer", async () => {
+      node.offline = 1;
+      const r = await request({ type: "checkSession" });
+      expect(r).toEqual({ ok: true, value: { signedIn: true } });
+      expect(h.local.get("minutes:auth")).toEqual(AUTH);
+    });
   });
 });

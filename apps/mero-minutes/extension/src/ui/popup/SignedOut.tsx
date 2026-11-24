@@ -3,7 +3,7 @@ import type { Settings } from "../../lib/messages";
 import { AlertIcon, LockIcon, Mark, Spinner } from "../icons";
 import { ask } from "../rpc";
 
-export function SignedOut({ settings }: { settings: Settings }) {
+export function SignedOut({ settings, reason = null }: { settings: Settings; reason?: string | null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +31,12 @@ export function SignedOut({ settings }: { settings: Settings }) {
           </p>
         </div>
       </div>
+      {reason && !error && (
+        <div className="banner" role="status">
+          <AlertIcon size={14} />
+          <span className="grow">{reason}</span>
+        </div>
+      )}
       <button className="btn primary block lg" onClick={signIn} disabled={busy}>
         {busy ? <Spinner size={14} /> : null}
         {busy ? "Waiting for sign-in…" : "Sign in with Calimero"}

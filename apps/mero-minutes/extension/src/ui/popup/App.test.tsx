@@ -167,4 +167,17 @@ describe("popup", () => {
     fireEvent.click(screen.getByRole("button", { name: /Log out/ }));
     await waitFor(() => expect(types()).toContain("signOut"));
   });
+
+  it("checks the session once when it opens signed in", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    await waitFor(() => expect(types().filter((t) => t === "checkSession")).toHaveLength(1));
+  });
+
+  it("says why it signed itself out", async () => {
+    chrome.areas.session.set(KEYS.signedOutReason, "Your session ended or the account no longer exists. Sign in again.");
+    render(<App />);
+    expect((await screen.findByRole("status")).textContent).toContain("no longer exists");
+    expect(types()).not.toContain("checkSession");
+  });
 });

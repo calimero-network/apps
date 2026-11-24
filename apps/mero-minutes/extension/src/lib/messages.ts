@@ -84,6 +84,8 @@ export const KEYS = {
   status: "minutes:status",
   transcript: "minutes:transcript",
   micGranted: "minutes:mic-granted",
+  /** Why the extension signed itself out, for the signed-out screen. */
+  signedOutReason: "minutes:signed-out-reason",
 } as const;
 
 /** Popup / side panel → service worker. */
@@ -91,6 +93,7 @@ export type Request =
   | { type: "signIn"; intent?: "create" }
   | { type: "signOut" }
   | { type: "listWorkspaces" }
+  | { type: "checkSession" }
   | { type: "chooseWorkspace"; workspace: Workspace }
   | { type: "start"; tabId: number }
   | { type: "stop" }

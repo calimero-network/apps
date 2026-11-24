@@ -384,3 +384,23 @@ test("settings: styled selects, switches that stick, diagnostics, and Log out at
   await expect(popup.getByRole("button", { name: "Sign in with Calimero" })).toBeVisible();
   await popup.close();
 });
+
+test("a session for an account the node no longer has signs the extension out when the popup opens", async () => {
+  test.skip(!node, noNode ?? "");
+  // What a wiped cluster leaves behind: a stored session the node has never heard of.
+  await setStorage(worker, "local", {
+    "minutes:auth": {
+      accountId: "acc-gone",
+      session: { accountId: "acc-gone", sessionToken: "x".repeat(40), refreshToken: "y".repeat(40), expiresAt: Date.now() + 3.6e6 },
+      nodeUrl: "http://127.0.0.1:2501",
+      nodes: [],
+      page: { origin: page.origin, version: null },
+      workspace: { appId: "app-gone", name: "Old team" },
+    },
+  });
+  const popup = await openPopup(context);
+  await expect(popup.getByRole("button", { name: "Sign in with Calimero" })).toBeVisible();
+  await expect(popup.getByRole("status")).toContainText("no longer exists");
+  expect(await getStorage(worker, "local", "minutes:auth")).toBeFalsy();
+  await popup.close();
+});
