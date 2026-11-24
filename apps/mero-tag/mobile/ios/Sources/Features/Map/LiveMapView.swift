@@ -1,6 +1,7 @@
 import CoreLocation
 import MapKit
 import SwiftUI
+import TagCore
 
 struct LiveMapView: View {
     @ObservedObject var store: TrackerStore

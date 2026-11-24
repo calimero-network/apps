@@ -1,5 +1,5 @@
 .PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
-        web-build app-gen app-build app-run app-test test clean
+        web-build core-test app-gen app-build app-run app-test test clean
 
 APP_DIR    := mobile/ios
 XCODEPROJ  := $(APP_DIR)/MeroTag.xcodeproj
@@ -27,6 +27,7 @@ help:
 	@echo "    app-gen      Generate MeroTag.xcodeproj from project.yml"
 	@echo "    app-build    Build the app for the simulator"
 	@echo "    app-run      Build + boot simulator + install + launch"
+	@echo "    core-test    swift test the TagCore package (no simulator)"
 	@echo "    app-test     Run the unit + UI test suites"
 	@echo ""
 	@echo "  Development cluster (merod local in Docker; see scripts/dev-cluster.sh)"
@@ -34,7 +35,7 @@ help:
 	@echo "    dev-down     Stop the cluster (state is kept)"
 	@echo ""
 	@echo "  Aggregate"
-	@echo "    test         logic-test (the no-Xcode subset)"
+	@echo "    test         logic-test + core-test (the no-simulator subset)"
 	@echo "    clean        Remove build artifacts"
 	@echo ""
 
@@ -89,6 +90,9 @@ app-run: app-build
 	  xcrun simctl install booted "$$APP" && \
 	  xcrun simctl launch booted network.calimero.merotag
 
+core-test:
+	cd $(APP_DIR)/TagCore && swift test
+
 app-test: app-gen
 	xcodebuild -project $(XCODEPROJ) -scheme $(SCHEME) \
 	  -destination 'platform=iOS Simulator,name=$(SIMULATOR)' \
@@ -106,7 +110,7 @@ dev-down:
 	scripts/dev-cluster.sh down
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
-test: logic-test
+test: logic-test core-test
 
 clean:
 	cd logic && rm -rf res target

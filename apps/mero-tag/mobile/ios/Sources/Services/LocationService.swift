@@ -3,6 +3,7 @@ import CoreLocation
 
 #if canImport(UIKit)
 import UIKit
+import TagCore
 #endif
 
 /// Bridges CoreLocation to the contract. Requests authorization, coalesces

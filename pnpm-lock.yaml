@@ -2567,16 +2567,73 @@ importers:
 
   apps/mero-tag/app:
     dependencies:
+      '@calimero-apps/connect':
+        specifier: workspace:*
+        version: link:../../../packages/connect
+      '@calimero-apps/glass':
+        specifier: workspace:*
+        version: link:../../../packages/glass
+      '@calimero-apps/passkey':
+        specifier: workspace:*
+        version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.35
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
     devDependencies:
+      '@calimero-apps/test-setup':
+        specifier: workspace:*
+        version: link:../../../packages/test-setup
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 9.39.5
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: 'catalog:'
+        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: 'catalog:'
+        version: 16.5.0
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
       vite:
         specifier: 'catalog:'
-        version: 6.4.5(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+        version: 6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
   apps/mero-updates/app:
     dependencies:
@@ -15629,7 +15686,7 @@ snapshots:
       '@humanfs/node': 0.16.8
       '@humanwhocodes/module-importer': 1.0.1
       '@humanwhocodes/retry': 0.4.3
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       ajv: 6.15.0
       chalk: 4.1.2
       cross-spawn: 7.0.6
@@ -15685,7 +15742,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
 
   esutils@2.0.3: {}
 

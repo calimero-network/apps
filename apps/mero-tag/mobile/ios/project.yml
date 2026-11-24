@@ -1,5 +1,10 @@
 # XcodeGen spec — regenerate MeroTag.xcodeproj with: `xcodegen generate`
-# (from this directory) or `make app-gen` from the repo root.
+# (from this directory) or `make app-gen` from apps/mero-tag.
+#
+# Everything that is not a view or a location service (the generated contract
+# client, the models, the space service and the tracker store) is the local
+# Swift package in TagCore/, tested with `swift test --package-path TagCore` on
+# macOS (no simulator).
 name: MeroTag
 options:
   bundleIdPrefix: network.calimero
@@ -16,6 +21,11 @@ packages:
   core:
     url: https://github.com/calimero-network/core
     exactVersion: 1.0.0-rc.35
+  # Mero Tag's non-UI layer: the generated contract client, the models, the
+  # space service and the tracker store, tested with `swift test` on macOS.
+  # Keep its core pin equal to the one above.
+  TagCore:
+    path: TagCore
 
 targets:
   MeroTag:
@@ -80,6 +90,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5"
     dependencies:
+      - package: TagCore
+        product: TagCore
       - package: core
         product: MeroKit
       - package: core
@@ -95,6 +107,10 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: MeroTag
+      - package: TagCore
+        product: TagCore
+      - package: TagCore
+        product: TagCoreTestSupport
       - package: core
         product: MeroKit
       - package: core

@@ -3,16 +3,13 @@
 Live location sharing on [Calimero](https://calimero.network): an AirTag / Find My-style app where positions live on
 your own Calimero cluster, not with a tracking company.
 
-**Landing page:** [`landing/`](landing/) — how it works, with real screen recordings and a promo film
-(`cd landing && npm install && npm run dev`; deploys to Vercel as-is).
-
 ```
 logic/        Rust WASM contract (calimero-sdk)
-app/          The page the bundle carries: the app's sign-in, approvals and consent returns
-mobile/ios/   SwiftUI iOS app (MapKit + CoreLocation), built on the official
-              Calimero Swift SDK (MeroKit + MeroKitUI)
-landing/      The landing page (Vite + React + Framer Motion) and its media
-promo/        The promo film (Remotion), rendered from the app's recordings
+app/          The page the bundle carries: the app's sign-in, approvals and consent returns, on the
+              fleet's shared sign-in (@calimero-apps/passkey, its native hand-offs) and glass look
+mobile/       The SwiftUI iOS app (MapKit + CoreLocation) on the Calimero Swift SDK; its non-UI layer,
+              with the contract client generated from logic/res/abi.json, is mobile/ios/TagCore
+              (see mobile/README.md)
 scripts/      setup, the development cluster
 ```
 
@@ -96,7 +93,8 @@ To build against a local core checkout, temporarily replace the `core` package's
 `app/` is a small page the bundle carries (`frontend-dir` in `logic/Cargo.toml`); the cluster serves it at
 `https://{label}.apps.calimero.network/{version}/`. It does only what the app can't: the passkey sign-in
 (`#native-sign-in`), step-up approvals (`#native-approve`) and passing the consent page's decision back
-(`?native-consent=1`). A production build needs `VITE_CALIMERO_MIN_RELEASE`, the lowest mero-tee release a node may
+(`?native-consent=1`), through `@calimero-apps/passkey/native`, the hand-offs every native app in this
+repository uses. `pnpm -F mero-tag lint typecheck test build` checks it. A production build needs `VITE_CALIMERO_MIN_RELEASE`, the lowest mero-tee release a node may
 run:
 
 ```bash

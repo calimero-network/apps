@@ -1,6 +1,7 @@
 import Foundation
 import MeroKit
 import MeroKitUI
+import TagCore
 
 /// Where Mero Tag signs in and where its served page sends the person back,
 /// read from the Info.plist keys `project.yml` sets. An empty value means the

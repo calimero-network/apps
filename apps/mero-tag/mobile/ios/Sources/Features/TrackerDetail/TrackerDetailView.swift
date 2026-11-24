@@ -1,5 +1,6 @@
 import MapKit
 import SwiftUI
+import TagCore
 
 struct TrackerDetailView: View {
     let trackerId: String

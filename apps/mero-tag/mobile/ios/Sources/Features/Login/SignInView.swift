@@ -1,4 +1,5 @@
 import SwiftUI
+import TagCore
 
 /// Sign-in on Calimero Cloud through Mero Tag's sign-in page: it opens in
 /// the system sign-in sheet, the person signs in, or creates an account, with

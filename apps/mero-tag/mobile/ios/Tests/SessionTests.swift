@@ -2,6 +2,8 @@ import MeroKit
 import MeroKitUI
 import XCTest
 @testable import MeroTag
+import TagCore
+import TagCoreTestSupport
 
 /// The sign-in → space → sign-out state machine, and what happens when the
 /// account session ends under the app.

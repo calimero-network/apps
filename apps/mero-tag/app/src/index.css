@@ -1,0 +1,70 @@
+/* Mero Tag on the fleet's glass (packages/glass): its tint, the rest is glass's. */
+:root {
+  --glass-tint: #5b4bff;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  /* The same three declarations as `glass-fields`. */
+  background-color: var(--glass-ground);
+  background-image: var(--glass-fields);
+  background-attachment: fixed;
+  color: var(--glass-ink);
+  font-family: var(--glass-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 48px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.card {
+  padding: 20px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.dim {
+  color: var(--glass-muted);
+  line-height: 1.5;
+}
+
+.err {
+  color: var(--glass-bad-ink);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.signin-control {
+  margin-top: 12px;
+}

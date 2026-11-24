@@ -1,4 +1,5 @@
 import SwiftUI
+import TagCore
 
 /// After sign-in: create a space, or join one from an invite link. Opening a
 /// space by its raw ID stays available behind the technical details.
