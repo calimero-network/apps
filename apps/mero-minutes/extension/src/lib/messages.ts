@@ -2,6 +2,7 @@
 import type { Platform } from "./platform";
 import type { Speaker } from "./queue";
 import type { Capabilities, TierId } from "./tiers";
+import type { Notes, NotesModelId, NotesSetting } from "./notes";
 
 export interface Settings {
   tier: TierId | "auto";
@@ -12,9 +13,11 @@ export interface Settings {
   pageOverride: string;
   /** Add the action items found in the transcript when a meeting ends. */
   autoActions: boolean;
+  /** Write a summary and action items with a small model on this laptop (WebGPU); `off`, or with no GPU, phrase matching. */
+  notesModel: NotesSetting;
 }
 
-export const DEFAULT_SETTINGS: Settings = { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true };
+export const DEFAULT_SETTINGS: Settings = { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true, notesModel: "auto" };
 
 export interface Workspace {
   appId: string;
@@ -37,7 +40,7 @@ export interface Line {
   startMs: number;
 }
 
-export type Phase = "idle" | "starting" | "loading-model" | "recording" | "stopping" | "saved" | "error";
+export type Phase = "idle" | "starting" | "loading-model" | "recording" | "stopping" | "notes" | "saved" | "error";
 
 export interface ModelProgress {
   /** 0–1 over every file. */
@@ -61,6 +64,10 @@ export interface RecorderStatus {
   link: string | null;
   /** Action items added from the transcript when it ended. */
   actions?: number;
+  /** While the notes are written: the model's download, then the parts done. */
+  notes?: { model: NotesModelId; fraction: number; step: "download" | "write" } | null;
+  /** The notes model wrote the summary (and the action items). */
+  wroteSummary?: boolean;
 }
 
 export const IDLE: RecorderStatus = {
@@ -98,7 +105,8 @@ export type Request =
   | { type: "start"; tabId: number }
   | { type: "stop" }
   | { type: "dismiss" }
-  | { type: "preload"; tier: TierId };
+  | { type: "preload"; tier: TierId }
+  | { type: "preloadNotes"; model: NotesModelId };
 
 export type Reply<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -107,7 +115,9 @@ export type OffscreenCommand =
   | { target: "offscreen"; type: "capture"; streamId: string; mic: boolean; tier: TierId; language: string }
   | { target: "offscreen"; type: "stop" }
   | { target: "offscreen"; type: "preload"; tier: TierId }
-  | { target: "offscreen"; type: "caps" };
+  | { target: "offscreen"; type: "caps" }
+  | { target: "offscreen"; type: "preloadNotes"; model: NotesModelId }
+  | { target: "offscreen"; type: "notes"; model: NotesModelId; lines: { seq: number; speaker: string; text: string }[] };
 
 /** Offscreen page → service worker (and the popup, for levels). */
 export type OffscreenEvent =
@@ -119,6 +129,9 @@ export type OffscreenEvent =
   | { source: "offscreen"; type: "captureError"; message: string }
   | { source: "offscreen"; type: "notice"; message: string }
   | { source: "offscreen"; type: "log"; message: string }
-  | { source: "offscreen"; type: "tick" };
+  | { source: "offscreen"; type: "tick" }
+  | { source: "offscreen"; type: "notesProgress"; model: NotesModelId; fraction: number; step: "download" | "write" }
+  | { source: "offscreen"; type: "notes"; notes: Notes }
+  | { source: "offscreen"; type: "notesError"; error: string };
 
 export type { Capabilities };

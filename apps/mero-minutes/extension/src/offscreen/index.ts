@@ -13,6 +13,8 @@ import { Segmenter } from "../lib/segmenter";
 import { cleanTranscript } from "../lib/text";
 import { stepDown, type TierId } from "../lib/tiers";
 import type { FromWorker, ToWorker } from "../transcribe/protocol";
+import { writeNotes, type ChatMessage, type NotesModelId } from "../lib/notes";
+import type { FromNotesWorker, ToNotesWorker } from "../notes/protocol";
 import type { Speaker } from "../lib/queue";
 
 type Event = OffscreenEvent extends infer E ? (E extends OffscreenEvent ? Omit<E, "source"> : never) : never;
@@ -213,6 +215,75 @@ async function drained(): Promise<void> {
   void emit({ type: "drained", durationMs: Date.now() - r.startedAt });
 }
 
+// ── notes: a small language model writes the summary and action items ──────
+
+let notesWorker: Worker | null = null;
+let notesLoad: { model: NotesModelId; done: Promise<void>; resolve: () => void; reject: (e: Error) => void } | null = null;
+const notesJobs = new Map<number, { resolve: (text: string) => void; reject: (e: Error) => void }>();
+let notesNext = 1;
+/** The device the notes model runs on; tests set `wasm` (no GPU in headless Chromium). */
+const NOTES_DEVICE: "webgpu" | "wasm" = (globalThis as { __MINUTES_NOTES_DEVICE__?: "webgpu" | "wasm" }).__MINUTES_NOTES_DEVICE__ ?? "webgpu";
+
+function notes(): Worker {
+  if (notesWorker) return notesWorker;
+  notesWorker = new Worker(new URL("../notes/worker.ts", import.meta.url), { type: "module" });
+  notesWorker.addEventListener("message", (e: MessageEvent<FromNotesWorker>) => {
+    const m = e.data;
+    if (m.type === "progress") void emit({ type: "notesProgress", model: m.model, fraction: m.fraction, step: "download" });
+    else if (m.type === "ready") notesLoad?.resolve();
+    else if (m.type === "loadError") notesLoad?.reject(new Error(m.error));
+    else {
+      const job = notesJobs.get(m.id);
+      notesJobs.delete(m.id);
+      if (m.type === "text") job?.resolve(m.text);
+      else job?.reject(new Error(m.error));
+    }
+  });
+  return notesWorker;
+}
+const toNotes = (m: ToNotesWorker) => notes().postMessage(m);
+
+function loadNotes(model: NotesModelId): Promise<void> {
+  if (notesLoad?.model === model) return notesLoad.done;
+  let resolve!: () => void;
+  let reject!: (e: Error) => void;
+  const done = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  notesLoad = { model, done, resolve, reject };
+  done.catch(() => {
+    if (notesLoad?.done === done) notesLoad = null;
+  });
+  toNotes({ type: "load", model, device: NOTES_DEVICE });
+  return done;
+}
+
+function generate(messages: ChatMessage[]): Promise<string> {
+  const id = notesNext++;
+  return new Promise((resolve, reject) => {
+    notesJobs.set(id, { resolve, reject });
+    toNotes({ type: "generate", id, messages });
+  });
+}
+
+async function runNotes(model: NotesModelId, lines: { seq: number; speaker: string; text: string }[]): Promise<void> {
+  // The service worker sleeps after 30 s without an event; writing can take longer.
+  const keepAlive = window.setInterval(() => void emit({ type: "tick" }), 10_000);
+  try {
+    await loadNotes(model);
+    void emit({ type: "notesProgress", model, fraction: 0, step: "write" });
+    const result = await writeNotes(lines, { generate }, (done, of) =>
+      void emit({ type: "notesProgress", model, fraction: done / of, step: "write" }),
+    );
+    void emit({ type: "notes", notes: result });
+  } catch (e) {
+    void emit({ type: "notesError", error: e instanceof Error ? e.message : String(e) });
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
   const m = message as OffscreenCommand;
   if (m.target !== "offscreen") return false;
@@ -234,6 +305,17 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
       return true;
     case "preload":
       toWorker({ type: "load", tier: m.tier });
+      respond(true);
+      return false;
+    case "preloadNotes":
+      void loadNotes(m.model).then(
+        () => emit({ type: "notesProgress", model: m.model, fraction: 1, step: "download" }),
+        (e: unknown) => emit({ type: "notesError", error: e instanceof Error ? e.message : String(e) }),
+      );
+      respond(true);
+      return false;
+    case "notes":
+      void runNotes(m.model, m.lines);
       respond(true);
       return false;
   }

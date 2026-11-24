@@ -17,11 +17,11 @@ export function Saved({ status }: { status: RecorderStatus }) {
           <p className="subtitle">{status.meeting?.title}</p>
         </div>
       </div>
-      {status.actions !== undefined && status.actions > 0 && (
+      {((status.actions !== undefined && status.actions > 0) || status.wroteSummary) && (
         <div className="banner">
           <CheckIcon size={14} />
           <span className="grow">
-            {status.actions === 1 ? "1 action item" : `${status.actions} action items`} added from the transcript.
+            {savedNote(status.actions ?? 0, !!status.wroteSummary)}
           </span>
         </div>
       )}
@@ -42,4 +42,11 @@ export function Saved({ status }: { status: RecorderStatus }) {
       </div>
     </main>
   );
+}
+
+export function savedNote(actions: number, summary: boolean): string {
+  const items = actions === 1 ? "1 action item" : `${actions} action items`;
+  if (summary && actions > 0) return `A summary and ${items} added from the transcript.`;
+  if (summary) return "A summary added from the transcript.";
+  return `${items.charAt(0).toUpperCase()}${items.slice(1)} added from the transcript.`;
 }

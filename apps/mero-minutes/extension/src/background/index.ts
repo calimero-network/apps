@@ -8,6 +8,7 @@
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
 import { PACKAGE, meetingLink, servedPage } from "../lib/appHost";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
+import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
 import { openAuthWindow } from "../lib/authWindow";
 import { newHandoff, openHandoff, signInUrl, type SignInIntent } from "../lib/handoff";
 import {
@@ -216,6 +217,7 @@ async function start(tabId: number): Promise<void> {
   try {
     await ensureOffscreen();
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
+    lastCaps = caps;
     const tier = resolveTier(s.tier, caps, s.language);
     await log(
       `start: platform=${platform} tier=${tier} choice=${s.tier} lang=${s.language || "auto"} mic=${s.mic} webgpu=${caps.webgpu} mem=${caps.deviceMemoryGb} cores=${caps.cores} cached=${(caps.cached ?? []).join(",") || "none"}`,
@@ -268,6 +270,12 @@ async function start(tabId: number): Promise<void> {
 
 let recordingTab: number | null = null;
 let stopping: Promise<void> | null = null;
+/** What the laptop can do, as the offscreen page measured it at the last start. */
+let lastCaps: Capabilities | null = null;
+/** The notes the offscreen page is writing (`notes` / `notesError` settle it). */
+let notesWait: { resolve: (n: Notes) => void; reject: (e: Error) => void } | null = null;
+/** Longest a meeting's notes may take before phrase matching stands in. */
+export const NOTES_TIMEOUT_MS = 10 * 60_000;
 
 async function stop(): Promise<void> {
   const s = await status();
@@ -301,7 +309,7 @@ async function abandon(message: string): Promise<void> {
  * The action items said in the meeting (`lib/actionItems.ts`), added to it:
  * read back the saved transcript, skip what is already there, add the rest.
  */
-async function addFoundActions(meeting: { id: string; appId: string }): Promise<number> {
+async function savedTranscript(meeting: { id: string; appId: string }): Promise<TranscriptLine[]> {
   const lines: TranscriptLine[] = [];
   let from: number | null = 0;
   while (from !== null) {
@@ -310,6 +318,11 @@ async function addFoundActions(meeting: { id: string; appId: string }): Promise<
     lines.push(...page.segments);
     from = page.next;
   }
+  return lines;
+}
+
+async function addFoundActions(meeting: { id: string; appId: string }, read?: TranscriptLine[]): Promise<number> {
+  const lines = read ?? (await savedTranscript(meeting));
   const existing = await onNode((_c, app) => app.listActions({ meetingId: meeting.id }), meeting.appId);
   const found = findActions(
     lines,
@@ -325,6 +338,48 @@ async function addFoundActions(meeting: { id: string; appId: string }): Promise<
   return found.length;
 }
 
+/**
+ * The notes model (lib/notes.ts, run by the offscreen page) reads the saved
+ * transcript and writes the summary and action items, which are added to the
+ * meeting: the summary only when the meeting has none, each task once. If the
+ * model finds no task, phrase matching still looks. Throws when the model
+ * could not run, and the caller falls back to phrase matching.
+ */
+async function writeMeetingNotes(meeting: { id: string; appId: string }, model: NotesModelId): Promise<{ actions: number; wroteSummary: boolean }> {
+  const lines = await savedTranscript(meeting);
+  if (lines.length === 0) return { actions: 0, wroteSummary: false };
+  await setStatus((st) => ({ ...st, phase: "notes", notes: { model, fraction: 0, step: "download" } }));
+  const result = new Promise<Notes>((resolve, reject) => {
+    notesWait = { resolve, reject };
+  });
+  const timer = setTimeout(() => notesWait?.reject(new Error("the notes took too long")), NOTES_TIMEOUT_MS);
+  let notes: Notes;
+  try {
+    await toOffscreen({ target: "offscreen", type: "notes", model, lines: lines.map((l) => ({ seq: l.seq, speaker: l.speaker, text: l.text })) });
+    notes = await result;
+  } finally {
+    clearTimeout(timer);
+    notesWait = null;
+  }
+  await log(`notes: ${notes.actions.length} tasks, summary ${notes.summary.length} chars`);
+  const existing = await onNode((_c, app) => app.listActions({ meetingId: meeting.id }), meeting.appId);
+  const add = actionsToAdd(notes.actions, existing.map((x) => x.text));
+  for (const a of add) {
+    await onNode((_c, app) => app.addAction({ meetingId: meeting.id, text: a.text, assignee: a.assignee, sourceSeq: null }), meeting.appId);
+  }
+  const actions = add.length > 0 ? add.length : await addFoundActions(meeting, lines);
+  let wroteSummary = false;
+  // A title is not a summary: the small model sometimes writes only one.
+  if (notes.summary.split(/\s+/).length >= 8) {
+    const current = await onNode((_c, app) => app.getMeeting({ meetingId: meeting.id }), meeting.appId);
+    if (!current.summary.trim()) {
+      await onNode((_c, app) => app.setSummary({ meetingId: meeting.id, summary: notes.summary }), meeting.appId);
+      wroteSummary = true;
+    }
+  }
+  return { actions, wroteSummary };
+}
+
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
 function finish(durationMs: number): Promise<void> {
   stopping ??= (async () => {
@@ -334,6 +389,7 @@ function finish(durationMs: number): Promise<void> {
     let link: string | null = null;
     let error: string | null = null;
     let actions = 0;
+    let wroteSummary = false;
     const a = await auth();
     const meeting = s.meeting;
     if (a && meeting) {
@@ -346,11 +402,26 @@ function finish(durationMs: number): Promise<void> {
         error = describe(e);
       }
       link = meetingLink(a.page, meeting.appId, meeting.id);
-      if (all && !error && (await settings()).autoActions) {
-        actions = await addFoundActions(meeting).catch(async (e: unknown) => {
-          await log(`actions: ${describe(e)}`);
-          return 0;
-        });
+      const s = await settings();
+      if (all && !error && s.autoActions) {
+        const model = lastCaps ? notesModelFor(s.notesModel, lastCaps) : null;
+        let written = false;
+        if (model) {
+          try {
+            const r = await writeMeetingNotes(meeting, model);
+            actions = r.actions;
+            wroteSummary = r.wroteSummary;
+            written = true;
+          } catch (e) {
+            await log(`notes: ${describe(e)}; phrase matching instead`);
+          }
+        }
+        if (!written) {
+          actions = await addFoundActions(meeting).catch(async (e: unknown) => {
+            await log(`actions: ${describe(e)}`);
+            return 0;
+          });
+        }
       }
     }
     await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} actions=${actions} error=${error ?? "none"}`);
@@ -363,6 +434,8 @@ function finish(durationMs: number): Promise<void> {
       phase: "saved",
       link,
       actions,
+      wroteSummary,
+      notes: null,
       pending: q && !all ? q.pending : 0,
       uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",
       error: error ?? st.error,
@@ -421,6 +494,17 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
       return;
     case "log":
       return;
+    case "notesProgress":
+      await setStatus((s) => ({ ...s, notes: { model: event.model, fraction: event.fraction, step: event.step } }));
+      return;
+    case "notes":
+      notesWait?.resolve(event.notes);
+      return;
+    case "notesError":
+      await log(`notes: ${event.error}`);
+      notesWait?.reject(new Error(event.error));
+      await setStatus((s) => (s.phase === "notes" ? s : { ...s, notes: null }));
+      return;
     case "drained":
       await finish(event.durationMs);
       return;
@@ -460,6 +544,9 @@ async function handle(req: Request): Promise<unknown> {
     case "preload":
       await ensureOffscreen();
       return toOffscreen({ target: "offscreen", type: "preload", tier: req.tier });
+    case "preloadNotes":
+      await ensureOffscreen();
+      return toOffscreen({ target: "offscreen", type: "preloadNotes", model: req.model });
   }
 }
 
@@ -471,7 +558,11 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     // Levels are for the popup. Everything else is handled in the order it was
     // sent: a burst of segments keeps every line, and `drained` comes after the
     // segments before it are queued.
-    if (e.type !== "levels") {
+    // The notes come while `drained` is still being handled (it waits for
+    // them), so they cannot wait in line behind it.
+    if (e.type === "notes" || e.type === "notesError" || e.type === "notesProgress") {
+      void onOffscreen(e).catch((err: unknown) => log(`event ${e.type} failed: ${describe(err)}`));
+    } else if (e.type !== "levels") {
       offscreenEvents = offscreenEvents.then(() => onOffscreen(e)).catch((err: unknown) => log(`event ${e.type} failed: ${describe(err)}`));
     }
     return false;

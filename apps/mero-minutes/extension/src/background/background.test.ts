@@ -18,6 +18,7 @@ interface Meeting {
   ended: boolean;
   durationMs: number;
   segments: Map<number, QueuedSegment>;
+  summary?: string;
 }
 
 class FakeNode {
@@ -45,7 +46,7 @@ class FakeNode {
       startMeeting: async (a: { title: string; platform: string; model: string }) => {
         this.gate();
         const id = `m${++this.n}`;
-        this.meetings.set(id, { id, appId, ...a, ended: false, durationMs: 0, segments: new Map() });
+        this.meetings.set(id, { id, appId, ...a, ended: false, durationMs: 0, segments: new Map(), summary: "" });
         return id;
       },
       appendSegments: async (a: { meetingId: string; segments: QueuedSegment[] }) => {
@@ -69,6 +70,11 @@ class FakeNode {
         const from = all.filter((x) => x.seq >= a.fromSeq);
         const page = from.slice(0, a.limit);
         return { segments: page, next: from.length > a.limit ? page.at(-1)!.seq + 1 : null };
+      },
+      getMeeting: async (a: { meetingId: string }) => ({ summary: this.meetings.get(a.meetingId)?.summary ?? "" }),
+      setSummary: async (a: { meetingId: string; summary: string }) => {
+        this.meetings.get(a.meetingId)!.summary = a.summary;
+        return {};
       },
       listActions: async (a: { meetingId: string }) => this.actions.filter((x) => x.meetingId === a.meetingId),
       addAction: async (a: { meetingId: string; text: string; assignee: string; sourceSeq: number }) => {
@@ -573,6 +579,85 @@ describe("service worker: when recording goes wrong", () => {
       const r = await request({ type: "checkSession" });
       expect(r).toEqual({ ok: true, value: { signedIn: true } });
       expect(h.local.get("minutes:auth")).toEqual(AUTH);
+    });
+  });
+
+  describe("notes written by the model on this laptop", () => {
+    const gpu = (answer: (lines: { text: string }[]) => Event) => {
+      h.offscreen = async (c) => {
+        if (c.type === "caps") return { webgpu: true, deviceMemoryGb: 8, cores: 8, cached: ["light"] };
+        if (c.type === "notes") {
+          setTimeout(() => {
+            void event({ type: "notesProgress", model: c.model, fraction: 0.5, step: "write" });
+            void event(answer(c.lines));
+          }, 0);
+        }
+        return true;
+      };
+    };
+    const record = async (lines: string[]) => {
+      await request({ type: "start", tabId: 7 });
+      await event({ type: "model", tier: "light", state: "ready" });
+      for (const [i, t] of lines.entries()) await event(segment(i % 2 ? "others" : "you", i * 3_000, t));
+      await request({ type: "stop" });
+      await event({ type: "drained", durationMs: 9_000 });
+      await settle(80);
+    };
+
+    it("adds the model's summary and tasks, with owners and due dates", async () => {
+      let asked: { text: string }[] = [];
+      gpu((lines) => {
+        asked = lines;
+        return {
+          type: "notes",
+          notes: {
+            summary: "The team reviewed the launch and agreed who writes the notes and tests Brave.",
+            actions: [
+              { text: "Write the release notes", assignee: "Ana", due: "Thursday" },
+              { text: "Test Brave shields", assignee: "Marko", due: "today" },
+            ],
+          },
+        } as Event;
+      });
+      await record(["Let's go through the launch.", "Ana will write the notes by Thursday and Marko tests Brave today."]);
+      const notesCmd = h.toOffscreen.find((c) => c.type === "notes") as Extract<OffscreenCommand, { type: "notes" }>;
+      // Automatic picks the 1.5B model on an 8 GB laptop with WebGPU.
+      expect(notesCmd.model).toBe("better");
+      expect(asked.map((l) => l.text)).toHaveLength(2);
+      expect(node.actions.map((a) => [a.text, a.assignee])).toEqual([
+        ["Write the release notes (by Thursday)", "Ana"],
+        ["Test Brave shields (by today)", "Marko"],
+      ]);
+      expect(node.meetings.get("m1")!.summary).toMatch(/reviewed the launch/);
+      const st = status();
+      expect(st.phase).toBe("saved");
+      expect(st.actions).toBe(2);
+      expect(st.wroteSummary).toBe(true);
+      expect(st.notes).toBeNull();
+      expect(h.offscreenOpen).toBe(false);
+    });
+
+    it("falls back to phrase matching when the model fails", async () => {
+      gpu(() => ({ type: "notesError", error: "WebGPU device lost" }) as Event);
+      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      expect(status().phase).toBe("saved");
+      expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
+      expect(status().wroteSummary).toBe(false);
+      expect(logLines().some((l) => l.includes("phrase matching instead"))).toBe(true);
+    });
+
+    it("lets phrase matching look when the model finds no task", async () => {
+      gpu(() => ({ type: "notes", notes: { summary: "Short.", actions: [] } }) as Event);
+      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
+      // One word is a title, not a summary.
+      expect(node.meetings.get("m1")!.summary).toBe("");
+    });
+
+    it("never asks the model without WebGPU", async () => {
+      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      expect(h.toOffscreen.some((c) => c.type === "notes")).toBe(false);
+      expect(node.actions).toHaveLength(1);
     });
   });
 });

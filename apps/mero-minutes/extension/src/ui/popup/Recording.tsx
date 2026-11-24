@@ -1,5 +1,6 @@
 import type { RecorderStatus } from "../../lib/messages";
 import { TIERS } from "../../lib/tiers";
+import { NOTES_MODELS } from "../../lib/notes";
 import { clock, useElapsed, useLevels } from "../hooks";
 import { PanelIcon, Spinner, StopIcon } from "../icons";
 import { ask } from "../rpc";
@@ -21,6 +22,7 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
   const openPanel = () => {
     if (tabId !== null) void chrome.sidePanel.open({ tabId });
   };
+  if (status.phase === "notes") return <WritingNotes status={status} />;
   const label =
     status.phase === "starting"
       ? "Starting…"
@@ -103,6 +105,32 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
           {status.pending > 0 ? ` · ${status.pending} lines saving` : ""}
         </p>
       </div>
+    </main>
+  );
+}
+
+/** After the transcript: the model on this laptop writes the summary and action items. */
+function WritingNotes({ status }: { status: RecorderStatus }) {
+  const n = status.notes;
+  const model = n ? NOTES_MODELS[n.model] : null;
+  const pct = n ? Math.round(n.fraction * 100) : 0;
+  return (
+    <main className="body">
+      <section className="card stack" style={{ gap: 12, padding: 16 }} aria-live="polite">
+        <span className="hstack small muted">
+          <Spinner size={12} />
+          {n?.step === "download" ? "Downloading the notes model" : "Writing the summary and action items"}
+        </span>
+        <span className="strong truncate">{status.meeting?.title}</span>
+        <div className="progress" role="progressbar" aria-valuenow={pct} aria-label="Notes">
+          <span style={{ width: `${pct}%` }} />
+        </div>
+        <span className="small muted">
+          {model ? `${model.name} on this laptop` : "On this laptop"}
+          {n?.step === "download" ? ` · ${pct}% of ${model ? Math.round(model.sizeMb) : "?"} MB, once` : ""}. The transcript is
+          saved; you can close this.
+        </span>
+      </section>
     </main>
   );
 }
