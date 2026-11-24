@@ -56,7 +56,10 @@ the node's own, whose signed image its quote must still be. Production trusts
 decides, whatever the bundle was built with (`VITE_CALIMERO_ENV`,
 `VITE_CALIMERO_CLUSTER`): a bundled frontend served on production, a custom
 domain included, trusts `locked-read-only` only, and one served on staging
-trusts any of staging's profiles.
+trusts any of staging's profiles. Every web app connects through `createClient` (directly or
+through `@calimero-apps/passkey`'s session), so this policy is the only one:
+`src/oneTrustPath.test.ts` fails when an app or package makes a
+`CalimeroClient` of its own.
 When nothing runs the package (404), or the build has no floor or package,
 it throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
 from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured

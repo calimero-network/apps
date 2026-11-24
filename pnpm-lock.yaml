@@ -2932,6 +2932,9 @@ importers:
       '@calimero-network/mero-js':
         specifier: catalog:component
         version: 1.0.0-rc.35
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)
@@ -2946,7 +2949,7 @@ importers:
         version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
       vitest:
         specifier: 'catalog:'
-        version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.7(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
+        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@7.3.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(terser@5.51.2)(tsx@4.23.13))
 
   packages/glass:
     dependencies:
