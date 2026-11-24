@@ -448,7 +448,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend_dirs != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A change every frontend shares (the lockfile) runs all of them, in order:
+    # lint, typecheck, tests and builds of 28 apps come close to 20 minutes.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

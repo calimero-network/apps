@@ -1959,6 +1959,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 25.0.1
+      mero-minutes-extension:
+        specifier: workspace:*
+        version: link:../extension
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
