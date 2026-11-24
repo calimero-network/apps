@@ -244,6 +244,24 @@
       "public": false,
       "returns": "MeetingView"
     },
+    "search": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Meetings whose title, and lines whose text, contain every word of\n`query` (any case), newest meeting first and lines in order; at most\n`limit` hits (1–100).",
+      "kind": "view",
+      "params": [
+        [
+          "query",
+          "string"
+        ],
+        [
+          "limit",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "SearchResult"
+    },
     "setActionDone": {
       "allowSystem": false,
       "confirm": false,
@@ -487,6 +505,56 @@
         [
           "openActions",
           "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SearchHit": {
+      "fields": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "title",
+          "string"
+        ],
+        [
+          "platform",
+          "string"
+        ],
+        [
+          "startedAt",
+          "u64"
+        ],
+        [
+          "seq",
+          "option<u32>"
+        ],
+        [
+          "startMs",
+          "option<u32>"
+        ],
+        [
+          "speaker",
+          "option<string>"
+        ],
+        [
+          "text",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SearchResult": {
+      "fields": [
+        [
+          "hits",
+          "list<SearchHit>"
+        ],
+        [
+          "more",
+          "bool"
         ]
       ],
       "kind": "record"

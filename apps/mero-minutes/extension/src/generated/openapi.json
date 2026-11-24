@@ -1535,6 +1535,167 @@
         ],
         "type": "object"
       },
+      "SearchArgs": {
+        "description": "The arguments of `search`, by name.",
+        "properties": {
+          "limit": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "SearchHit": {
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startMs": {
+            "anyOf": [
+              {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer",
+                "x-calimero-type": "u32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId",
+          "title",
+          "platform",
+          "startedAt",
+          "seq",
+          "startMs",
+          "speaker",
+          "text"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SearchHit"
+      },
+      "SearchRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SearchArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SearchResult"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SearchResult": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hits",
+          "more"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SearchResult"
+      },
       "SegmentInput": {
         "properties": {
           "endMs": {
@@ -2893,6 +3054,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "Renames a meeting. The recorder only."
+      }
+    },
+    "/apps/{app}/methods/search": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"search\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "search",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `search`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Meetings whose title, and lines whose text, contain every word of\n`query` (any case), newest meeting first and lines in order; at most\n`limit` hits (1–100)."
       }
     },
     "/apps/{app}/methods/setActionDone": {

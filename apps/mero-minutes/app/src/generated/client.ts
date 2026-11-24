@@ -49,6 +49,24 @@ export interface MeetingView {
   openActions: number;
 }
 
+/** The app type `SearchHit`. */
+export interface SearchHit {
+  meetingId: string;
+  title: string;
+  platform: string;
+  startedAt: string;
+  seq: number | null;
+  startMs: number | null;
+  speaker: string | null;
+  text: string | null;
+}
+
+/** The app type `SearchResult`. */
+export interface SearchResult {
+  hits: SearchHit[];
+  more: boolean;
+}
+
 /** The app type `SegmentInput`. */
 export interface SegmentInput {
   seq: number;
@@ -132,6 +150,12 @@ export interface RemoveActionArgs {
 export interface RenameMeetingArgs {
   meetingId: string;
   title: string;
+}
+
+/** The arguments of `search`. */
+export interface SearchArgs {
+  query: string;
+  limit: number;
 }
 
 /** The arguments of `setActionDone`. */
@@ -306,6 +330,8 @@ export interface MeroMinutesApi {
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<null>;
   /** call `renameMeeting`. */
   renameMeeting(args: RenameMeetingArgs, options?: CallOptions): Promise<MeetingView>;
+  /** view `search`. */
+  search(args: SearchArgs, options?: ViewOptions): Promise<SearchResult>;
   /** call `setActionDone`. */
   setActionDone(args: SetActionDoneArgs, options?: CallOptions): Promise<ActionView>;
   /** call `setSummary`. */
@@ -349,6 +375,8 @@ export interface MeroMinutesRawApi {
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<CallAnswer<null>>;
   /** call `renameMeeting`. */
   renameMeeting(args: RenameMeetingArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
+  /** view `search`. */
+  search(args: SearchArgs, options?: ViewOptions): Promise<ViewAnswer<SearchResult>>;
   /** call `setActionDone`. */
   setActionDone(args: SetActionDoneArgs, options?: CallOptions): Promise<CallAnswer<ActionView>>;
   /** call `setSummary`. */
@@ -391,6 +419,7 @@ export class MeroMinutesClient<T extends AppCallTransport = AppTransport> implem
       openActions: (options = {}) => this.#view<ActionView[]>('openActions', {}, options),
       removeAction: (args, options = {}) => this.#call<null>('removeAction', args, options),
       renameMeeting: (args, options = {}) => this.#call<MeetingView>('renameMeeting', args, options),
+      search: (args, options = {}) => this.#view<SearchResult>('search', args, options),
       setActionDone: (args, options = {}) => this.#call<ActionView>('setActionDone', args, options),
       setSummary: (args, options = {}) => this.#call<MeetingView>('setSummary', args, options),
       startMeeting: (args, options = {}) => this.#call<string>('startMeeting', args, options),
@@ -489,6 +518,11 @@ export class MeroMinutesClient<T extends AppCallTransport = AppTransport> implem
   /** call `renameMeeting`. */
   async renameMeeting(args: RenameMeetingArgs, options: CallOptions = {}): Promise<MeetingView> {
     return (await this.#call<MeetingView>('renameMeeting', args, options)).result;
+  }
+
+  /** view `search`. */
+  async search(args: SearchArgs, options: ViewOptions = {}): Promise<SearchResult> {
+    return (await this.#view<SearchResult>('search', args, options)).result;
   }
 
   /** call `setActionDone`. */

@@ -47,6 +47,10 @@ const MAX_SEGMENTS: u32 = 10_000;
 const MAX_ACTIONS: u32 = 500;
 /// Segments one `transcript` page returns at most.
 const MAX_PAGE: u32 = 500;
+/// At most this many hits per search.
+const MAX_HITS: u32 = 100;
+/// Lines a search reads before it stops and says there may be more.
+const SEARCH_SCAN: usize = 50_000;
 /// Segments one `deleteMeeting` call removes; the client calls again while some remain.
 const DELETE_BATCH: u32 = 1_000;
 
@@ -178,6 +182,30 @@ pub struct ActionView {
     pub created_at: u64,
     #[serde(with = "calimero_sdk::json::u64_str")]
     pub updated_at: u64,
+}
+
+/// A place where a search matched: a meeting's title (`seq` empty) or one of its lines.
+#[derive(Clone, Debug, Serialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub meeting_id: String,
+    pub title: String,
+    pub platform: String,
+    #[serde(with = "calimero_sdk::json::u64_str")]
+    pub started_at: u64,
+    /// The matching line, or `None` when the title matched.
+    pub seq: Option<u32>,
+    pub start_ms: Option<u32>,
+    pub speaker: Option<String>,
+    pub text: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub hits: Vec<SearchHit>,
+    /// The search stopped at its limit or its scan budget: there may be more.
+    pub more: bool,
 }
 
 #[derive(Clone, Debug, Serialize, AbiType)]
@@ -661,6 +689,83 @@ impl Minutes {
             None
         };
         Ok(TranscriptPage { segments, next })
+    }
+
+    /// Meetings whose title, and lines whose text, contain every word of
+    /// `query` (any case), newest meeting first and lines in order; at most
+    /// `limit` hits (1–100).
+    #[app::view]
+    pub fn search(&self, query: String, limit: u32) -> app::Result<SearchResult> {
+        let _ = me()?;
+        let words: Vec<String> = query
+            .to_lowercase()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        if words.is_empty() {
+            return Ok(SearchResult {
+                hits: Vec::new(),
+                more: false,
+            });
+        }
+        let limit = limit.clamp(1, MAX_HITS) as usize;
+        let matches = |text: &str| {
+            let text = text.to_lowercase();
+            words.iter().all(|w| text.contains(w.as_str()))
+        };
+        let mut hits = Vec::new();
+        let mut scanned = 0usize;
+        let meetings = self
+            .by_time
+            .page(FindOpts::default().limit(ROWS).reverse())?;
+        for (_, id) in meetings.items {
+            let Some(row) = self.meetings.get(&id)? else {
+                continue;
+            };
+            let hit = |seq: Option<u32>, line: Option<&SegmentRow>| SearchHit {
+                meeting_id: id.clone(),
+                title: row.title.clone(),
+                platform: row.platform.clone(),
+                started_at: row.started_at,
+                seq,
+                start_ms: line.map(|l| l.start_ms),
+                speaker: line.map(|l| l.speaker.clone()),
+                text: line.map(|l| l.text.clone()),
+            };
+            if matches(&row.title) {
+                hits.push(hit(None, None));
+                if hits.len() >= limit {
+                    return Ok(SearchResult { hits, more: true });
+                }
+            }
+            let mut from = 0u32;
+            loop {
+                let page = self.segments.prefix(
+                    &[KeyPart::Str(id.clone())],
+                    FindOpts::default()
+                        .limit(MAX_PAGE)
+                        .from(vec![KeyPart::Int(i128::from(from))]),
+                )?;
+                let count = page.items.len();
+                for ((_, seq), line) in page.items {
+                    scanned += 1;
+                    from = seq.saturating_add(1);
+                    if matches(&line.text) {
+                        hits.push(hit(Some(seq), Some(&line)));
+                        if hits.len() >= limit {
+                            return Ok(SearchResult { hits, more: true });
+                        }
+                    }
+                    if scanned >= SEARCH_SCAN {
+                        return Ok(SearchResult { hits, more: true });
+                    }
+                }
+                if count < MAX_PAGE as usize || from == u32::MAX {
+                    break;
+                }
+            }
+        }
+        Ok(SearchResult { hits, more: false })
     }
 
     /// The calling account.

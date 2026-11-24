@@ -665,3 +665,198 @@ fn guests_record_their_own_meetings_but_not_others() {
     let r = call(&mut t, "gus", "deleteMeeting", json!({ "meetingId": id }));
     assert_eq!(r["remaining"], 0);
 }
+
+// ── search and many meetings per workspace ───────────────────────────────────
+
+#[test]
+fn many_meetings_in_one_workspace_each_keep_their_own_transcript() {
+    let mut t = app();
+    let ids: Vec<String> = (0..12)
+        .map(|i| {
+            start(
+                &mut t,
+                if i % 2 == 0 { "bob" } else { "cy" },
+                &format!("Call {i}"),
+            )
+        })
+        .collect();
+    for (i, id) in ids.iter().enumerate() {
+        let who = if i % 2 == 0 { "bob" } else { "cy" };
+        append(
+            &mut t,
+            who,
+            id,
+            vec![seg(0, "you", &format!("line of call {i}"))],
+        );
+        call(
+            &mut t,
+            who,
+            "endMeeting",
+            json!({ "meetingId": id, "durationMs": 1_000 }),
+        );
+    }
+    let list = view(&mut t, "bob", "listMeetings", json!({}));
+    assert_eq!(list.as_array().unwrap().len(), 12);
+    for (i, id) in ids.iter().enumerate() {
+        let page = view(
+            &mut t,
+            "bob",
+            "transcript",
+            json!({ "meetingId": id, "fromSeq": 0, "limit": 10 }),
+        );
+        assert_eq!(page["segments"][0]["text"], format!("line of call {i}"));
+        assert_eq!(page["segments"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn search_finds_titles_and_lines_in_every_meeting_any_case() {
+    let mut t = app();
+    let a = start(&mut t, "bob", "Pricing review");
+    append(
+        &mut t,
+        "bob",
+        &a,
+        vec![
+            seg(0, "you", "Let's look at the numbers."),
+            seg(1, "others", "The new PRICING page ships Friday."),
+        ],
+    );
+    let b = start(&mut t, "cy", "Standup");
+    append(
+        &mut t,
+        "cy",
+        &b,
+        vec![
+            seg(0, "others", "I fixed the pricing bug yesterday."),
+            seg(1, "you", "Nothing else."),
+        ],
+    );
+
+    let r = view(
+        &mut t,
+        "gus",
+        "search",
+        json!({ "query": "pricing", "limit": 50 }),
+    );
+    let hits = r["hits"].as_array().unwrap();
+    // The engine's clock does not move here, so both meetings start at the same
+    // time; newest-first is covered by `listMeetings`. A title hit has no line.
+    let mut got: Vec<(String, Option<u64>)> = hits
+        .iter()
+        .map(|h| {
+            (
+                h["meetingId"].as_str().unwrap().to_owned(),
+                h["seq"].as_u64(),
+            )
+        })
+        .collect();
+    got.sort();
+    let mut want = vec![
+        (a.clone(), None),
+        (a.clone(), Some(1)),
+        (b.clone(), Some(0)),
+    ];
+    want.sort();
+    assert_eq!(got, want);
+    let line = hits
+        .iter()
+        .find(|h| h["meetingId"] == a.as_str() && h["seq"] == 1)
+        .unwrap();
+    assert_eq!(line["startMs"], 3_000);
+    assert_eq!(line["speaker"], "others");
+    let title = hits.iter().find(|h| h["seq"].is_null()).unwrap();
+    assert_eq!(title["title"], "Pricing review");
+    assert!(title["text"].is_null());
+    // Lines come in order within a meeting, right after its title.
+    let pos = |seq: Option<u64>| {
+        hits.iter()
+            .position(|h| h["meetingId"] == a.as_str() && h["seq"].as_u64() == seq)
+            .unwrap()
+    };
+    assert!(pos(None) < pos(Some(1)));
+    assert_eq!(r["more"], false);
+
+    // Every word must match, in any order.
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "friday  page", "limit": 50 }),
+    );
+    assert_eq!(r["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(r["hits"][0]["text"], "The new PRICING page ships Friday.");
+    // Nothing to look for, nothing found.
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "   ", "limit": 50 }),
+    );
+    assert!(r["hits"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn search_stops_at_its_limit_and_says_there_is_more() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Long call");
+    append(
+        &mut t,
+        "bob",
+        &id,
+        (0..30)
+            .map(|i| seg(i, "you", &format!("budget item {i}")))
+            .collect(),
+    );
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "budget", "limit": 10 }),
+    );
+    assert_eq!(r["hits"].as_array().unwrap().len(), 10);
+    assert_eq!(r["more"], true);
+    // The limit is clamped to 1–100.
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "budget", "limit": 0 }),
+    );
+    assert_eq!(r["hits"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn search_does_not_find_a_deleted_meeting_or_an_edited_away_word() {
+    let mut t = app();
+    let a = start(&mut t, "bob", "Gone");
+    append(&mut t, "bob", &a, vec![seg(0, "you", "secret roadmap")]);
+    let b = start(&mut t, "bob", "Kept");
+    append(&mut t, "bob", &b, vec![seg(0, "you", "the roadmap draft")]);
+    call(
+        &mut t,
+        "bob",
+        "editSegment",
+        json!({ "meetingId": b, "seq": 0, "text": "the plan draft" }),
+    );
+    loop {
+        let r = call(&mut t, "bob", "deleteMeeting", json!({ "meetingId": a }));
+        if r["remaining"] == 0 {
+            break;
+        }
+    }
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "roadmap", "limit": 50 }),
+    );
+    assert!(r["hits"].as_array().unwrap().is_empty(), "{r}");
+    let r = view(
+        &mut t,
+        "bob",
+        "search",
+        json!({ "query": "plan", "limit": 50 }),
+    );
+    assert_eq!(r["hits"].as_array().unwrap().len(), 1);
+}
