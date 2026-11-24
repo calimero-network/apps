@@ -1,5 +1,7 @@
 # Swift / SwiftPM / XcodeGen output
 .build/
+mobile/ios/build/
+mobile/ios/xcodebuild-*.log
 *.xcodeproj
 *.xcworkspace
 DerivedData/

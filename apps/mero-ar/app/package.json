@@ -6,16 +6,37 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
     "test": "vitest run",
-    "preview": "vite preview"
+    "lint": "eslint ."
   },
   "dependencies": {
-    "@calimero-network/mero-js": "catalog:component"
+    "@calimero-apps/connect": "workspace:*",
+    "@calimero-apps/glass": "workspace:*",
+    "@calimero-apps/passkey": "workspace:*",
+    "@calimero-network/mero-icons": "catalog:",
+    "@calimero-network/mero-js": "catalog:component",
+    "@calimero-network/mero-react": "catalog:component",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/test-setup": "workspace:*",
+    "@eslint/js": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "globals": "catalog:",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
   }

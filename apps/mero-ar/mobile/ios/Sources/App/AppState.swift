@@ -1,16 +1,9 @@
 import Foundation
 import MeroKit
 import MeroKitUI
+import MeroARCore
 
 /// A room the lobby can list: one in a home, or one this person opened before.
-public struct RoomSummary: Identifiable, Equatable, Codable {
-    public let id: String
-    public var name: String
-    public var lastOpened: Date?
-    public var objectCount: Int?
-    public var memberCount: Int?
-}
-
 /// Session state: owns the sign-in and, once a room is open, the service and
 /// scene store for it.
 ///
@@ -381,6 +374,7 @@ public final class AppState: ObservableObject {
             }
             let service = try await openService(contextId: contextId, cluster: cluster, attempts: invitedName.isEmpty ? attempts : max(attempts, syncAttempts))
             let store = SceneStore(service: service)
+            store.pictureUploaded = { PictureCache.shared.seed(blobId: $0, data: $1) }
             let name = effectiveDisplayName
 
             self.service = service

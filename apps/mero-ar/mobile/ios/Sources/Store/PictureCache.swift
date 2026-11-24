@@ -1,4 +1,5 @@
 import Foundation
+import MeroARCore
 
 #if canImport(UIKit)
 import UIKit

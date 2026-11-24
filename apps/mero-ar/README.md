@@ -127,6 +127,12 @@ soft passkey it keeps for the node, creating the account the first time.
 
 ### How the app talks to the cluster
 
+The app's non-UI layer is the local Swift package `mobile/ios/MeroARCore`: the
+typed contract client `meroctl app codegen` generates from `logic/res/abi.json`
+(`scripts/mobile-codegen.sh` at the repository root), the models, the room
+service and the scene store, tested on macOS with `make core-test`. See
+[`mobile/README.md`](mobile/README.md).
+
 The Swift client is **not** vendored here: the app depends on Calimero's Swift
 SDK (`MeroKit` + `MeroKitUI`), which lives in
 [calimero-network/core](https://github.com/calimero-network/core)
@@ -143,7 +149,10 @@ AR's passkey ceremonies only from the package's own origin
 (`https://{label}.apps.calimero.network`), which the cluster serves from the
 bundle, and iOS refuses a `calimero.network` passkey for them. So the bundle
 carries a small page (`app/`, `frontend-dir` in `logic/Cargo.toml`) and the
-app opens it in the system sign-in sheet (`MeroClient.signInWithServedPage`):
+app opens it in the system sign-in sheet (`MeroClient.signInWithServedPage`).
+The page is the fleet's shared sign-in (`@calimero-apps/passkey` and its
+`/native` hand-off, `@calimero-apps/connect`, `@calimero-apps/glass`), the same
+one Mero Chat's native apps use:
 
 - `#native-sign-in`: sign in or create an account; the session comes back to
   `mero-ar://signed-in`, sealed to a key made for that sign-in only.
@@ -185,7 +194,8 @@ The app's real code runs against it with no network.
   view-only, is made an editor, and adds an object.
 
 `FurnitureFlowTests` use a `RecordingCluster` that records what the store sends.
-`make app-test` runs the unit tests; `make web-test` the served page's.
+`make core-test` runs the core package's tests on macOS, `make app-test` the app's unit tests
+and `make web-test` the served page's.
 
 ### Contract tests
 

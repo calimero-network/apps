@@ -3,14 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f6f6fb" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#05050a" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Mero AR</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-512.png" />
+    <meta name="theme-color" content="#f6f7fb" />
+    <meta property="og:title" content="Mero AR" />
+    <meta property="og:image" content="./icon-512.png" />
   </head>
   <body>
-    <main id="root" class="page"></main>
-    <script type="module" src="./src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

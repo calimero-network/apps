@@ -82,6 +82,14 @@ public struct SceneObject: Codable, Identifiable, Equatable {
     public var createdAt: UInt64
     public var updatedAt: UInt64
     public var version: UInt64
+
+    public init(
+        id: String, data: ObjectData, transform: Transform, color: String, lockedBy: String?, createdBy: String,
+        createdAt: UInt64, updatedAt: UInt64, version: UInt64
+    ) {
+        self.id = id; self.data = data; self.transform = transform; self.color = color; self.lockedBy = lockedBy
+        self.createdBy = createdBy; self.createdAt = createdAt; self.updatedAt = updatedAt; self.version = version
+    }
 }
 
 public struct Member: Codable, Identifiable, Equatable {

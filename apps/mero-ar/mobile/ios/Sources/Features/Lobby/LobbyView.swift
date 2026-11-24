@@ -1,5 +1,6 @@
 import MeroKitUI
 import SwiftUI
+import MeroARCore
 
 /// After sign-in: your homes (Calimero organizations) and the rooms in them,
 /// founding a new home, and joining one by invitation.

@@ -94,8 +94,8 @@ public struct RoomModel: Codable, Equatable {
     }
 
     /// The built-in sample living room (labelled as a sample everywhere).
-    public static func sampleLivingRoom(bundle: Bundle = .main) -> RoomModel? {
-        guard let url = bundle.url(forResource: "sample-living-room", withExtension: "json"),
+    public static func sampleLivingRoom(bundle: Bundle? = nil) -> RoomModel? {
+        guard let url = (bundle ?? .module).url(forResource: "sample-living-room", withExtension: "json"),
             let data = try? Data(contentsOf: url)
         else { return nil }
         return try? decode(data)

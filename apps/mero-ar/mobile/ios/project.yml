@@ -21,6 +21,11 @@ packages:
   core:
     url: https://github.com/calimero-network/core
     exactVersion: 1.0.0-rc.35
+  # The non-UI layer (the generated contract client, models, the room service
+  # and the scene store), tested on macOS with `swift test --package-path
+  # MeroARCore`. Keep its MeroKit pin equal to the one above.
+  MeroARCore:
+    path: MeroARCore
 
 targets:
   MeroAR:
@@ -78,6 +83,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5"
     dependencies:
+      - package: MeroARCore
       - package: core
         product: MeroKit
       - package: core
@@ -93,6 +99,7 @@ targets:
       - path: Tests
     dependencies:
       - target: MeroAR
+      - package: MeroARCore
       # The tests build fixtures out of the SDK's `JSONValue`, so they link the
       # package directly rather than relying on the app target's copy.
       - package: core

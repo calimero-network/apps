@@ -1,5 +1,6 @@
 #if DEBUG
 import CryptoKit
+import MeroARCore
 import Foundation
 import MeroKit
 

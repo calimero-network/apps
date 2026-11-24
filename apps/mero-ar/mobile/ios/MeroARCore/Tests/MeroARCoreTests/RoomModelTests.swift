@@ -1,11 +1,11 @@
 import XCTest
 import simd
-@testable import MeroAR
+@testable import MeroARCore
 
 /// The shared room model: JSON → geometry, the floor, and keeping things inside it.
 final class RoomModelTests: XCTestCase {
     private func sample() throws -> RoomModel {
-        try XCTUnwrap(RoomModel.sampleLivingRoom(), "the sample room ships in the app bundle")
+        try XCTUnwrap(RoomModel.sampleLivingRoom(), "the sample room ships in MeroARCore's resources")
     }
 
     func testTheSampleRoomDecodesAsALabelledSample() throws {

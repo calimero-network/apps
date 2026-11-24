@@ -4,6 +4,7 @@ import XCTest
 import simd
 import MeroKit
 @testable import MeroAR
+import MeroARCore
 
 /// The furniture, photo and scan flows against a ``RecordingCluster``: what
 /// the store sends, what it keeps when the cluster refuses, and that every
@@ -122,7 +123,7 @@ final class FurnitureFlowTests: XCTestCase {
 
     /// The sample room plus a sink, which must stay part of the room.
     private func roomWithAFixture() throws -> RoomModel {
-        var room = try XCTUnwrap(RoomModel.sampleLivingRoom(bundle: Bundle(for: SceneStore.self)))
+        var room = try XCTUnwrap(RoomModel.sampleLivingRoom())
         var sink = room.objects[0]
         sink.id = "sink-1"
         sink.category = "sink"

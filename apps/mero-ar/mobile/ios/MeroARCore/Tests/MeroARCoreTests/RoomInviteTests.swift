@@ -1,6 +1,6 @@
 import XCTest
 import MeroKit
-@testable import MeroAR
+@testable import MeroARCore
 
 /// The invite a room hands out, and the paste that redeems it.
 ///

@@ -1,4 +1,5 @@
 import SwiftUI
+import MeroARCore
 
 #if canImport(UIKit) && os(iOS)
 import UIKit

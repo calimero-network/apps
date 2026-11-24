@@ -66,6 +66,7 @@ CLIENTS=(
   "mero-calendar|kotlin|apps/mero-calendar/mobile/android/app/src/main/kotlin/network/calimero/calendar/generated|calendar|network.calimero.calendar.generated"
   "mero-docs|swift|apps/mero-docs/mobile/ios/DocsCore/Sources/DocsCore/Generated|docs|"
   "mero-docs|kotlin|apps/mero-docs/mobile/android/app/src/main/kotlin/network/calimero/docs/generated|docs|network.calimero.docs.generated"
+  "mero-ar|swift|apps/mero-ar/mobile/ios/MeroARCore/Sources/MeroARCore/Generated|mero-ar|"
   "mero-chat|kotlin|apps/mero-chat/mobile/android/app/src/main/kotlin/network/calimero/chat/generated/client|chat|network.calimero.chat.generated.client"
 )
 
