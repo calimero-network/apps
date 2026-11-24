@@ -37,8 +37,6 @@ export function memoryStorage(): KeyValueStorage {
   };
 }
 
-/** Where a person gets the extension. */
-export const EXTENSION_URL = "https://github.com/calimero-network/apps/tree/main/apps/mero-minutes/extension#install";
 
 const INTENT_KEY = "minutes:native-intent";
 

@@ -4,6 +4,7 @@ import { ManageInHomeLink, NativeApproval, NodeShield } from "@calimero-apps/pas
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { InstallAppIconButton } from "@calimero-apps/install";
 
+import { InstallPage } from "./InstallPage";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
 import { OpenActions } from "./OpenActions";
@@ -178,7 +179,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   if (!signedIn) {
     return (
       <>
-        <Welcome onSignIn={() => setSigningIn(true)} />
+        <SignedOutPages onSignIn={() => setSigningIn(true)} />
         <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />
       </>
     );
@@ -186,8 +187,21 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   return <SignedInApp key={signedIn.accountId} theme={theme} setTheme={setTheme} onLogout={() => void signedIn.signOut()} />;
 }
 
+/** Signed out: the front door, or the extension's install page (`#/install`). */
+function SignedOutPages({ onSignIn }: { onSignIn: () => void }) {
+  const [route, go] = useRoute();
+  if (route.page === "install") {
+    return (
+      <Shell right={<button type="button" className="btn small" onClick={onSignIn}>Sign in</button>}>
+        <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Minutes" />
+      </Shell>
+    );
+  }
+  return <Welcome onSignIn={onSignIn} onInstall={() => go({ page: "install" })} />;
+}
+
 /** The front door when signed out. */
-export function Welcome({ onSignIn }: { onSignIn: () => void }) {
+export function Welcome({ onSignIn, onInstall }: { onSignIn: () => void; onInstall?: () => void }) {
   return (
     <Shell>
       <section className="hero">
@@ -201,7 +215,12 @@ export function Welcome({ onSignIn }: { onSignIn: () => void }) {
           workspace. No bot joins the call, and the audio never leaves your machine.
         </p>
         <div className="row">
-          <button type="button" className="btn primary large" onClick={onSignIn}>
+          {onInstall && (
+            <button type="button" className="btn primary large" onClick={onInstall}>
+              <Icon name="download" /> Get the extension
+            </button>
+          )}
+          <button type="button" className={onInstall ? "btn large" : "btn primary large"} onClick={onSignIn}>
             Sign in
           </button>
         </div>
@@ -384,7 +403,7 @@ function WorkspaceView({
       }
       right={<Menu me={accountId} theme={theme} setTheme={setTheme} org={org} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
     >
-      {route.page !== "meeting" && (
+      {route.page !== "meeting" && route.page !== "install" && (
         <nav className="tabs" role="tablist">
           <button
             role="tab"
@@ -413,6 +432,7 @@ function WorkspaceView({
           searchTranscripts={searchTranscripts}
         />
       )}
+      {route.page === "install" && <InstallPage onBack={() => go({ page: "meetings" })} backLabel="All meetings" />}
       {route.page === "actions" && <OpenActions workspace={workspace} onOpen={(id) => go({ page: "meeting", id })} />}
       {route.page === "meeting" && (
         <MeetingPage
@@ -512,6 +532,9 @@ function Menu({
             </div>
           </div>
           <div className="menu-section">
+            <a className="menu-item home-link" href="#/install" onClick={() => setOpen(false)}>
+              Get the extension
+            </a>
             <ManageInHomeLink session={api.session} org={org} className="menu-item home-link" />
             {onSwitchWorkspace && (
               <button className="menu-item" onClick={onSwitchWorkspace}>

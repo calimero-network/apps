@@ -5,11 +5,12 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { installableApp } from "@calimero-apps/install/vite";
+import { extensionDownload } from "./extensionDownload";
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [installableApp({ cacheId: "mero-minutes" }), servedAssetsFallback(), react()],
+  plugins: [extensionDownload(), installableApp({ cacheId: "mero-minutes" }), servedAssetsFallback(), react()],
   server: {
     // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
     // (`pnpm dev:local mero-minutes` passes it too). `strictPort` so a busy port

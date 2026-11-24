@@ -1623,3 +1623,83 @@ mark {
     width: 100%;
   }
 }
+
+/* ── install the extension ─────────────────────────────────────────────── */
+
+.install {
+  max-width: 640px;
+  margin: 32px auto 0;
+  display: grid;
+  gap: 32px;
+}
+.install .back {
+  justify-self: start;
+  margin: 0 0 -16px -8px;
+  color: var(--text-dim);
+}
+.install-head {
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.install-head .hero-mark {
+  margin-bottom: 16px;
+}
+.install-head h1 {
+  font-size: clamp(26px, 4vw, 34px);
+  letter-spacing: -0.03em;
+}
+.install-head .lede {
+  margin-bottom: 20px;
+}
+.install-cta {
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.install-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.install-steps li {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.install-steps li + li {
+  border-top: 1px solid var(--border);
+}
+.install-steps strong {
+  font-weight: 500;
+}
+.install-steps p {
+  margin: 2px 0 0;
+}
+.copy-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--sunken);
+  width: fit-content;
+  max-width: 100%;
+}
+.copy-field code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.install-note {
+  text-align: center;
+  margin: -8px 0 0;
+}

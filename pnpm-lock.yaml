@@ -1950,6 +1950,9 @@ importers:
       eslint-plugin-react-refresh:
         specifier: 'catalog:'
         version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
       globals:
         specifier: 'catalog:'
         version: 16.5.0

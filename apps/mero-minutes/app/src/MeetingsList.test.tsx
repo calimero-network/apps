@@ -49,7 +49,7 @@ describe("MeetingsList", () => {
     expect(empty.textContent).toContain("Record your first meeting");
     expect(empty.querySelectorAll(".steps li")).toHaveLength(3);
     const cta = screen.getByRole("link", { name: /Get the extension/ });
-    expect(cta.getAttribute("href")).toContain("mero-minutes/extension");
+    expect(cta.getAttribute("href")).toBe("#/install");
   });
 
   it("says it is loading, and shows a failed read", () => {

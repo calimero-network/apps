@@ -3,7 +3,6 @@ import { CheckSquare, Clock, FileText } from "@calimero-network/mero-icons";
 import type { MeetingView } from "./minutesApi";
 import type { SearchHit, SearchResult } from "./generated/client";
 import { formatClock, formatDuration, formatWhen, highlightParts, platformName, queryWords, searchMeetings } from "./lib/transcript";
-import { EXTENSION_URL } from "./native";
 import { PlatformMark } from "./PlatformMark";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
@@ -221,7 +220,7 @@ export function GetTheExtension() {
           </span>
         </li>
       </ol>
-      <a className="btn primary" href={EXTENSION_URL} target="_blank" rel="noreferrer">
+      <a className="btn primary" href="#/install">
         <Icon name="puzzle" /> Get the extension
       </a>
     </section>

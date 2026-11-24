@@ -28,4 +28,9 @@ describe("routes", () => {
     expect(routeHash({ page: "meeting", id: "ab12", seq: 7 })).toBe("#/m/ab12/7");
     expect(routeHash({ page: "meeting", id: "ab12" })).toBe("#/m/ab12");
   });
+
+  it("has an install page", () => {
+    expect(parseRoute("#/install")).toEqual({ page: "install" });
+    expect(routeHash({ page: "install" })).toBe("#/install");
+  });
 });
