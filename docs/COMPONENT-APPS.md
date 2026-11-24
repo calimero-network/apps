@@ -210,7 +210,7 @@ await my.set({ key: "a", value: "1" });
 | `VITE_CALIMERO_CLUSTER` | — | the cluster's name in the cloud's node directory: optional override: without it a served page connects to the cluster serving it, and any other page to the primary cluster running the app's package (`GET {directory}/package/{package}`); when none does, the page shows the shared listing (`<AppListing>`, `@calimero-apps/passkey`): "Open {App}" at the copy Calimero Cloud serves, `https://{label}.apps.calimero.network/`, and a link to deploy it on Calimero Cloud |
 | `VITE_CALIMERO_MIN_RELEASE` | — | **required**: the lowest mero-tee release a node may run |
 | `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | — | optional: zone first; another directory |
-| `VITE_CALIMERO_ENV` | — | optional: `staging` for a build no cluster serves (a Vercel preview): staging's directory, and its debug images trusted. A served page reads staging from its own hostname instead |
+| `VITE_CALIMERO_ENV` | — | optional: `staging` for a build no cluster serves (a Vercel preview): staging's directory, and its debug images trusted. Ignored on a page a cluster serves: there the hostname alone decides, so a bundle served on production trusts `locked-read-only` only |
 | `VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION` | — | optional: default the app's package, newest version |
 
 - **Local**: `new CalimeroClient({ baseUrl, nodes, policy: { allowMock: true } })`,

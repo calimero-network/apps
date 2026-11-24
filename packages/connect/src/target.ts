@@ -304,10 +304,32 @@ export async function servedNodes(
 export async function withServedNodes(
   target: Target,
   find: () => Promise<string[] | null> = () => servedNodes(),
+  host: string | undefined = globalThis.location?.host,
 ): Promise<Target> {
   if (target.kind !== "cloud" || target.nodes) return target;
   const nodes = await find();
-  return nodes ? { ...target, nodes } : target;
+  if (!nodes) return target;
+  // A served page trusts by its own hostname alone: the build's VITE_CALIMERO_ENV never widens it.
+  const served: Target = { ...target, nodes };
+  delete served.environment;
+  return servedEnvironment(host) ? { ...served, environment: "staging" } : served;
+}
+
+/**
+ * Whether a page a cluster serves is on staging, from its own hostname alone
+ * (mero-js's {@link cloudEnvironment}): the browser checked that name over TLS,
+ * and neither the build nor anything a server answers can change it. A page on
+ * production's apps domain, a custom domain or an unknown host is not, so a
+ * bundled frontend on production trusts `locked-read-only` only.
+ */
+function servedEnvironment(host: string | undefined): boolean {
+  const given = text(host);
+  if (!given) return false;
+  try {
+    return cloudEnvironment(new URL(`https://${given}`).hostname) === "staging";
+  } catch {
+    return false;
+  }
 }
 
 export interface ConnectOptions {
@@ -389,15 +411,14 @@ async function packageCluster(
 export async function connectTarget(env: ConnectEnv, options: ConnectOptions = {}): Promise<Target> {
   const find = options.servedNodes ?? (() => servedNodes());
   if (targetKind(env) !== "cloud" || text(env.VITE_CALIMERO_CLUSTER)) {
-    return withServedNodes(resolveTarget(env), find);
+    return withServedNodes(resolveTarget(env), find, options.host ?? globalThis.location?.host);
   }
   const served = await find();
   if (served) {
     const minReleaseVersion = minRelease(env);
     const pageHost = text(options.host ?? globalThis.location?.host);
     const host = pageHost ?? new URL(served[0] as string).host;
-    // The page's own hostname, which the browser checked, says which Cloud this is.
-    const onStaging = pageHost !== undefined && cloudEnvironment(new URL(`https://${pageHost}`).hostname) === "staging";
+    const onStaging = servedEnvironment(pageHost);
     return {
       kind: "cloud",
       cluster: host,

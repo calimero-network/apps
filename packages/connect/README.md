@@ -52,7 +52,11 @@ never from the manifest, or off a served page from `VITE_CALIMERO_ENV=staging`
 `VITE_CALIMERO_DIRECTORY` names another) and trusts any of staging's image
 profiles, debug ones included (mero-js's `CLOUD_ENVIRONMENTS.staging.trust`):
 the node's own, whose signed image its quote must still be. Production trusts
-`locked-read-only` alone.
+`locked-read-only` alone. On a page a cluster serves, the hostname alone
+decides, whatever the bundle was built with (`VITE_CALIMERO_ENV`,
+`VITE_CALIMERO_CLUSTER`): a bundled frontend served on production, a custom
+domain included, trusts `locked-read-only` only, and one served on staging
+trusts any of staging's profiles.
 When nothing runs the package (404), or the build has no floor or package,
 it throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
 from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured

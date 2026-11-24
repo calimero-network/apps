@@ -147,6 +147,37 @@ describe("staging", () => {
     }
   });
 
+  it("decides a served page's trust by its hostname alone, whatever the bundle was built with", async () => {
+    const STRICT = { release: { minReleaseVersion: "2.3.136" } };
+    const STAGED = {
+      release: {
+        minReleaseVersion: "2.3.136",
+        profiles: ["locked-read-only", "debug", "debug-read-only"],
+        allowDebugProfile: true,
+      },
+    };
+    const PROD_HOST = "abc.apps.calimero.network";
+    const served = { servedNodes: async () => SERVED };
+    const builds = [
+      FLOOR,
+      { ...FLOOR, VITE_CALIMERO_ENV: "staging" },
+      { ...FLOOR, VITE_CALIMERO_ENV: "production" },
+      { ...FLOOR, VITE_CALIMERO_CLUSTER: "eu-shared-1", VITE_CALIMERO_ENV: "staging" },
+      { ...FLOOR, VITE_CALIMERO_CLUSTER: "eu-shared-1" },
+    ];
+    for (const build of builds) {
+      // Served on production: locked-read-only only, even from a bundle built for staging.
+      const prod = await connectTarget(build, { ...served, host: PROD_HOST });
+      expect(policyFor(prod), JSON.stringify(build)).toEqual(STRICT);
+      // Served on staging: any of staging's profiles, even from a bundle built for production.
+      const staging = await connectTarget(build, { ...served, host: STAGING_HOST });
+      expect(policyFor(staging), JSON.stringify(build)).toEqual(STAGED);
+      // A custom domain or an unknown host is never staging.
+      const custom = await connectTarget(build, { ...served, host: "kv.example.com" });
+      expect(policyFor(custom), JSON.stringify(build)).toEqual(STRICT);
+    }
+  });
+
   it("lets a build that names staging (Vercel) ask staging's directory and trust its debug images", () => {
     const target = resolveTarget({ ...CLOUD, VITE_CALIMERO_CLUSTER: "staging-1", VITE_CALIMERO_ENV: "staging" });
     expect(target).toEqual({
