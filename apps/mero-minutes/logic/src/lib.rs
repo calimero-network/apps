@@ -413,6 +413,9 @@ impl Minutes {
             if !SPEAKERS.contains(&s.speaker.as_str()) {
                 return Err(invalid("speaker must be \"you\" or \"others\""));
             }
+            if s.seq == u32::MAX {
+                return Err(invalid("segment number out of range"));
+            }
             if s.end_ms < s.start_ms {
                 return Err(invalid("a segment cannot end before it starts"));
             }
