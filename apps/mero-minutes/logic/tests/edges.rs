@@ -860,3 +860,68 @@ fn search_does_not_find_a_deleted_meeting_or_an_edited_away_word() {
     );
     assert_eq!(r["hits"].as_array().unwrap().len(), 1);
 }
+
+// ── speaker names ────────────────────────────────────────────────────────────
+
+#[test]
+fn a_line_keeps_the_speaker_name_the_call_page_showed() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Named call");
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            json!({ "seq": 0, "startMs": 0, "endMs": 900, "speaker": "others", "name": "  Ana Kovač ", "text": "I'll send the deck." }),
+            json!({ "seq": 1, "startMs": 1_000, "endMs": 1_900, "speaker": "others", "text": "Fine by me." }),
+            seg(2, "you", "Thanks Ana."),
+        ],
+    );
+    let page = view(
+        &mut t,
+        "cy",
+        "transcript",
+        json!({ "meetingId": id, "fromSeq": 0, "limit": 10 }),
+    );
+    let names: Vec<&str> = page["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    // Trimmed; a line sent without one (an older extension) has none.
+    assert_eq!(names, vec!["Ana Kovač", "", ""]);
+    // Editing the text keeps the name.
+    call(
+        &mut t,
+        "bob",
+        "editSegment",
+        json!({ "meetingId": id, "seq": 0, "text": "I'll send the deck today." }),
+    );
+    let page = view(
+        &mut t,
+        "cy",
+        "transcript",
+        json!({ "meetingId": id, "fromSeq": 0, "limit": 1 }),
+    );
+    assert_eq!(page["segments"][0]["name"], "Ana Kovač");
+    // Search hits say who spoke.
+    let r = view(
+        &mut t,
+        "cy",
+        "search",
+        json!({ "query": "deck", "limit": 10 }),
+    );
+    assert_eq!(r["hits"][0]["name"], "Ana Kovač");
+}
+
+#[test]
+fn a_speaker_name_has_a_length_limit() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Long name");
+    let err = code(t.as_("bob").call(
+        "appendSegments",
+        json!({ "meetingId": id, "segments": [{ "seq": 0, "startMs": 0, "endMs": 1, "speaker": "others", "name": "x".repeat(101), "text": "hi" }] }),
+    ));
+    assert_eq!(err, "Invalid");
+}

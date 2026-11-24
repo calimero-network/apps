@@ -1559,6 +1559,16 @@
           "meetingId": {
             "type": "string"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "platform": {
             "type": "string"
           },
@@ -1626,6 +1636,7 @@
           "seq",
           "startMs",
           "speaker",
+          "name",
           "text"
         ],
         "type": "object",
@@ -1704,6 +1715,9 @@
             "type": "integer",
             "x-calimero-type": "u32"
           },
+          "name": {
+            "type": "string"
+          },
           "seq": {
             "maximum": 4294967295,
             "minimum": 0,
@@ -1744,6 +1758,9 @@
             "type": "integer",
             "x-calimero-type": "u32"
           },
+          "name": {
+            "type": "string"
+          },
           "seq": {
             "maximum": 4294967295,
             "minimum": 0,
@@ -1768,6 +1785,7 @@
           "startMs",
           "endMs",
           "speaker",
+          "name",
           "text",
           "edited"
         ],

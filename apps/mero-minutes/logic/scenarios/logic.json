@@ -17,7 +17,7 @@
     "expect": { "error": "Forbidden" } },
   { "as": "cy", "op": "view", "method": "transcript",
     "args": { "meetingId": "$meeting", "fromSeq": 1, "limit": 10 },
-    "expect": { "ok": { "segments": [ { "seq": 1, "startMs": 2600, "endMs": 5100, "speaker": "others", "text": "Cy will send the deck by Friday", "edited": false } ], "next": null } } },
+    "expect": { "ok": { "segments": [ { "seq": 1, "startMs": 2600, "endMs": 5100, "speaker": "others", "name": "", "text": "Cy will send the deck by Friday", "edited": false } ], "next": null } } },
   { "as": "cy", "op": "call", "method": "addAction",
     "args": { "meetingId": "$meeting", "text": "Send the deck", "assignee": "Cy", "sourceSeq": 1 },
     "save": "action" },

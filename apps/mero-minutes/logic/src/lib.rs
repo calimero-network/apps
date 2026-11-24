@@ -95,6 +95,9 @@ pub struct SegmentInput {
     pub end_ms: u32,
     /// `you` or `others`.
     pub speaker: String,
+    /// Who spoke, as the call page showed it ("Ana"); empty when unknown.
+    #[serde(default)]
+    pub name: String,
     pub text: String,
 }
 
@@ -105,6 +108,9 @@ pub struct SegmentRow {
     pub start_ms: u32,
     pub end_ms: u32,
     pub speaker: String,
+    /// Rows written before speaker names have none.
+    #[serde(default)]
+    pub name: String,
     pub text: String,
     /// Set when someone corrected the text after it was transcribed.
     pub edited: bool,
@@ -156,6 +162,8 @@ pub struct SegmentView {
     pub start_ms: u32,
     pub end_ms: u32,
     pub speaker: String,
+    /// Who spoke, from the call page; empty when unknown.
+    pub name: String,
     pub text: String,
     pub edited: bool,
 }
@@ -197,6 +205,8 @@ pub struct SearchHit {
     pub seq: Option<u32>,
     pub start_ms: Option<u32>,
     pub speaker: Option<String>,
+    /// The line's speaker name, when the call page showed one.
+    pub name: Option<String>,
     pub text: Option<String>,
 }
 
@@ -352,6 +362,7 @@ fn segment_view(seq: u32, row: SegmentRow) -> SegmentView {
         start_ms: row.start_ms,
         end_ms: row.end_ms,
         speaker: row.speaker,
+        name: row.name,
         text: row.text,
         edited: row.edited,
     }
@@ -448,6 +459,7 @@ impl Minutes {
                 return Err(invalid("a segment cannot end before it starts"));
             }
             let body = clean("segment text", &s.text, MAX_SEGMENT_TEXT, false)?;
+            let name = clean("speaker name", &s.name, MAX_ASSIGNEE, false)?;
             let key = (meeting_id.clone(), s.seq);
             if body.is_empty() || self.segments.contains(&key)? {
                 skipped += 1;
@@ -470,6 +482,7 @@ impl Minutes {
                     start_ms: s.start_ms,
                     end_ms: s.end_ms,
                     speaker: s.speaker,
+                    name,
                     text: body,
                     edited: false,
                 },
@@ -730,6 +743,7 @@ impl Minutes {
                 seq,
                 start_ms: line.map(|l| l.start_ms),
                 speaker: line.map(|l| l.speaker.clone()),
+                name: line.map(|l| l.name.clone()),
                 text: line.map(|l| l.text.clone()),
             };
             if matches(&row.title) {

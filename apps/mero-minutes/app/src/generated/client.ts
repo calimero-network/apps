@@ -58,6 +58,7 @@ export interface SearchHit {
   seq: number | null;
   startMs: number | null;
   speaker: string | null;
+  name: string | null;
   text: string | null;
 }
 
@@ -73,6 +74,7 @@ export interface SegmentInput {
   startMs: number;
   endMs: number;
   speaker: string;
+  name?: string;
   text: string;
 }
 
@@ -82,6 +84,7 @@ export interface SegmentView {
   startMs: number;
   endMs: number;
   speaker: string;
+  name: string;
   text: string;
   edited: boolean;
 }
