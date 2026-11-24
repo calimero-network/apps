@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc -b && vite build && vite build -c vite.background.config.ts",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p e2e",
     "test": "vitest run",
     "lint": "eslint .",
     "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-minutes -o src/generated",

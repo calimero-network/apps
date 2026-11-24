@@ -13,7 +13,6 @@
     "vite.background.config.ts",
     "src/manifest.ts",
     "scripts/*.mjs",
-    "playwright.config.ts",
-    "e2e"
+    "playwright.config.ts"
   ]
 }
