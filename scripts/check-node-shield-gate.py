@@ -14,7 +14,6 @@ TEST_TITLE = "{app}: shows the node shield once signed in"
 GATE_FILTER = "nodeShield.gate"  # vitest's file filter: only the gate test runs
 
 NOT_GATED = {
-    "mero-tag": "a native iOS app; app/ is only the sign-in, approval and consent hand-off page the cluster serves for it, with no signed-in screen",
     "conformance": "a rig that signs up with software passkeys to run its matrix, not a product with a signed-in screen",
 }
 

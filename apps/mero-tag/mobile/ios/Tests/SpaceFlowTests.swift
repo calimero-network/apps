@@ -2,6 +2,8 @@ import MeroKit
 import MeroKitUI
 import XCTest
 @testable import MeroTag
+import TagCore
+import TagCoreTestSupport
 
 /// Create a space, invite people, join from an invite: the app's side of it,
 /// with the cluster's organizations behind a fake ``SpaceDirectory``.

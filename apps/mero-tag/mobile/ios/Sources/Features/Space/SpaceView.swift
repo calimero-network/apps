@@ -1,4 +1,5 @@
 import SwiftUI
+import TagCore
 
 /// The open space: who's in it, who's online, the session, and sign-out.
 struct SpaceView: View {

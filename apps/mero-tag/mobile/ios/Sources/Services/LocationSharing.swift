@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import TagCore
 
 /// Which tracker this device reports as, and whether it is reporting. Owns
 /// the ``LocationService`` so sharing keeps running across tabs.

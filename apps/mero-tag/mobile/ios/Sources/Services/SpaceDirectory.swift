@@ -1,6 +1,7 @@
 import Foundation
 import MeroKit
 import OpenAPIRuntime
+import TagCore
 
 /// A space this account just created: an organization and the Mero Tag app
 /// instance that is its space.

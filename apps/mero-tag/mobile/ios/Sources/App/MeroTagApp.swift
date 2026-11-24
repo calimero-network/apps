@@ -1,4 +1,5 @@
 import SwiftUI
+import TagCore
 
 @main
 struct MeroTagApp: App {

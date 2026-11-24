@@ -1,7 +1,10 @@
-# Native iOS Mero Tag (apps/mero-tag/mobile/ios): generate the Xcode project
-# from project.yml and run the unit tests on an iOS Simulator. The Swift SDK is
-# resolved from calimero-network/core at the release project.yml pins. The
-# contract and the served page are covered by the Components and CI workflows.
+# Native iOS Mero Tag (apps/mero-tag/mobile/ios): test the core package
+# (generated contract client, models, space service, tracker store) on macOS,
+# then generate the Xcode project from project.yml and run the app's unit tests
+# on an iOS Simulator. The Swift SDK is resolved from calimero-network/core at
+# the release TagCore/Package.swift and project.yml pin. The generated client is
+# checked by the Mobile clients workflow; the contract and the served page by
+# the Components and CI workflows.
 name: Mero Tag iOS
 
 on:
@@ -24,6 +27,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  core:
+    name: Core tests (macOS)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mero-tag/mobile/ios/TagCore
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Test
+        run: swift test
+
   app:
     name: Build and test (iOS Simulator)
     runs-on: macos-15

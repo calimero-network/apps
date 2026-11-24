@@ -33,6 +33,9 @@
  * ── NOT GENERATED, and why ────────────────────────────────────────────────
  * `kv-store`      contract/test fixture, no user-facing frontend.
  * `scaffolding-e2e`  e2e harness app, same.
+ * `mero-tag`      an iPhone app; its frontend is only the sign-in, approval and
+ *                 consent page the cluster serves for it, and the template's
+ *                 availability badge (web, desktop) has no phone.
  *
  * `hyperfeed`     has its own hand-owned landing and docs (`src/pages/landing/`)
  *                 in the app's own compact light/dark look. Its contract lives

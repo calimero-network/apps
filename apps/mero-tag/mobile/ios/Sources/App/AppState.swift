@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import MeroKit
 import MeroKitUI
+import TagCore
 
 /// The space this phone last opened, remembered across launches.
 public struct SpaceSelection: Codable, Equatable {
