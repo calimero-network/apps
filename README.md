@@ -24,7 +24,7 @@ places.
 > Fifteen of the sixteen source repositories are archived with a pointer back — several under their
 > older names (`p2p-sheets`, `only-peers-client`, `meropass`, `MeroSign`,
 > `scaffolding-e2e-application`); only [`kv-store`](https://github.com/calimero-network/kv-store)
-> is still open. Three projects stayed out by design — see [Out of scope](#out-of-scope).
+> is still open. One project stayed out by design — see [Out of scope](#out-of-scope).
 
 ---
 
@@ -94,6 +94,7 @@ Start here. These exist to be read, not shipped.
 | [mero-chat](apps/mero-chat) | [↗](https://chat.hyperfeed.me) | A component app (Calimero 1.0): team chat with workspaces, public and private channels, threads, reactions and DMs, each channel an app instance its members reach, on `calimero-sdk`, its frontend on mero-js `CalimeroClient`. | `com.calimero.chat` |
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
 | [mero-forms](apps/mero-forms) | — | A component app (Calimero 1.0): forms with typed questions the contract checks, responses with a summary and CSV, filled in by hand, through a public link or by a website's API key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
+| [mero-tag](apps/mero-tag) | — | Live location sharing for an organization, a native iOS app (SwiftUI + MapKit) on the Swift SDK: trackers, sharing, groups and geofences in a component app (Calimero 1.0); `app/` is only the sign-in, approval and consent page the cluster serves for it. | `com.calimero.mero-tag` |
 
 ### Secrets, documents & governance
 
@@ -122,12 +123,10 @@ Start here. These exist to be read, not shipped.
 
 ### Out of scope
 
-Three projects stayed in their own repositories, and one was abandoned.
+One project stayed in its own repository, and one was abandoned.
 
 | Project | Why |
 | --- | --- |
-| [mero-tag](https://github.com/calimero-network/mero-tag) | SwiftUI + MapKit iOS app. Shares neither the pnpm nor the Cargo surface this repo is built around. |
-| [mero-ar](https://github.com/calimero-network/mero-ar) | ARKit + RealityKit iOS app, same reason. |
 | [mero-chat-pwa](https://github.com/calimero-network/mero-chat-pwa) | Installable PWA with offline support; still developed on its own. |
 | [mero-chat](https://github.com/calimero-network/mero-chat) | **Abandoned** 2026-08-19, stuck on rc.20 / mero-js 7 / mero-react 4. Superseded by `mero-chat-pwa`. Won't-fix; exclude it from fleet sweeps. |
 

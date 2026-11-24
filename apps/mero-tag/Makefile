@@ -1,7 +1,7 @@
 .PHONY: help setup tools logic-build logic-bundle logic-test dev dev-down \
         web-build app-gen app-build app-run app-test test clean
 
-APP_DIR    := app/MeroTag
+APP_DIR    := mobile/ios
 XCODEPROJ  := $(APP_DIR)/MeroTag.xcodeproj
 SCHEME     := MeroTag
 SIMULATOR  ?= iPhone 17
@@ -13,15 +13,15 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    setup        Check prereqs, install meroctl, bundle the contract"
-	@echo "    tools        Install meroctl (core's, at the release ci/core-version names)"
+	@echo "    tools        Install meroctl (core's, at the release ../../scripts/install-meroctl.sh pins)"
 	@echo ""
 	@echo "  Contract (Rust, a calimero:app component)"
 	@echo "    logic-build  Build logic/ → logic/res/mero_tag.wasm + logic/res/abi.json"
 	@echo "    logic-bundle Package the dev-signed .mpk a merod local cluster accepts"
 	@echo "    logic-test   cargo test (pure helpers + the TestApp harness on core's engine)"
 	@echo ""
-	@echo "  Served page (web/: the iOS app's Calimero Cloud sign-in)"
-	@echo "    web-build    Build web/dist, which the release bundle carries"
+	@echo "  Served page (app/: the iOS app's Calimero Cloud sign-in)"
+	@echo "    web-build    Build app/dist, which the release bundle carries"
 	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
 	@echo "    app-gen      Generate MeroTag.xcodeproj from project.yml"
@@ -43,10 +43,10 @@ setup:
 	@bash scripts/setup.sh
 
 # Core's `meroctl` builds the contract into a `calimero:app` component, writes
-# its ABI, and packs the signed .mpk, at the release ci/core-version names
+# its ABI, and packs the signed .mpk, at the release the repository pins
 # (into ~/.local/bin; MEROCTL_ROOT=… for another place).
 tools:
-	scripts/install-meroctl.sh
+	../../scripts/install-meroctl.sh
 
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
@@ -66,10 +66,10 @@ logic-test:
 	cd logic && cargo test
 
 # ── Served page ──────────────────────────────────────────────────────────────
-# web/dist, which the release bundle carries (`frontend-dir`). A release build
-# sets VITE_CALIMERO_MIN_RELEASE (see .github/workflows/deploy-bundle.yml).
+# app/dist, which the release bundle carries (`frontend-dir`). A release build
+# sets VITE_CALIMERO_MIN_RELEASE (see .github/workflows/publish-component.yml).
 web-build:
-	cd web && npm ci --no-audit --no-fund && npm run build
+	pnpm install --frozen-lockfile && pnpm -F mero-tag build
 
 # ── iOS app ─────────────────────────────────────────────────────────────────────
 app-gen:
@@ -110,4 +110,4 @@ test: logic-test
 
 clean:
 	cd logic && rm -rf res target
-	rm -rf web/dist $(APP_DIR)/.build $(XCODEPROJ)
+	rm -rf app/dist $(APP_DIR)/.build $(XCODEPROJ)

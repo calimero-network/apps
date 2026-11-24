@@ -1,4 +1,0 @@
-# The Calimero core release this repo builds and tests against: the contract
-# SDK (logic/Cargo.toml), the Swift SDK (app/MeroTag/project.yml), meroctl
-# (scripts/install-meroctl.sh) and the development cluster (scripts/dev-cluster.sh).
-CORE_TAG=1.0.0-rc.35

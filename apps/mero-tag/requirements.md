@@ -4,12 +4,11 @@ Mero Tag is a real-time location-sharing iOS app built on Calimero. This is the 
 running it in the Simulator and on an iPhone.
 
 ```
-mero-tag/
-  logic/      Rust contract, a calimero:app component (runs on your cluster's nodes)
-  web/        the page the bundle carries: the app's sign-in, approvals and consent returns
-  app/
-    MeroTag/  the SwiftUI iOS app (the Swift SDK from calimero-network/core)
-  scripts/    setup, publish-bundle
+apps/mero-tag/
+  logic/        Rust contract, a calimero:app component (runs on your cluster's nodes)
+  app/          the page the bundle carries: the app's sign-in, approvals and consent returns
+  mobile/ios/   the SwiftUI iOS app (the Swift SDK from calimero-network/core)
+  scripts/      setup, the development cluster
   Makefile    every command below has a `make` shortcut
 ```
 
@@ -26,8 +25,8 @@ mero-tag/
 
 | Tool | Needed for | Install |
 |------|-----------|---------|
-| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>; `logic/rust-toolchain.toml` pins core's toolchain and target |
-| **meroctl** | component build + signed bundle | `make tools` (core's release in `ci/core-version`) |
+| **Rust** + `wasm32-wasip2` | building the component contract | <https://rustup.rs>, then `rustup target add wasm32-wasip2` |
+| **meroctl** | component build + signed bundle | `make tools` (core's release `scripts/install-meroctl.sh` pins at the repository root) |
 | **Full Xcode 16+** | building / running the app, XCTest, deploying to a device | Mac App Store, then `sudo xcode-select -s /Applications/Xcode.app` |
 | **XcodeGen** | generating the `.xcodeproj` | `brew install xcodegen` |
 | **A Calimero account** | signing in | created with a passkey on Mero Tag's sign-in page on first sign-in |
@@ -58,9 +57,9 @@ Passkeys in the Simulator need an Apple ID signed in with iCloud Keychain. For t
 
 ## 3. Running on a physical iPhone
 
-1. `make app-gen`, then `open app/MeroTag/MeroTag.xcodeproj`.
+1. `make app-gen`, then `open mobile/ios/MeroTag.xcodeproj`.
 2. Select the **MeroTag** target ▸ *Signing & Capabilities* ▸ your team, or put it in
-   `app/MeroTag/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = …`, gitignored). No associated domains are needed.
+   `mobile/ios/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = …`, gitignored). No associated domains are needed.
 3. Plug in the iPhone, select it, and press **⌘R**.
 4. The first time only: on the phone, trust your developer certificate in *Settings ▸ General ▸ VPN & Device
    Management*.

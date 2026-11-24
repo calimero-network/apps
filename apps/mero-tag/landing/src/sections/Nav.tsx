@@ -1,7 +1,7 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Icon } from "../components/Icon";
 
-export const GITHUB = "https://github.com/calimero-network/mero-tag";
+export const GITHUB = "https://github.com/calimero-network/apps/tree/main/apps/mero-tag";
 
 export function Nav() {
   const { scrollY } = useScroll();

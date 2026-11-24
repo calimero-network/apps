@@ -19,13 +19,14 @@
 #   scripts/dev-cluster.sh urls             where each simulator/device reaches the cluster
 #   scripts/dev-cluster.sh status | logs | down
 #
-# CORE_TAG picks the merod release (default: ci/core-version's CORE_TAG when
-# the repo has one, else the release below).
+# CORE_TAG picks the merod release (default: `component-core-tag` in the
+# repository's root Cargo.toml, else the release below).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if [ -z "${CORE_TAG:-}" ] && [ -f "$ROOT/ci/core-version" ]; then
-  CORE_TAG=$(sed -n 's/^CORE_TAG=//p' "$ROOT/ci/core-version" | head -1)
+REPO="$(cd "$ROOT/../.." && pwd)"
+if [ -z "${CORE_TAG:-}" ] && [ -f "$REPO/Cargo.toml" ]; then
+  CORE_TAG=$(sed -n 's/^component-core-tag = "\(.*\)"/\1/p' "$REPO/Cargo.toml" | head -1)
 fi
 CORE_TAG="${CORE_TAG:-1.0.0-rc.35}"
 IMAGE="${MEROD_IMAGE:-ghcr.io/calimero-network/merod:${CORE_TAG}}"
