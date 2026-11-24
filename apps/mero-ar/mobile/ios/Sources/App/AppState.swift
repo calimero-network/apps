@@ -373,8 +373,7 @@ public final class AppState: ObservableObject {
                 invitedName = invite.roomName
             }
             let service = try await openService(contextId: contextId, cluster: cluster, attempts: invitedName.isEmpty ? attempts : max(attempts, syncAttempts))
-            let store = SceneStore(service: service)
-            store.pictureUploaded = { PictureCache.shared.seed(blobId: $0, data: $1) }
+            let store = SceneStore.withPictureCache(service: service)
             let name = effectiveDisplayName
 
             self.service = service

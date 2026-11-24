@@ -100,7 +100,7 @@ final class FurnitureFlowTests: XCTestCase {
 
     func testAPhotoIsUploadedIntoTheRoomThenHung() async throws {
         cluster.uploadId = blob
-        let store = SceneStore(service: cluster.service())
+        let store = SceneStore.withPictureCache(service: cluster.service())
         let prepared = try XCTUnwrap(PictureCache.prepare(jpeg(width: 2048, height: 1536)))
 
         await store.addPicture(
