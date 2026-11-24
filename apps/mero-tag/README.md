@@ -7,22 +7,21 @@ your own Calimero cluster, not with a tracking company.
 (`cd landing && npm install && npm run dev`; deploys to Vercel as-is).
 
 ```
-logic/      Rust WASM contract (calimero-sdk)
-web/        The page the bundle carries: the app's sign-in, approvals and consent returns
-landing/    The landing page (Vite + React + Framer Motion) and its media
-promo/      The promo film (Remotion), rendered from the app's recordings
-app/
-  MeroTag/  SwiftUI iOS app (MapKit + CoreLocation), built on the official
-            Calimero Swift SDK (MeroKit + MeroKitUI)
-scripts/    setup
+logic/        Rust WASM contract (calimero-sdk)
+app/          The page the bundle carries: the app's sign-in, approvals and consent returns
+mobile/ios/   SwiftUI iOS app (MapKit + CoreLocation), built on the official
+              Calimero Swift SDK (MeroKit + MeroKitUI)
+landing/      The landing page (Vite + React + Framer Motion) and its media
+promo/        The promo film (Remotion), rendered from the app's recordings
+scripts/      setup, the development cluster
 ```
 
 Built for **Calimero core 1.0**:
 
 - the contract is a `calimero:app` WebAssembly component on core's component SDK (`calimero-sdk` tag
-  `1.0.0-rc.35`, `min-runtime-version = "1.0.0-rc.35"`), run by the node's wasmtime runtime
+  `component-core-tag` in the root `Cargo.toml`, with `min-runtime-version` equal to it), run by the node's wasmtime runtime
 - the app uses the Swift SDK (MeroKit + MeroKitUI) from [`calimero-network/core`](https://github.com/calimero-network/core)
-  at the same release (`exactVersion` in `app/MeroTag/project.yml`)
+  at the same release (`exactVersion` in `mobile/ios/project.yml`)
 
 ## How the app talks to Calimero
 
@@ -30,7 +29,7 @@ A Calimero 1.0 node runs in an attested cluster. The app verifies the node's att
 sealed channel (`calimero/sealed-http/v2`), all through the SDK's `CalimeroClient`.
 
 1. **Sign in with a passkey.** The app opens Mero Tag's own page, which the cluster serves from the package's origin
-   (`web/`, packed into the bundle), in the system sign-in sheet. The person signs in, or creates an account, with
+   (`app/`, packed into the bundle), in the system sign-in sheet. The person signs in, or creates an account, with
    their passkey there, and the page hands the session back to `mero-tag://signed-in`, sealed to a key the app made
    for that sign-in. The session is bound to Mero Tag's package, kept in the Keychain and refreshed, so a relaunch
    needs no prompt.
@@ -59,7 +58,7 @@ sentence in `fields.message`.
 ## Run it against a development cluster
 
 ```bash
-make tools        # once: meroctl at the core release in ci/core-version
+make tools        # once: meroctl at the core release ../../scripts/install-meroctl.sh pins
 make dev          # merod local on :2501-2503 (Docker on a Mac), then bundle + install the contract
 ```
 
@@ -82,26 +81,26 @@ The SDK keeps a software passkey for that node and makes an account on first use
 You need full Xcode 16+ (an iOS 17 SDK) and XcodeGen (`brew install xcodegen`).
 
 ```bash
-make app-gen      # generate app/MeroTag/MeroTag.xcodeproj from project.yml
+make app-gen      # generate mobile/ios/MeroTag.xcodeproj from project.yml
 ```
 
-For a device: set your team in `app/MeroTag/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = ABCDE12345`,
+For a device: set your team in `mobile/ios/Config/Signing.local.xcconfig` (`DEVELOPMENT_TEAM = ABCDE12345`,
 gitignored), export `MEROTAG_DEVELOPMENT_TEAM`, or pick it under *Signing & Capabilities*. No associated domains
 are needed: sign-in runs on Mero Tag's served page.
 
 To build against a local core checkout, temporarily replace the `core` package's `url` / `exactVersion` in
-`app/MeroTag/project.yml` with `path: /path/to/core`, run `make app-gen`, and do not commit that change.
+`mobile/ios/project.yml` with `path: /path/to/core`, run `make app-gen`, and do not commit that change.
 
 ## The served page
 
-`web/` is a small page the bundle carries (`frontend-dir` in `logic/Cargo.toml`); the cluster serves it at
+`app/` is a small page the bundle carries (`frontend-dir` in `logic/Cargo.toml`); the cluster serves it at
 `https://{label}.apps.calimero.network/{version}/`. It does only what the app can't: the passkey sign-in
 (`#native-sign-in`), step-up approvals (`#native-approve`) and passing the consent page's decision back
 (`?native-consent=1`). A production build needs `VITE_CALIMERO_MIN_RELEASE`, the lowest mero-tee release a node may
 run:
 
 ```bash
-cd web && npm ci && VITE_CALIMERO_MIN_RELEASE=<version> npm run build   # → web/dist, packed by the bundle
+VITE_CALIMERO_MIN_RELEASE=<version> pnpm -F mero-tag build   # → app/dist, packed by the bundle
 ```
 
 ## Contract

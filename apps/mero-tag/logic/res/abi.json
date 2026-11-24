@@ -1,0 +1,506 @@
+{
+  "abiVersion": 1,
+  "errors": {
+    "Forbidden": {
+      "message": "string"
+    },
+    "Invalid": {
+      "message": "string"
+    }
+  },
+  "events": {
+    "GeofenceCreated": {
+      "id": "string"
+    },
+    "GeofenceDeleted": {
+      "id": "string"
+    },
+    "GeofenceEntered": {
+      "id": "string"
+    },
+    "GeofenceExited": {
+      "id": "string"
+    },
+    "GroupCreated": {
+      "id": "string"
+    },
+    "GroupDeleted": {
+      "id": "string"
+    },
+    "GroupUpdated": {
+      "id": "string"
+    },
+    "MemberJoined": {
+      "id": "string"
+    },
+    "PresenceUpdated": {
+      "id": "string"
+    },
+    "TrackerCreated": {
+      "id": "string"
+    },
+    "TrackerDeleted": {
+      "id": "string"
+    },
+    "TrackerRenamed": {
+      "id": "string"
+    },
+    "TrackerShared": {
+      "id": "string"
+    },
+    "TrackerUpdated": {
+      "id": "string"
+    }
+  },
+  "methods": {
+    "addGroupMember": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Add a member to a group. Its owner or an org admin. Emits `GroupUpdated`.",
+      "kind": "call",
+      "params": [
+        [
+          "groupId",
+          "string"
+        ],
+        [
+          "memberId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "addTrackerToGroup": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Add a tracker to a group. Its owner or an org admin. Emits `GroupUpdated`.",
+      "kind": "call",
+      "params": [
+        [
+          "groupId",
+          "string"
+        ],
+        [
+          "trackerId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "createGeofence": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Create a geofence, or redefine one the caller created (or any, as an org\nadmin; `Forbidden` otherwise). `Invalid` for a place off the map or a\nradius that is not positive. Answers the id. Emits `GeofenceCreated`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "centerLat",
+          "f64"
+        ],
+        [
+          "centerLng",
+          "f64"
+        ],
+        [
+          "radius",
+          "f64"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "createGroup": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Create a group owned by the caller, with the caller as its first member.\nIdempotent on `id`. Answers the id. Emits `GroupCreated`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "createTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Create a tracker owned by the caller. Idempotent on `id`. Answers the id.\nEmits `TrackerCreated`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "string"
+    },
+    "deleteGeofence": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Delete a geofence. Its creator or an org admin (`Forbidden`). Emits\n`GeofenceDeleted`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "deleteGroup": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Delete a group. Its owner or an org admin (`Forbidden`). Emits\n`GroupDeleted`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "deleteTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Delete a tracker and its history. Its owner or an org admin\n(`Forbidden`). Emits `TrackerDeleted`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "getGeofences": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every geofence, by id.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<Geofence>"
+    },
+    "getGroups": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every group, by id.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<Group>"
+    },
+    "getHistory": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "All retained samples for a tracker (oldest → newest). `since` (unix ms,\na decimal string on the wire) trims to a window; `\"0\"` is everything.",
+      "kind": "view",
+      "params": [
+        [
+          "trackerId",
+          "string"
+        ],
+        [
+          "since",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": "list<LocationSample>"
+    },
+    "getMembers": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Everyone who joined, by account.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<Member>"
+    },
+    "getPresence": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every member's presence, by account.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<Presence>"
+    },
+    "getSpace": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "The space's name and counts.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "SpaceInfo"
+    },
+    "getTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "One tracker, or `null`.",
+      "kind": "view",
+      "params": [
+        [
+          "id",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<Tracker>"
+    },
+    "getTrackers": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Every tracker, by id.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "list<Tracker>"
+    },
+    "init": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "A new space named `name` (the iOS app passes the space's name; without\none the space is unnamed until an org admin renames it).",
+      "kind": "init",
+      "params": [
+        [
+          "name",
+          "option<string>"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "join": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Join the space as the caller's own account. Idempotent. Emits\n`MemberJoined` the first time.",
+      "kind": "call",
+      "params": [
+        [
+          "username",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "removeGroupMember": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Remove a member. The group's owner (or an org admin) may remove anyone; a\nmember may always leave. Emits `GroupUpdated`.",
+      "kind": "call",
+      "params": [
+        [
+          "groupId",
+          "string"
+        ],
+        [
+          "memberId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "renameSpace": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Rename the space. Org admins only (`Forbidden`) — the space is the org's.",
+      "kind": "call",
+      "params": [
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "renameTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Rename a tracker. Its owner or an org admin (`Forbidden`). Does nothing\nfor an unknown id. Emits `TrackerRenamed`.",
+      "kind": "call",
+      "params": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "reportGeofenceEvent": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Reported by the client's CLRegion monitor. `kind` is \"enter\" or \"exit\".\nThe contract just checks the geofence exists and rebroadcasts\n`GeofenceEntered` / `GeofenceExited`; anything else is ignored.",
+      "kind": "call",
+      "params": [
+        [
+          "geofenceId",
+          "string"
+        ],
+        [
+          "kind",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "shareTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Let `userId` view a tracker. Its owner or an org admin (`Forbidden`).\nEmits `TrackerShared`.",
+      "kind": "call",
+      "params": [
+        [
+          "trackerId",
+          "string"
+        ],
+        [
+          "userId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "unshareTracker": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Stop `userId` viewing a tracker. Its owner or an org admin; a viewer may\nalways take themselves off (`Forbidden` otherwise). Emits `TrackerShared`.",
+      "kind": "call",
+      "params": [
+        [
+          "trackerId",
+          "string"
+        ],
+        [
+          "userId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "updateLocation": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Ingest a location fix for one of the caller's trackers. Validates →\nstores latest → appends a capped history sample → broadcasts.\n`timestamp` (a `u64`, so a decimal string on the wire) is when the fix\nwas taken; a fix older than the stored one is kept in history only.\n\nOwner only, and not even an org admin: a location is the owner's to\nreport, and an admin moving someone's pin would be a forged sighting.\nDoes nothing for an unknown tracker. Emits `TrackerUpdated`.",
+      "kind": "call",
+      "params": [
+        [
+          "trackerId",
+          "string"
+        ],
+        [
+          "latitude",
+          "f64"
+        ],
+        [
+          "longitude",
+          "f64"
+        ],
+        [
+          "altitude",
+          "f64"
+        ],
+        [
+          "speed",
+          "f64"
+        ],
+        [
+          "heading",
+          "f64"
+        ],
+        [
+          "battery",
+          "u8"
+        ],
+        [
+          "timestamp",
+          "u64"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "updatePresence": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "The caller's own presence. One entry per person: with no devices in core\n1.0, a member on a phone and an iPad is one presence, not two. Emits\n`PresenceUpdated`.",
+      "kind": "call",
+      "params": [
+        [
+          "online",
+          "bool"
+        ]
+      ],
+      "public": false,
+      "returns": null
+    },
+    "whoami": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Who the caller is here: their member id and org standing.",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "Me"
+    }
+  },
+  "state": {
+    "fields": {
+      "geofences": "unorderedMap",
+      "groups": "unorderedMap",
+      "history": "unorderedMap",
+      "members": "unorderedMap",
+      "presence": "unorderedMap",
+      "spaceName": "cell",
+      "trackers": "unorderedMap"
+    },
+    "search": {
+      "geofences": [],
+      "groups": [],
+      "history": [],
+      "members": [],
+      "presence": [],
+      "spaceName": [],
+      "trackers": []
+    },
+    "version": 1
+  },
+  "world": "calimero:app@0.5.6"
+}
