@@ -19,7 +19,7 @@ ktlint = "12.1.1"
 detekt = "1.23.7"
 # The Calimero Kotlin SDK, published to Maven Central from calimero-network/core
 # (sdks/clients/mero-kotlin) on core's version.
-meroSdk = "1.0.0-rc.36"
+meroSdk = "1.0.0-rc.37"
 
 [libraries]
 mero-core = { module = "network.calimero:mero-kotlin", version.ref = "meroSdk" }
