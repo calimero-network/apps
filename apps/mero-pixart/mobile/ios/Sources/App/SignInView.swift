@@ -102,7 +102,7 @@ struct SignInView: View {
                 } else {
                     // A cluster name: its nodes come from the node directory.
                     Task {
-                        await client.connect(cluster: target)
+                        await client.connect(cluster: target, directory: MeroCloud.environment.directory)
                         session.rebuild()
                     }
                 }

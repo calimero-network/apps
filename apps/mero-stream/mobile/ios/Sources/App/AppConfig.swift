@@ -28,7 +28,8 @@ enum AppConfig {
             nodes: (string("MeroNodes") ?? "").split(separator: ",").map {
                 $0.trimmingCharacters(in: .whitespaces)
             }.filter { !$0.isEmpty },
-            policy: allowMock ? .development : .production, packageVersion: string("MeroPackageVersion"))
+            policy: allowMock ? .development : MeroCloud.environment.policy(),
+            packageVersion: string("MeroPackageVersion"))
     }
 
     /// A Calimero Cloud cluster to connect to by name (the node directory lists

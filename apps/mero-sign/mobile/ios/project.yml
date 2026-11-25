@@ -11,6 +11,15 @@
 # new release. Keep it identical to SignCore/Package.swift (and Package.resolved).
 name: MeroSign
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -54,6 +63,9 @@ targets:
         # Where the node's consent page returns to.
         MeroSignCallbackScheme: mero-sign
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.sign
         PRODUCT_NAME: MeroSign
@@ -71,6 +83,14 @@ targets:
       - sdk: PDFKit.framework
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroSign Staging:
+    build:
+      targets:
+        MeroSign: all
+    run:
+      config: Staging
+
   MeroSign:
     build:
       targets:

@@ -245,7 +245,7 @@ final class SessionModel: ObservableObject {
             connect(nodeURL: url, allowMock: false)
             return true
         case .name(let name)?:
-            let ok = await client.connect(cluster: name)
+            let ok = await client.connect(cluster: name, directory: MeroCloud.environment.directory)
             rebuild()
             return ok
         case nil:

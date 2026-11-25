@@ -16,7 +16,9 @@ enum AppConfig {
     }
 
     static var providerConfig: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: MeroSheets.packageName)
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL, policy: MeroCloud.environment.policy(),
+            packageName: MeroSheets.packageName)
     }
 
     static let keychainService = "network.calimero.sheets"

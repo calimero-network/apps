@@ -184,7 +184,7 @@ struct SignInView: View {
             session.connect(nodeURL: url, allowMock: false)
             return true
         case .name(let name)?:
-            let ok = await client.connect(cluster: name)
+            let ok = await client.connect(cluster: name, directory: MeroCloud.environment.directory)
             session.rebuild()
             return ok
         case nil:

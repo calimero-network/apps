@@ -18,7 +18,7 @@ struct StreamApp: App {
                 .task {
                     await session.restore()
                     if session.client.nodeURL == nil, let cluster = AppConfig.cluster {
-                        await session.client.connect(cluster: cluster)
+                        await session.client.connect(cluster: cluster, directory: MeroCloud.environment.directory)
                         session.rebuild()
                     }
                 }

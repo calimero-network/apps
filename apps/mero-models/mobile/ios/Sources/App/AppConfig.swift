@@ -24,7 +24,7 @@ enum AppConfig {
     /// attestation, or mock attestation for a `merod local` cluster.
     static var config: MeroProviderConfig {
         let allowMock = string("MeroAllowMock").map { ["1", "yes", "true"].contains($0.lowercased()) } ?? false
-        let policy: CloudPolicy = allowMock ? .development : .production
+        let policy: CloudPolicy = allowMock ? .development : MeroCloud.environment.policy()
         return MeroProviderConfig(
             nodeURL: string("MeroNodeURL"),
             nodes: (string("MeroNodes") ?? "").split(separator: ",").map {

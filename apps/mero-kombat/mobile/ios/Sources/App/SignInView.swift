@@ -138,7 +138,7 @@ struct SignInView: View {
         case .cloud where entry.contains("://"):
             session.connect(nodeURL: entry, allowMock: false)
         case .cloud:
-            await client.connect(cluster: entry)
+            await client.connect(cluster: entry, directory: MeroCloud.environment.directory)
             session.rebuild()
         }
     }

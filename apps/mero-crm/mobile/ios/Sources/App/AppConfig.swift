@@ -18,7 +18,9 @@ enum AppConfig {
     }
 
     static var config: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: packageName)
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL, policy: MeroCloud.environment.policy(),
+            packageName: packageName)
     }
 
     /// The Keychain service the session and the development passkey live under.

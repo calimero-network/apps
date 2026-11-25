@@ -24,7 +24,7 @@ enum AppConfig {
 
     static var config: MeroProviderConfig {
         MeroProviderConfig(
-            nodeURL: clusterURL, policy: .production, packageName: DesignFormat.packageName,
+            nodeURL: clusterURL, policy: MeroCloud.environment.policy(), packageName: DesignFormat.packageName,
             packageVersion: string("MeroPackageVersion"))
     }
 

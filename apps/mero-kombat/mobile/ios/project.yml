@@ -12,6 +12,15 @@
 # to the version in KombatCore/Package.swift.
 name: MeroKombat
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -71,6 +80,9 @@ targets:
         MeroKombatCallbackHost: ""
         MeroKombatCallbackPath: /consent
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.kombat
         PRODUCT_NAME: MeroKombat
@@ -88,6 +100,14 @@ targets:
         product: MeroKitUI
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroKombat Staging:
+    build:
+      targets:
+        MeroKombat: all
+    run:
+      config: Staging
+
   MeroKombat:
     build:
       targets:

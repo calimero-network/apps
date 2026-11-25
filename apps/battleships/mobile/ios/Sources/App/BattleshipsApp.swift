@@ -14,7 +14,9 @@ enum AppConfig {
     /// The package, and the Cloud cluster's node when one is configured (`MeroNodeURL`).
     /// Without one the sign-in screen asks for it, or for a development node.
     static var config: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: Battleships.packageName)
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL, policy: MeroCloud.environment.policy(),
+            packageName: Battleships.packageName)
     }
 }
 

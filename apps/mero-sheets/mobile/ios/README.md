@@ -22,3 +22,12 @@ arrive on `calimero://com.calimero.mero-sheets/join?invitation=…`.
 
 The Swift SDK (MeroKit) is pinned to a calimero-network/core release (`exactVersion` / `exact:`) in `project.yml`, `SheetsCore/Package.swift` and
 `SheetsCore/Package.resolved`; keep them equal.
+
+### Staging (iOS)
+
+The **MeroSheets Staging** scheme runs the `Staging` configuration, a Debug build
+with the `MERO_STAGING` compilation condition: it reaches Calimero Cloud's
+staging, its node directory and its debug node images trusted (MeroKit's
+`CloudEnvironment.staging`, chosen in `Sources/App/MeroCloud.swift`). Release,
+the build people install from the App Store, is always production, and a
+non-Debug build with `MERO_STAGING` does not compile.

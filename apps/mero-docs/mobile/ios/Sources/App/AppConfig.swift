@@ -24,7 +24,7 @@ enum AppConfig {
         // A cluster given by name is reached through the directory at sign-in, not here.
         MeroProviderConfig(
             nodeURL: CloudSettings.clusterURL.flatMap { CloudSettings.isNodeURL($0) ? $0 : nil },
-            packageName: DocsFormat.packageName)
+            policy: MeroCloud.environment.policy(), packageName: DocsFormat.packageName)
     }
 
     /// The Keychain service the session and the development passkey live under.

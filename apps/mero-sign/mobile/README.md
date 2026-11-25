@@ -163,3 +163,12 @@ each path-filtered to its folder.
 its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
 people install from Google Play, is always production, whatever is passed; a staging cluster's
 name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.
+
+### Staging (iOS)
+
+The **MeroSign Staging** scheme runs the `Staging` configuration, a Debug build
+with the `MERO_STAGING` compilation condition: it reaches Calimero Cloud's
+staging, its node directory and its debug node images trusted (MeroKit's
+`CloudEnvironment.staging`, chosen in `Sources/App/MeroCloud.swift`). Release,
+the build people install from the App Store, is always production, and a
+non-Debug build with `MERO_STAGING` does not compile.
