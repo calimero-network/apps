@@ -1,3 +1,5 @@
+import { DEPLOY_NOT_GRANTED_MESSAGE } from '@calimero-apps/connect';
+import { CalimeroError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
 
 import { describeError, isTransient, rawReason } from './errors';
@@ -62,5 +64,9 @@ describe('errors', () => {
       'The two passphrases do not match.',
     );
     expect(describeError('boom')).toBe('boom');
+  });
+
+  it('says an app this cluster does not offer is not available yet', () => {
+    expect(describeError(new CalimeroError(403, 'DEPLOY_NOT_GRANTED', 'This cluster only lets Calimero Cloud deployers install apps'))).toBe(DEPLOY_NOT_GRANTED_MESSAGE);
   });
 });

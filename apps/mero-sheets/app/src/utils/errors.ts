@@ -1,3 +1,5 @@
+import { DEPLOY_NOT_GRANTED_MESSAGE, isDeployNotGranted } from '@calimero-apps/connect';
+
 /**
  * Turn an opaque RPC/contract error into a readable, specific message.
  *
@@ -16,6 +18,7 @@
  * human-readable string, e.g. "Forbidden: delete: caller is not the owner".
  */
 export function describeError(err: unknown): string {
+  if (isDeployNotGranted(err)) return DEPLOY_NOT_GRANTED_MESSAGE;
   if (err == null) return 'Unknown error';
   if (typeof err === 'string') return cleanString(err);
 

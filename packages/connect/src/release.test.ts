@@ -13,6 +13,7 @@ import {
   servedRelease,
   type ReleaseClient,
 } from "./release";
+import { servedNodes } from "./target";
 
 function memoryStorage(): KeyValueStorage & { map: Map<string, string> } {
   const map = new Map<string, string>();
@@ -227,6 +228,15 @@ describe("resolveSource", () => {
 
   it("keeps the other fields of the source", async () => {
     expect(await resolveSource(latest("2.0.0"), { package: PKG, extra: 1 } as never, "http://localhost/")).toEqual({ package: PKG, extra: 1, version: "2.0.0" });
+  });
+
+  it("is the release the page's deployment offers, without asking", async () => {
+    const c = latest("2.0.0");
+    const body = { package: PKG, deployment: null, versions: ["1.0.0", "2.0.0"], deployments: [{ id: "dep-a", name: "a", app: "x", version: "1.0.0" }], api: ["https://n1.example"] };
+    await servedNodes(HOST, (async () => new Response(JSON.stringify(body))) as unknown as typeof fetch);
+    expect(await resolveSource(c, { package: PKG }, `${HOST}/2.0.0/`)).toEqual({ package: PKG, version: "1.0.0" });
+    expect(c.packages.get).not.toHaveBeenCalled();
+    await servedNodes("");
   });
 
   it("is the version the source names, without asking", async () => {

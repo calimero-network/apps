@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { setOrgName } from "@calimero-apps/names";
-import { appSource, targetKey, type AppSource, type Target } from "@calimero-apps/connect";
+import { appSource, describeError, targetKey, type AppSource, type Target } from "@calimero-apps/connect";
 import { createFeed } from "./feeds";
 import { PACKAGE, useSessionApi, type Session } from "./session";
 
@@ -112,7 +112,7 @@ export async function finishNewFeed(
     // Best effort: the feed exists either way.
     await setOrgName(client, orgId, accountId, selfName).catch(() => {});
   } catch (e) {
-    setCreation({ failed: e instanceof Error ? e.message : String(e) });
+    setCreation({ failed: describeError(e) });
   } finally {
     setCreation({ busy: false });
   }
