@@ -13,10 +13,13 @@
 # without it a push only reports what it would have released, and a release is
 # a dispatch.
 #
-# The served frontend is built for the cloud cluster named by the repository
-# variable CALIMERO_CLUSTER (default eu-shared-1, the cluster in the cloud's node
-# directory) and the mero-tee release floor CALIMERO_MIN_RELEASE (no default:
-# it is a trust decision, and publish-component.yml refuses to build without it).
+# The served frontend is built for the cloud cluster named by the variable
+# CALIMERO_CLUSTER and the mero-tee release floor CALIMERO_MIN_RELEASE. On main
+# (production) these are the repository variables (cluster default eu-shared-1;
+# the floor has no default: it is a trust decision, and publish-component.yml
+# refuses to build without it). On staging-test they are the `staging`
+# environment's own variables, with CALIMERO_DIRECTORY, and a publish fails
+# before building when they are missing (scripts/frontend-target.sh).
 #
 # WHICH REGISTRY: the branch the run is on, through scripts/registry-target.sh
 # (the `target` job) and nowhere else: main publishes to production
@@ -297,10 +300,9 @@ jobs:
       version: ${{ inputs.version || '' }}
       registry-url: ${{ needs.target.outputs.registry-url }}
       environment: ${{ needs.target.outputs.environment }}
-      # The served frontend's target (publish-component.yml): the cloud
-      # cluster and the mero-tee release floor every node must attest to.
-      cluster: ${{ vars.CALIMERO_CLUSTER || 'eu-shared-1' }}
-      min-release: ${{ vars.CALIMERO_MIN_RELEASE || '' }}
+      # The served frontend's cluster and attestation floor are resolved in
+      # publish-component.yml's deploy job, the one that runs in the
+      # environment: a value read here would always be production's.
     # The two the publish needs, never `inherit`, and the registry key only to
     # production (see the job above).
     secrets:

@@ -12,6 +12,7 @@ Run: python3 scripts/tests/registry-target-test.py
 
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -93,6 +94,27 @@ else:
     )
     check("refused", p.returncode != 0, True)
     check("prints nothing", p.stdout, "")
+
+# The scripts the publish calls default to production when CALIMERO_REGISTRY_URL
+# is UNSET (a laptop run). Set but empty means the mapped URL was lost on the
+# way, and must stop the run rather than read as production.
+print("an empty registry is not production")
+SCRIPTS = SCRIPT.parent
+for name, argv in (
+    ("registry-release.sh next-version", ["bash", str(SCRIPTS / "registry-release.sh"), "next-version", "com.example.x"]),
+    ("registry-release.sh check-signer", ["bash", str(SCRIPTS / "registry-release.sh"), "check-signer", "com.example.x", "did:key:z6Mk"]),
+    ("registry-unchanged.py", [sys.executable, str(SCRIPTS / "registry-unchanged.py"), "/dev/null", "com.example.x"]),
+):
+    p = subprocess.run(
+        argv,
+        env={**os.environ, "CALIMERO_REGISTRY_URL": ""},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    check(f"{name}: refused", p.returncode, 2)
+    check(f"{name}: says why", "set but empty" in p.stderr, True)
+    check(f"{name}: prints nothing", p.stdout, "")
 
 if FAILURES:
     print(f"\n{len(FAILURES)} failure(s)")

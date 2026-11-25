@@ -388,7 +388,12 @@ The registry is decided by the branch the run is on, in one place,
 (`https://apps.calimero.network`), `staging-test` to the staging registry
 (`https://registry.staging.cloud.calimero.network`) from the GitHub environment
 `staging`, whose `CALIMERO_REGISTRY_API_KEY` is the staging key. `MERO_SIGN_KEY`
-is the same organization secret for both. Any other branch, or a tag, publishes
+is the same organization secret for both. The served frontend goes with the registry: on
+staging it is built from the environment's own variables `CALIMERO_CLUSTER`,
+`CALIMERO_DIRECTORY` (the node directory the floor is derived through) and,
+optionally, `CALIMERO_MIN_RELEASE` (otherwise derived from that cluster), and the
+publish fails before building when one is missing or only inherited from the
+repository (`scripts/frontend-target.sh`). Any other branch, or a tag, publishes
 nothing. Dispatch on staging with `gh workflow run release.yml --ref staging-test`.
 
 A push to `main` that changes a component app releases it only when the

@@ -56,14 +56,6 @@ on:
         required: false
         type: string
         default: ""
-      cluster:
-        description: VITE_CALIMERO_CLUSTER of the served frontend (the cluster's name in the node directory)
-        required: true
-        type: string
-      min-release:
-        description: VITE_CALIMERO_MIN_RELEASE of the served frontend (the lowest mero-tee release a node may run)
-        required: true
-        type: string
       registry-url:
         description: The App Registry to publish to (scripts/registry-target.sh)
         required: true
@@ -97,6 +89,12 @@ jobs:
     outputs:
       package: ${{ steps.pkg.outputs.package }}
       version: ${{ steps.ver.outputs.version }}
+      # The frontend variables as a job WITHOUT an environment sees them
+      # (repository/organization). The deploy job compares its own against
+      # these to tell an environment's value from an inherited one.
+      outside-cluster: ${{ vars.CALIMERO_CLUSTER }}
+      outside-directory: ${{ vars.CALIMERO_DIRECTORY }}
+      outside-min-release: ${{ vars.CALIMERO_MIN_RELEASE }}
     steps:
       - name: Check the registry
         run: |
@@ -157,24 +155,65 @@ jobs:
       # components.yml, so the core crates compile once.
       CARGO_TARGET_DIR: ${{ github.workspace }}/target-components
     steps:
-      - name: Check required secrets and frontend settings
+      - name: Check required secrets
         env:
           MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
           CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
-          CLUSTER: ${{ inputs.cluster }}
-          MIN_RELEASE: ${{ inputs.min-release }}
           ENVIRONMENT: ${{ inputs.environment }}
         run: |
           missing=0
           [ -n "$MERO_SIGN_KEY" ] || { echo "::error::MERO_SIGN_KEY is not set"; missing=1; }
           [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY is not set${ENVIRONMENT:+ in the GitHub environment $ENVIRONMENT}"; missing=1; }
-          # A served build without these throws ConfigError in the browser:
-          # the bundle would publish fine and sign nobody in.
-          [[ "$CLUSTER" =~ ^[a-z0-9][a-z0-9.-]*$ ]] || { echo "::error::cluster '$CLUSTER' is not a cluster name (repository variable CALIMERO_CLUSTER)"; missing=1; }
-          [[ "$MIN_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::min-release '$MIN_RELEASE' is not X.Y.Z (repository variable CALIMERO_MIN_RELEASE)"; missing=1; }
           exit $missing
 
       - uses: actions/checkout@v4
+
+      # The cluster the served frontend is built for, resolved HERE because
+      # only this job runs in the environment and sees its variables. Production
+      # (no environment): CALIMERO_CLUSTER (default eu-shared-1) and
+      # CALIMERO_MIN_RELEASE from the repository, as before. An environment
+      # (staging) must set its own CALIMERO_CLUSTER and CALIMERO_DIRECTORY, or
+      # this fails before anything is built (scripts/frontend-target.sh).
+      - name: Resolve the frontend's cluster
+        id: target
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          CLUSTER: ${{ vars.CALIMERO_CLUSTER }}
+          DIRECTORY: ${{ vars.CALIMERO_DIRECTORY }}
+          MIN_RELEASE: ${{ vars.CALIMERO_MIN_RELEASE }}
+          OUTSIDE_CLUSTER: ${{ needs.check.outputs.outside-cluster }}
+          OUTSIDE_DIRECTORY: ${{ needs.check.outputs.outside-directory }}
+          OUTSIDE_MIN_RELEASE: ${{ needs.check.outputs.outside-min-release }}
+        run: |
+          set -euo pipefail
+          out=$(bash scripts/frontend-target.sh)
+          echo "$out" >> "$GITHUB_OUTPUT"
+          echo "::notice::frontend target: $(tr '\n' ' ' <<<"$out")"
+
+      # A served build without both throws ConfigError in the browser: the
+      # bundle would publish fine and sign nobody in. Production requires
+      # CALIMERO_MIN_RELEASE, as before; an environment without its own derives
+      # the floor from its own cluster through its own directory.
+      - name: Resolve the frontend's attestation floor
+        id: floor
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          CLUSTER: ${{ steps.target.outputs.floor_cluster }}
+          DIRECTORY: ${{ steps.target.outputs.directory }}
+          MIN_RELEASE: ${{ steps.target.outputs.min_release }}
+        run: |
+          set -euo pipefail
+          floor="$MIN_RELEASE"
+          if [ -z "$floor" ] && [ -n "$ENVIRONMENT" ]; then
+            # cluster-min-release.py prints only a release it could parse.
+            floor=$(python3 scripts/cluster-min-release.py --cluster "$CLUSTER" --directory "$DIRECTORY") || floor=""
+            [ -n "$floor" ] || { echo "::error::no attestation floor: $CLUSTER's nodes name no mero-tee release through $DIRECTORY, and the GitHub environment $ENVIRONMENT sets no CALIMERO_MIN_RELEASE of its own"; exit 1; }
+            echo "::notice::attestation floor $floor, the lowest mero-tee release $CLUSTER's nodes run now"
+          elif [[ ! "$floor" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::min-release '$floor' is not X.Y.Z (variable CALIMERO_MIN_RELEASE)"
+            exit 1
+          fi
+          echo "min-release=$floor" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -231,8 +270,8 @@ jobs:
         id: frontend
         env:
           VITE_CALIMERO_TARGET: cloud
-          VITE_CALIMERO_CLUSTER: ${{ inputs.cluster }}
-          VITE_CALIMERO_MIN_RELEASE: ${{ inputs.min-release }}
+          VITE_CALIMERO_CLUSTER: ${{ steps.target.outputs.floor_cluster }}
+          VITE_CALIMERO_MIN_RELEASE: ${{ steps.floor.outputs.min-release }}
         run: |
           set -euo pipefail
           dir=$(python3 scripts/frontend-dir.py "$APP")
@@ -324,8 +363,8 @@ jobs:
           SIGNER: ${{ steps.verify.outputs.signer }}
           MIN_RUNTIME: ${{ steps.verify.outputs.min-runtime }}
           FRONTEND: ${{ steps.frontend.outputs.dir }}
-          CLUSTER: ${{ inputs.cluster }}
-          MIN_RELEASE: ${{ inputs.min-release }}
+          CLUSTER: ${{ steps.target.outputs.floor_cluster }}
+          MIN_RELEASE: ${{ steps.floor.outputs.min-release }}
         run: |
           {
             echo "### $APP published :rocket:"

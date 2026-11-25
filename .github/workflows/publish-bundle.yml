@@ -30,7 +30,8 @@
 # the branch (scripts/registry-target.sh), with the GitHub environment whose
 # registry key goes with it.
 #
-# Repository variables:
+# Variables (the repository's in production; with an `environment` input,
+# that environment's own, checked by scripts/frontend-target.sh):
 #   CALIMERO_MIN_RELEASE      VITE_CALIMERO_MIN_RELEASE for the frontend packed
 #                             into the bundle: the lowest mero-tee release a
 #                             node may run. Optional: unset, it is the lowest
@@ -41,6 +42,11 @@
 #   CALIMERO_CLUSTER          VITE_CALIMERO_CLUSTER for that frontend, and the
 #                             cluster the floor is derived from. Optional: a
 #                             served frontend connects to its cluster's nodes.
+#   CALIMERO_DIRECTORY        the node directory the floor is derived through.
+#                             Production uses its own and ignores this; an
+#                             environment must set it, with CALIMERO_CLUSTER,
+#                             or the publish fails before building: never the
+#                             production cluster or directory for staging.
 
 name: Publish bundle
 
@@ -100,6 +106,12 @@ jobs:
       publish: ${{ steps.decide.outputs.publish }}
       package: ${{ steps.pkg.outputs.package }}
       version: ${{ steps.ver.outputs.version }}
+      # The frontend variables as a job WITHOUT an environment sees them
+      # (repository/organization). The deploy job compares its own against
+      # these to tell an environment's value from an inherited one.
+      outside-cluster: ${{ vars.CALIMERO_CLUSTER }}
+      outside-directory: ${{ vars.CALIMERO_DIRECTORY }}
+      outside-min-release: ${{ vars.CALIMERO_MIN_RELEASE }}
     steps:
       # No default registry anywhere in this workflow: a missing or malformed
       # one stops the run before anything is read, built or signed.
@@ -253,6 +265,27 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # The cluster the packed frontend is built for, resolved HERE because
+      # only this job runs in the environment and sees its variables, and
+      # before anything is built. Production (no environment): the repository
+      # variables, as before. An environment (staging) must set its own
+      # CALIMERO_CLUSTER and CALIMERO_DIRECTORY (scripts/frontend-target.sh).
+      - name: Resolve the frontend's cluster
+        id: target
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          CLUSTER: ${{ vars.CALIMERO_CLUSTER }}
+          DIRECTORY: ${{ vars.CALIMERO_DIRECTORY }}
+          MIN_RELEASE: ${{ vars.CALIMERO_MIN_RELEASE }}
+          OUTSIDE_CLUSTER: ${{ needs.check.outputs.outside-cluster }}
+          OUTSIDE_DIRECTORY: ${{ needs.check.outputs.outside-directory }}
+          OUTSIDE_MIN_RELEASE: ${{ needs.check.outputs.outside-min-release }}
+        run: |
+          set -euo pipefail
+          out=$(bash scripts/frontend-target.sh)
+          echo "$out" >> "$GITHUB_OUTPUT"
+          echo "::notice::frontend target: $(tr '\n' ' ' <<<"$out")"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -347,10 +380,11 @@ jobs:
       - uses: ./.github/actions/build-frontend
         with:
           app: ${{ inputs.app }}
-          min-release: ${{ vars.CALIMERO_MIN_RELEASE }}
-          cluster: ${{ vars.CALIMERO_CLUSTER }}
+          min-release: ${{ steps.target.outputs.min_release }}
+          cluster: ${{ steps.target.outputs.cluster }}
           require-min-release: "true"
-          floor-cluster: ${{ vars.CALIMERO_CLUSTER || 'eu-shared-1' }}
+          floor-cluster: ${{ steps.target.outputs.floor_cluster }}
+          directory: ${{ steps.target.outputs.directory }}
 
       # `--app-version`, not `--bump`: the check job already resolved the number
       # against the registry, and cargo-mero's own --bump floors an empty

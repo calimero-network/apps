@@ -32,6 +32,13 @@ inputs:
     description: The cluster whose nodes' lowest mero-tee release is the derived floor.
     required: false
     default: eu-shared-1
+  directory:
+    description: >
+      The node directory the floor is derived through (scripts/frontend-target.sh
+      picks it per registry). No default: a staging publish must never read the
+      production directory. Required when the floor is derived.
+    required: false
+    default: ""
 
 outputs:
   dir:
@@ -61,14 +68,15 @@ runs:
         GIVEN: ${{ inputs.min-release }}
         REQUIRE: ${{ inputs.require-min-release }}
         CLUSTER: ${{ inputs.floor-cluster }}
+        DIRECTORY: ${{ inputs.directory }}
       run: |
         floor="$GIVEN"
-        source="the repository variable CALIMERO_MIN_RELEASE"
+        source="the variable CALIMERO_MIN_RELEASE"
         if [ -z "$floor" ] && [ "$REQUIRE" = "true" ]; then
           source="the lowest mero-tee release ${CLUSTER}'s nodes run now"
-          floor=$(python3 scripts/cluster-min-release.py --cluster "$CLUSTER") || floor=""
+          floor=$(python3 scripts/cluster-min-release.py --cluster "$CLUSTER" --directory "$DIRECTORY") || floor=""
           if [ -z "$floor" ]; then
-            echo "::error title=No attestation floor::$APP ships a frontend in its bundle, and a production build connects to no node without VITE_CALIMERO_MIN_RELEASE. It could not be derived from ${CLUSTER}'s nodes (see the log above). Set the repository variable CALIMERO_MIN_RELEASE (Settings > Secrets and variables > Actions > Variables), or CALIMERO_CLUSTER to a cluster that answers, and publish again."
+            echo "::error title=No attestation floor::$APP ships a frontend in its bundle, and a production build connects to no node without VITE_CALIMERO_MIN_RELEASE. It could not be derived from ${CLUSTER}'s nodes (see the log above). Set the variable CALIMERO_MIN_RELEASE (on the repository, or on the publish's GitHub environment) (Settings > Secrets and variables > Actions > Variables), or CALIMERO_CLUSTER to a cluster that answers, and publish again."
             exit 1
           fi
         fi

@@ -32,6 +32,9 @@
 #   main)    -> the staging line (registry $STAGING, environment staging, always)
 #   prod)    -> the production line (registry $PROD, no environment, gated)
 #   staging-test) -> removed
+# The frontend a bundle carries follows the environment, not the branch: its
+# cluster comes from the environment's own variables (scripts/frontend-target.sh),
+# so the switch needs no change there.
 set -euo pipefail
 
 PROD=https://apps.calimero.network

@@ -123,5 +123,18 @@ for cluster, reason in (("down", "names a mero-tee release"), ("empty", "no usab
     assert r.returncode == 1 and r.stdout == "", (cluster, r)
     assert reason in r.stderr, (cluster, r.stderr)
 
+# No production default: a missing or empty --cluster/--directory is a usage
+# error (exit 2) and nothing is fetched, rather than production's floor.
+before = len(SEEN)
+for argv in (
+    ["--cluster", "rolling"],
+    ["--directory", f"{base}/directory/"],
+    ["--cluster", "", "--directory", f"{base}/directory/"],
+    ["--cluster", "rolling", "--directory", ""],
+):
+    r = subprocess.run([sys.executable, str(SCRIPT), *argv, "--timeout", "2"], capture_output=True, text=True)
+    assert r.returncode == 2 and r.stdout == "", (argv, r)
+assert len(SEEN) == before, SEEN[before:]
+
 server.shutdown()
 print("ok")

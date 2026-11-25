@@ -9,7 +9,8 @@ signed manifest (`.manifest`) is compared. Anything else is refused (exit 2):
 comparing the wrapper would never match, and a bare manifest would mean the
 signature was not checked by the step that wrote it.
 Prints `same=true` or `same=false` for $GITHUB_OUTPUT, and why on stderr.
-CALIMERO_REGISTRY_URL overrides https://apps.calimero.network.
+CALIMERO_REGISTRY_URL overrides https://apps.calimero.network; set but empty
+is refused (exit 2) rather than read as production.
 
 Every Release dispatch rebuilds every app, and a version that equals the
 latest only adds about 14 KB to the registry's Redis (which filled at ~1,600
@@ -168,13 +169,18 @@ def main(argv):
     if len(argv) not in (3, 4):
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         return 2
+    registry = os.environ.get("CALIMERO_REGISTRY_URL", DEFAULT_REGISTRY)
+    if not registry.strip():
+        # An empty value is a lost registry (a staging publish whose URL did not
+        # arrive), never a request for production's.
+        print("CALIMERO_REGISTRY_URL is set but empty", file=sys.stderr)
+        return 2
     with open(argv[1]) as f:
         built = built_manifest(json.load(f))
     if built is None:
         print(f"{argv[1]} is not `meroctl app inspect` output ({{bundleHash, manifest}})", file=sys.stderr)
         return 2
     explicit = argv[3] if len(argv) == 4 else ""
-    registry = os.environ.get("CALIMERO_REGISTRY_URL") or DEFAULT_REGISTRY
     same, reason = decide(built, argv[2], explicit, registry)
     print(f"::notice::{argv[2]}: {reason}", file=sys.stderr)
     print(f"same={'true' if same else 'false'}")
