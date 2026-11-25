@@ -28,7 +28,8 @@ workflow, never per developer):
 |---|---|---|
 | `VITE_CALIMERO_CLUSTER` | yes | the cluster's name in the cloud's node directory |
 | `VITE_CALIMERO_MIN_RELEASE` | yes | the lowest mero-tee release a node may run |
-| `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | no | zone first; another directory (staging) |
+| `VITE_CALIMERO_ZONE`, `VITE_CALIMERO_DIRECTORY` | no | zone first; another directory |
+| `VITE_CALIMERO_ENV` | no | `staging`: staging's directory, and its debug images trusted |
 | `VITE_CALIMERO_PACKAGE`, `VITE_CALIMERO_VERSION` | no | default `com.calimero.mero-stream`, newest version |
 
 Without the first two the app shows a configuration error at start instead of

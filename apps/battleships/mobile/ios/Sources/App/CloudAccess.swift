@@ -117,7 +117,7 @@ struct CloudSignInPanel: View {
             session.connect(nodeURL: value, allowMock: false)
             return true
         }
-        return await session.client.connect(cluster: value)
+        return await session.client.connect(cluster: value, directory: MeroCloud.environment.directory)
     }
 
     private func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }

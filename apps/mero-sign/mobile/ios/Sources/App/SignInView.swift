@@ -102,7 +102,7 @@ struct SignInView: View {
                 } else {
                     // A Calimero Cloud cluster by name: its nodes come from the node directory.
                     run {
-                        await session.client.connect(cluster: target)
+                        await session.client.connect(cluster: target, directory: MeroCloud.environment.directory)
                         session.rebuild()
                     }
                 }

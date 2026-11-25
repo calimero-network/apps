@@ -205,3 +205,19 @@ The view-model tests on both platforms run against the SDKs' fakes (`InMemoryApp
 diff; macOS `swift test` on VoteCore; XcodeGen and an unsigned simulator build) and
 `.github/workflows/mero-vote-android.yml` (fetch the SDK, ktlint, detekt, unit tests incl. the
 vectors, Android lint, `assembleDebug`), each path-filtered to its folder and the shared vectors.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.
+
+### Staging (iOS)
+
+The **MeroVote Staging** scheme runs the `Staging` configuration, a Debug build
+with the `MERO_STAGING` compilation condition: it reaches Calimero Cloud's
+staging, its node directory and its debug node images trusted (MeroKit's
+`CloudEnvironment.staging`, chosen in `Sources/App/MeroCloud.swift`). Release,
+the build people install from the App Store, is always production, and a
+non-Debug build with `MERO_STAGING` does not compile.

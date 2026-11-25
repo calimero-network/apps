@@ -11,6 +11,15 @@
 # new release. Keep it equal to the version in StreamCore/Package.swift.
 name: MeroStream
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -69,6 +78,9 @@ targets:
         StreamCallbackHost: ""
         StreamCallbackPath: /consent
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.stream
         PRODUCT_NAME: MeroStream
@@ -84,6 +96,14 @@ targets:
         product: MeroKitUI
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroStream Staging:
+    build:
+      targets:
+        MeroStream: all
+    run:
+      config: Staging
+
   MeroStream:
     build:
       targets:

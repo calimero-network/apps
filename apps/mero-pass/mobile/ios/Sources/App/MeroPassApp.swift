@@ -14,7 +14,9 @@ enum AppConfig {
     }
 
     static var config: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: PassConstants.packageName)
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL, policy: MeroCloud.environment.policy(),
+            packageName: PassConstants.packageName)
     }
 }
 

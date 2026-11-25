@@ -11,12 +11,19 @@ fun configString(name: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
+// A staging build (`-PmeroStaging=true`) reaches Calimero Cloud's staging and trusts its debug node
+// images (the SDK's CloudEnvironment.STAGING). Debug builds only: a release build, the one people
+// install from Google Play, is always production, whatever is passed.
+val meroStaging: Boolean = providers.gradleProperty("meroStaging").getOrElse("false").trim() == "true"
+
 android {
     namespace = "network.calimero.chat"
     // The SDK modules compile against 34 (AGP 8.5.2's supported ceiling); stay in step with them.
     compileSdk = 34
 
     defaultConfig {
+
+        buildConfigField("boolean", "MERO_STAGING", meroStaging.toString())
         applicationId = "network.calimero.chat"
         minSdk = 26
         targetSdk = 34
@@ -30,6 +37,8 @@ android {
 
     buildTypes {
         release {
+            // Never staging: a store build trusts production's locked-read-only images only.
+            buildConfigField("boolean", "MERO_STAGING", "false")
             isMinifyEnabled = false
         }
     }

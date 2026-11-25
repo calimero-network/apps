@@ -152,7 +152,7 @@ private struct SignInForm: View {
             session.connect(nodeURL: input, allowMock: false)
             return true
         }
-        guard await client.connect(cluster: input) else { return false }
+        guard await client.connect(cluster: input, directory: MeroCloud.environment.directory) else { return false }
         session.rebuild()
         return true
     }

@@ -20,6 +20,15 @@
 # system browser, which returns to mero-design://consent.
 name: MeroDesign
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -78,6 +87,9 @@ targets:
     # file with `com.apple.developer.associated-domains: [webcredentials:<rp-id>]`.
     # A development cluster uses a software passkey and needs neither.
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.design
         PRODUCT_NAME: MeroDesign
@@ -111,6 +123,14 @@ targets:
         SWIFT_VERSION: "5.9"
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroDesign Staging:
+    build:
+      targets:
+        MeroDesign: all
+    run:
+      config: Staging
+
   MeroDesign:
     build:
       targets:

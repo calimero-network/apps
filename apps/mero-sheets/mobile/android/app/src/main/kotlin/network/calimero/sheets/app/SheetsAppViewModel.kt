@@ -161,7 +161,7 @@ class SheetsAppViewModel(
             if (isNodeUrl(target)) {
                 open(SignInMode.CLOUD, target)
             } else {
-                val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = target, policy = CloudPolicy.production))
+                val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = target, policy = meroCloud.policy(), directory = meroCloud.directory))
                 open(SignInMode.CLOUD, client.nodeUrl, client)
             }
         sessionStore.setValue(KEY_CLUSTER, target)
@@ -287,7 +287,7 @@ class SheetsAppViewModel(
         nodeUrl = url
         sessionStore.setValue(KEY_MODE, newMode.name)
         sessionStore.setValue(KEY_NODE, url)
-        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production
+        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy()
         val client = connected ?: CalimeroClient(CalimeroClientOptions(baseUrl = url, policy = policy))
         val s = MeroAppSession(client, MeroSheets.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, sessionStore, scope = viewModelScope)
         _session.value = s

@@ -123,7 +123,7 @@ struct CloudSignInPanel: View {
             session.connect(nodeURL: target, allowMock: false)
             return true
         }
-        let found = await session.client.connect(cluster: target)
+        let found = await session.client.connect(cluster: target, directory: MeroCloud.environment.directory)
         session.rebuild()
         return found
     }

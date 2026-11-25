@@ -79,3 +79,12 @@ code, then opens the page in the system browser, which shows the same code and r
 
 The Swift SDK (MeroKit) is pinned to a calimero-network/core release in `project.yml`,
 `IssueTrackerCore/Package.swift` and `IssueTrackerCore/Package.resolved`; bump all three together.
+
+### Staging (iOS)
+
+The **MeroIssues Staging** scheme runs the `Staging` configuration, a Debug build
+with the `MERO_STAGING` compilation condition: it reaches Calimero Cloud's
+staging, its node directory and its debug node images trusted (MeroKit's
+`CloudEnvironment.staging`, chosen in `Sources/App/MeroCloud.swift`). Release,
+the build people install from the App Store, is always production, and a
+non-Debug build with `MERO_STAGING` does not compile.

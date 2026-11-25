@@ -347,6 +347,16 @@ jobs:
       - name: Assert the org-app module check still catches what it claims to
         run: python3 scripts/tests/org-app-module-test.py
 
+      # Staging's clusters run debug node images, whose memory the operator can
+      # read. A served web page trusts them only on staging's own hostname
+      # (packages/connect); a native app has no such hostname, so only a
+      # staging build (BuildConfig.MERO_STAGING, `#if MERO_STAGING`) may, and a
+      # store build never. This fails when an app's code says otherwise.
+      - name: Assert no mobile store build trusts staging
+        run: python3 scripts/check-mobile-staging.py
+      - name: Assert the mobile staging check still catches what it claims to
+        run: python3 scripts/tests/mobile-staging-test.py
+
       - name: Assert the node shield gate check still catches what it claims to
         run: python3 scripts/tests/node-shield-gate-test.py
 

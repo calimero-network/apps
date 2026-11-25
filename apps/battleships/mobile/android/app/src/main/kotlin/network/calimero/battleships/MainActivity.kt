@@ -168,7 +168,7 @@ class BattleshipsViewModel(
             if (value.contains("://")) {
                 listOf(value)
             } else {
-                CalimeroClient.connect(CalimeroConnectOptions(cluster = value, policy = CloudPolicy.production)).nodes
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = value, policy = meroCloud.policy(), directory = meroCloud.directory)).nodes
             }
         val s = open(dev = false, nodes)
         val passkey = PlatformPasskey(activity)
@@ -273,7 +273,7 @@ class BattleshipsViewModel(
                 CalimeroClientOptions(
                     baseUrl = nodes.first(),
                     nodes = nodes.drop(1),
-                    policy = if (dev) CloudPolicy.development else CloudPolicy.production,
+                    policy = if (dev) CloudPolicy.development else meroCloud.policy(),
                 ),
             )
         val s = MeroAppSession(client, Battleships.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, store, scope = viewModelScope)

@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@calimero-network/mero-js": "catalog:component",
+    "@types/node": "catalog:",
     "eslint": "catalog:",
     "jsdom": "catalog:",
     "typescript": "catalog:",

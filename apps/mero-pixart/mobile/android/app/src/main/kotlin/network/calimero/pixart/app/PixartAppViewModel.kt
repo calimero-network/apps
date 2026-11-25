@@ -186,7 +186,7 @@ class PixartAppViewModel(
             return
         }
         attempt {
-            val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = CloudPolicy.production))
+            val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = meroCloud.policy(), directory = meroCloud.directory))
             open(client.nodeUrl, false, client)
         }
     }
@@ -297,7 +297,7 @@ class PixartAppViewModel(
         _allowMock.value = mock
         sessionStore.setValue(KEY_NODE, url)
         sessionStore.setValue(KEY_MOCK, if (mock) "1" else "0")
-        val policy = if (mock) CloudPolicy.development else CloudPolicy.production
+        val policy = if (mock) CloudPolicy.development else meroCloud.policy()
         val client = connected ?: CalimeroClient(CalimeroClientOptions(baseUrl = url, policy = policy))
         val s = MeroAppSession(client, PixartFormat.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, sessionStore, scope = viewModelScope)
         _session.value = s

@@ -124,7 +124,7 @@ struct SignInView: View {
             session.connect(nodeURL: text, allowMock: false)
             return nil
         case .cloud(let name):
-            let ok = await client.connect(cluster: name)
+            let ok = await client.connect(cluster: name, directory: MeroCloud.environment.directory)
             session.rebuild()
             return ok ? nil : (client.errorMessage ?? "No cluster is called “\(name)”.")
         }

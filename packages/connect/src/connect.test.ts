@@ -112,6 +112,119 @@ describe("policyFor", () => {
   });
 });
 
+describe("staging", () => {
+  const STAGING_HOST = "abc.apps.relay.staging.cloud.calimero.network";
+  const SERVED = ["https://n1.staging.example"];
+  const FLOOR = { VITE_CALIMERO_MIN_RELEASE: "2.3.136" };
+
+  it("trusts staging's debug node images on a page staging serves, from its hostname alone", async () => {
+    const target = await connectTarget(FLOOR, { servedNodes: async () => SERVED, host: STAGING_HOST });
+    expect(target).toEqual({
+      kind: "cloud",
+      cluster: STAGING_HOST,
+      nodes: SERVED,
+      minReleaseVersion: "2.3.136",
+      environment: "staging",
+    });
+    expect(policyFor(target)).toEqual({
+      release: {
+        minReleaseVersion: "2.3.136",
+        profiles: ["locked-read-only", "debug", "debug-read-only"],
+        allowDebugProfile: true,
+      },
+    });
+  });
+
+  it("never trusts a debug image on a page production serves, a look-alike host or a port", async () => {
+    for (const host of [
+      "abc.apps.calimero.network",
+      "abc.apps.calimero.network:443",
+      "apps.relay.staging.cloud.calimero.network.evil.example",
+      "evil-apps.relay.staging.cloud.calimero.network",
+    ]) {
+      const target = await connectTarget(FLOOR, { servedNodes: async () => SERVED, host });
+      expect(policyFor(target), host).toEqual({ release: { minReleaseVersion: "2.3.136" } });
+    }
+  });
+
+  it("decides a served page's trust by its hostname alone, whatever the bundle was built with", async () => {
+    const STRICT = { release: { minReleaseVersion: "2.3.136" } };
+    const STAGED = {
+      release: {
+        minReleaseVersion: "2.3.136",
+        profiles: ["locked-read-only", "debug", "debug-read-only"],
+        allowDebugProfile: true,
+      },
+    };
+    const PROD_HOST = "abc.apps.calimero.network";
+    const served = { servedNodes: async () => SERVED };
+    const builds = [
+      FLOOR,
+      { ...FLOOR, VITE_CALIMERO_ENV: "staging" },
+      { ...FLOOR, VITE_CALIMERO_ENV: "production" },
+      { ...FLOOR, VITE_CALIMERO_CLUSTER: "eu-shared-1", VITE_CALIMERO_ENV: "staging" },
+      { ...FLOOR, VITE_CALIMERO_CLUSTER: "eu-shared-1" },
+    ];
+    for (const build of builds) {
+      // Served on production: locked-read-only only, even from a bundle built for staging.
+      const prod = await connectTarget(build, { ...served, host: PROD_HOST });
+      expect(policyFor(prod), JSON.stringify(build)).toEqual(STRICT);
+      // Served on staging: any of staging's profiles, even from a bundle built for production.
+      const staging = await connectTarget(build, { ...served, host: STAGING_HOST });
+      expect(policyFor(staging), JSON.stringify(build)).toEqual(STAGED);
+      // A custom domain or an unknown host is never staging.
+      const custom = await connectTarget(build, { ...served, host: "kv.example.com" });
+      expect(policyFor(custom), JSON.stringify(build)).toEqual(STRICT);
+    }
+  });
+
+  it("lets a build that names staging (Vercel) ask staging's directory and trust its debug images", () => {
+    const target = resolveTarget({ ...CLOUD, VITE_CALIMERO_CLUSTER: "staging-1", VITE_CALIMERO_ENV: "staging" });
+    expect(target).toEqual({
+      kind: "cloud",
+      cluster: "staging-1",
+      minReleaseVersion: "2.3.109",
+      directory: "https://manager.staging.cloud.calimero.network/api/directory",
+      environment: "staging",
+    });
+    expect(policyFor(target)).toEqual({
+      release: {
+        minReleaseVersion: "2.3.109",
+        profiles: ["locked-read-only", "debug", "debug-read-only"],
+        allowDebugProfile: true,
+      },
+    });
+    // An explicit directory still wins.
+    expect(
+      resolveTarget({ ...CLOUD, VITE_CALIMERO_ENV: "staging", VITE_CALIMERO_DIRECTORY: "https://dir.example" }),
+    ).toMatchObject({ directory: "https://dir.example", environment: "staging" });
+  });
+
+  it("is production by default and refuses any other environment", () => {
+    expect(resolveTarget({ ...CLOUD, VITE_CALIMERO_ENV: "production" })).toEqual(resolveTarget({ ...CLOUD }));
+    expect(() => resolveTarget({ ...CLOUD, VITE_CALIMERO_ENV: "dev" })).toThrow(/VITE_CALIMERO_ENV/);
+  });
+
+  it("asks staging's directory where the package runs when a staging build names no cluster", async () => {
+    const fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ clusters: [{ cluster: "staging-1", primary: true, nodes: [{ url: "https://s1.example" }] }] }),
+        { status: 200 },
+      ),
+    ) as unknown as typeof globalThis.fetch;
+    const target = await connectTarget(
+      { ...FLOOR, VITE_CALIMERO_ENV: "staging" },
+      { servedNodes: async () => null, package: "com.calimero.kv-store", fetch },
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "https://manager.staging.cloud.calimero.network/api/directory/package/com.calimero.kv-store",
+      expect.anything(),
+    );
+    expect(target).toMatchObject({ cluster: "staging-1", environment: "staging" });
+    expect(policyFor(target).release?.allowDebugProfile).toBe(true);
+  });
+});
+
 describe("targetKey", () => {
   it("keeps sessions for a direct node apart from a cloud cluster", () => {
     const node = resolveTarget({

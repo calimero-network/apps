@@ -10,6 +10,15 @@
 # is pinned to a core release (`exactVersion`). Keep it identical to BattleshipsCore/Package.swift.
 name: Battleships
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -63,6 +72,9 @@ targets:
     # `com.apple.developer.associated-domains: [webcredentials:<rp-id>]` (served
     # apple-app-site-association). A development node uses a software passkey and needs neither.
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.battleships
         PRODUCT_NAME: Battleships
@@ -96,6 +108,14 @@ targets:
         SWIFT_VERSION: "5.9"
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  Battleships Staging:
+    build:
+      targets:
+        Battleships: all
+    run:
+      config: Staging
+
   Battleships:
     build:
       targets:

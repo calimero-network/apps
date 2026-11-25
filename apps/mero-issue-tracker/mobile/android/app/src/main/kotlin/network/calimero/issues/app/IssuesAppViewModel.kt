@@ -247,9 +247,9 @@ class IssuesAppViewModel(
     private suspend fun openCloud(cluster: String): MeroAppSession {
         val client =
             if (isNodeUrl(cluster)) {
-                client(cluster.trimEnd('/'), CloudPolicy.production)
+                client(cluster.trimEnd('/'), meroCloud.policy())
             } else {
-                CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = CloudPolicy.production))
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = meroCloud.policy(), directory = meroCloud.directory))
             }
         sessions.setValue(KEY_CLUSTER, cluster)
         return open(SignInMode.CLOUD, client)

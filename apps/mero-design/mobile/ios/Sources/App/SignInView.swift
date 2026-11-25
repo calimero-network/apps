@@ -160,7 +160,7 @@ extension SignInView {
             session.connect(nodeURL: value, allowMock: false)
             return true
         }
-        return await client.connect(cluster: value)
+        return await client.connect(cluster: value, directory: MeroCloud.environment.directory)
     }
 }
 

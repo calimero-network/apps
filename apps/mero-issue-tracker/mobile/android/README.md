@@ -30,3 +30,10 @@ Package `network.calimero.issues`.
 `meroSdk` in `gradle/libs.versions.toml` pins the Calimero Kotlin SDK (`network.calimero:mero-kotlin`,
 `mero-kotlin-compose`, `mero-kotlin-testkit` on Maven Central), published from calimero-network/core on
 core's version. Each core release opens a pull request that moves it.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

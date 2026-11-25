@@ -16,7 +16,9 @@ enum AppConfig {
     }
 
     static var config: MeroProviderConfig {
-        MeroProviderConfig(nodeURL: CloudSettings.clusterURL, packageName: VoteConstants.packageName)
+        MeroProviderConfig(
+            nodeURL: CloudSettings.clusterURL, policy: MeroCloud.environment.policy(),
+            packageName: VoteConstants.packageName)
     }
 }
 

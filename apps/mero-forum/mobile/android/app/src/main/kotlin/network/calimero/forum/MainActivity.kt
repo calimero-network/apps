@@ -269,12 +269,12 @@ class ForumViewModel(
         val trimmed = entry.trim().trimEnd('/')
         store.setValue(KEY_MODE, newMode.name)
         store.setValue(if (newMode == SignInMode.DEV) KEY_DEV_NODE else KEY_CLUSTER, trimmed)
-        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production
+        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy()
         val client =
             if (newMode == SignInMode.DEV || isUrl(trimmed)) {
                 CalimeroClient(CalimeroClientOptions(baseUrl = trimmed, policy = policy))
             } else {
-                CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = policy))
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = policy, directory = meroCloud.directory))
             }
         val s = MeroAppSession(client, ForumConstants.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, store, scope = viewModelScope)
         _session.value = s

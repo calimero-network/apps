@@ -40,7 +40,7 @@ enum AppConfig {
 
     static var providerConfig: MeroProviderConfig {
         MeroProviderConfig(
-            nodeURL: clusterURL, policy: .production, packageName: ChatConstants.packageName,
+            nodeURL: clusterURL, policy: MeroCloud.environment.policy(), packageName: ChatConstants.packageName,
             packageVersion: string("MeroPackageVersion"))
     }
 

@@ -96,3 +96,12 @@ Info.plist keys set in `project.yml`:
 Invitation links open the app as `calimero://com.calimero.mero-standup/join?invitation=…`; the
 https form needs Associated Domains on `links.calimero.network`, which that host does not publish
 for this app yet, so a pasted https link goes through **Join with an invitation** instead.
+
+### Staging (iOS)
+
+The **MeroStandup Staging** scheme runs the `Staging` configuration, a Debug build
+with the `MERO_STAGING` compilation condition: it reaches Calimero Cloud's
+staging, its node directory and its debug node images trusted (MeroKit's
+`CloudEnvironment.staging`, chosen in `Sources/App/MeroCloud.swift`). Release,
+the build people install from the App Store, is always production, and a
+non-Debug build with `MERO_STAGING` does not compile.

@@ -63,6 +63,11 @@ screen prefills), `meroDevNodeUrl` (default `http://10.0.2.2:2501`) and `meroCon
 (default `mero-calendar://consent`; the manifest's intent filter is generated from it). Plain http
 is allowed only to `10.0.2.2` and `localhost` (`res/xml/network_security_config.xml`).
 
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused.
+
 ## Layout
 
 ```

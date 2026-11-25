@@ -22,7 +22,7 @@
 # file beside it), so a cached root costs nothing.
 set -euo pipefail
 
-TAG="${MEROCTL_TAG:-1.0.0-rc.36}"
+TAG="${MEROCTL_TAG:-1.0.0-rc.37}"
 ROOT="${MEROCTL_ROOT:-$HOME/.local}"
 BIN="$ROOT/bin"
 STAMP="$ROOT/.meroctl-tag"

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.calimero.mero.CalimeroClient
 import com.calimero.mero.CalimeroClientOptions
 import com.calimero.mero.CalimeroConnectOptions
+import com.calimero.mero.CloudEnvironment
 import com.calimero.mero.CloudPolicy
 import com.calimero.mero.PasskeyProvider
 import com.calimero.mero.SoftPasskey
@@ -227,7 +228,7 @@ class CalendarAppViewModel(
     private suspend fun openCloud(cluster: String): MeroAppSession {
         store.setValue(KEY_CLUSTER, cluster)
         if (isUrl(cluster)) return open(SignInMode.CLOUD, listOf(cluster.trimEnd('/')))
-        val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = CloudPolicy.production))
+        val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = CLOUD.policy(), directory = CLOUD.directory))
         return adopt(SignInMode.CLOUD, client, client.nodes)
     }
 
@@ -235,7 +236,7 @@ class CalendarAppViewModel(
         mode: SignInMode,
         nodes: List<String>,
     ): MeroAppSession {
-        val policy = if (mode == SignInMode.DEVELOPMENT) CloudPolicy.development else CloudPolicy.production
+        val policy = if (mode == SignInMode.DEVELOPMENT) CloudPolicy.development else CLOUD.policy()
         val client =
             CalimeroClient(
                 CalimeroClientOptions(
@@ -302,6 +303,14 @@ class CalendarAppViewModel(
     companion object {
         /** The origin `merod local` allows (`--origins`); a software passkey's client data claims it. */
         const val DEV_ORIGIN = "http://localhost:3000"
+
+        /**
+         * The Calimero Cloud this build reaches: staging only in a debug build made with
+         * `-PmeroStaging=true`, production otherwise, release builds always. Fixed by the build, never
+         * by what a person types: a staging cluster's name or node URL in a production build is
+         * refused (its debug images are not trusted, and production's directory does not list it).
+         */
+        private val CLOUD: CloudEnvironment = if (BuildConfig.MERO_STAGING) CloudEnvironment.STAGING else CloudEnvironment.PRODUCTION
 
         private const val KEY_MODE = "mode"
         private const val KEY_NODES = "nodes"

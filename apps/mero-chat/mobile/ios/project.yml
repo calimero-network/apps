@@ -8,6 +8,15 @@
 # before its release). To bump it, change `revision` below and regenerate.
 name: MeroChat
 
+# Staging: a Debug build that reaches Calimero Cloud's staging and trusts its
+# debug node images (MeroKit's CloudEnvironment.staging), through the
+# MERO_STAGING compilation condition, which only this configuration sets.
+# Release, the build people install from the App Store, is always production.
+configs:
+  Debug: debug
+  Staging: debug
+  Release: release
+
 options:
   bundleIdPrefix: network.calimero
   deploymentTarget:
@@ -15,11 +24,12 @@ options:
   createIntermediateGroups: true
 
 packages:
-  # Moves to the Swift SDK published from calimero-network/core with the next core
-  # release.
+  # The Swift SDK (MeroKit) published from calimero-network/core, pinned to a core
+  # release (`exactVersion`), as every other app; the fleet bump moves it. The
+  # calimero-network/swift-sdk repository it came from is gone.
   MeroKit:
-    url: https://github.com/calimero-network/swift-sdk
-    revision: 841a52aad56741b0edcce837425ec79ec81875d9
+    url: https://github.com/calimero-network/core
+    exactVersion: 1.0.0-rc.37
 
 targets:
   MeroChat:
@@ -79,6 +89,9 @@ targets:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
     settings:
+      configs:
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MERO_STAGING"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.chat
         PRODUCT_NAME: MeroChat
@@ -156,6 +169,14 @@ targets:
         link: false
 
 schemes:
+  # Runs the Staging configuration: Calimero Cloud's staging (see `configs`).
+  MeroChat Staging:
+    build:
+      targets:
+        MeroChat: all
+    run:
+      config: Staging
+
   MeroChat:
     build:
       targets:
