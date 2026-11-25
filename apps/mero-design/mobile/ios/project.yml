@@ -29,7 +29,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/core
-    exactVersion: 1.0.0-rc.35
+    exactVersion: 1.0.0-rc.36
   DesignCore:
     path: DesignCore
 

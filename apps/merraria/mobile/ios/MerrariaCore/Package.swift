@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         // MeroKit from a calimero-network/core release (Calimero 1.0). Keep it equal to the
         // exactVersion in ../project.yml.
-        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.35"),
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.36"),
     ],
     targets: [
         // Sources/MerrariaCore/Generated/MerrariaClient.swift is generated from the component ABI

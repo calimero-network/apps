@@ -17,7 +17,7 @@ let package = Package(
         // in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/core",
-            exact: "1.0.0-rc.35")
+            exact: "1.0.0-rc.36")
     ],
     targets: [
         // Generated from ../../../logic/res/abi.json by core's meroctl app codegen

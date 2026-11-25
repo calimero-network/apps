@@ -13,7 +13,7 @@ let package = Package(
     dependencies: [
         // MeroKit from a calimero-network/core release; keep it equal to the version in
         // ../project.yml.
-        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.35"),
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.36"),
     ],
     targets: [
         // Sources/BlocksCore/Generated/BlocksClient.swift comes from ../../../logic/res/abi.json
