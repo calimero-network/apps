@@ -19,7 +19,7 @@ let package = Package(
         // MeroKit from a calimero-network/core release (Calimero 1.0).
         .package(
             url: "https://github.com/calimero-network/core",
-            exact: "1.0.0-rc.36"),
+            exact: "1.0.0-rc.37"),
     ],
     targets: [
         .target(

@@ -17,7 +17,7 @@ let package = Package(
     dependencies: [
         // MeroKit from a calimero-network/core release (Calimero 1.0); keep it equal to
         // `exactVersion` in ../project.yml.
-        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.36"),
+        .package(url: "https://github.com/calimero-network/core", exact: "1.0.0-rc.37"),
     ],
     targets: [
         .target(
