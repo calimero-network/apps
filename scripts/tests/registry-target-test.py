@@ -19,7 +19,7 @@ import sys
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "registry-target.sh"
 PROD = "https://apps.calimero.network"
-STAGING = "https://registry.staging.cloud.calimero.network"
+STAGING = "https://apps.staging.cloud.calimero.network"
 
 FAILURES: list[str] = []
 

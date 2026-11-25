@@ -386,7 +386,7 @@ gh workflow run release.yml -f app=kv-store -f version=1.0.0
 The registry is decided by the branch the run is on, in one place,
 `scripts/registry-target.sh`: `main` publishes to production
 (`https://apps.calimero.network`), `staging-test` to the staging registry
-(`https://registry.staging.cloud.calimero.network`) from the GitHub environment
+(`https://apps.staging.cloud.calimero.network`) from the GitHub environment
 `staging`, whose `CALIMERO_REGISTRY_API_KEY` is the staging key. `MERO_SIGN_KEY`
 is the same organization secret for both. The served frontend goes with the registry: on
 staging it is built from the environment's own variables `CALIMERO_CLUSTER`,

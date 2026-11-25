@@ -18,8 +18,8 @@ import subprocess
 import sys
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "frontend-target.sh"
-PROD_DIRECTORY = "https://manager.cloud.calimero.network/api/v2/directory"
-STAGING_DIRECTORY = "https://manager.staging.cloud.calimero.network/api/v2/directory"
+PROD_DIRECTORY = "https://manager.cloud.calimero.network/api/directory"
+STAGING_DIRECTORY = "https://manager.staging.cloud.calimero.network/api/directory"
 KEYS = (
     "ENVIRONMENT",
     "CLUSTER",
@@ -128,7 +128,7 @@ refuses(
     "production or repository",
     **{**STAGING, "OUTSIDE_DIRECTORY": STAGING_DIRECTORY},
 )
-refuses("directory not https", "not an https URL", **{**STAGING, "DIRECTORY": "http://manager.staging.cloud.calimero.network/api/v2/directory"})
+refuses("directory not https", "not an https URL", **{**STAGING, "DIRECTORY": "http://manager.staging.cloud.calimero.network/api/directory"})
 refuses("cluster not a name", "not a cluster name", **{**STAGING, "CLUSTER": "Staging Shared"})
 refuses("own floor not X.Y.Z", "not X.Y.Z", **{**STAGING, "MIN_RELEASE": "2.3"})
 

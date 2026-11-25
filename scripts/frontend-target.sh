@@ -40,7 +40,7 @@
 set -euo pipefail
 
 PROD_CLUSTER=eu-shared-1
-PROD_DIRECTORY=https://manager.cloud.calimero.network/api/v2/directory
+PROD_DIRECTORY=https://manager.cloud.calimero.network/api/directory
 
 fail() {
   echo "::error::$*" >&2

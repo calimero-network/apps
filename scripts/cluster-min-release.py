@@ -25,7 +25,7 @@ argument must stop the publish rather than read production's floor
 (scripts/frontend-target.sh picks both per registry).
 
     scripts/cluster-min-release.py --cluster eu-shared-1 \
-        --directory https://manager.cloud.calimero.network/api/v2/directory
+        --directory https://manager.cloud.calimero.network/api/directory
 """
 
 import argparse

@@ -38,7 +38,7 @@
 set -euo pipefail
 
 PROD=https://apps.calimero.network
-STAGING=https://registry.staging.cloud.calimero.network
+STAGING=https://apps.staging.cloud.calimero.network
 
 fail() {
   echo "::error::$*" >&2
