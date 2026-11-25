@@ -21,7 +21,7 @@ let package = Package(
         // `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/core",
-            exact: "1.0.0-rc.35"),
+            exact: "1.0.0-rc.36"),
     ],
     targets: [
         // ristretto255 and the mero-vote protocol, with no dependencies but
