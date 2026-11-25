@@ -605,6 +605,12 @@ describe("creating from the page's deployment", () => {
     expect(pageOffer(PKG, `${PAGE}?deployment=dep-q`, storage, served)).toEqual({ id: "dep-q", version: "2.0.0" });
   });
 
+  it("ignores a ?deployment= the served manifest does not list for the package", () => {
+    const served = manifest({ deployments: [offer("dep-a")] });
+    expect(pageOffer(PKG, `${PAGE}?deployment=dep-x`, storage, served)).toEqual({ id: "dep-a", version: "1.0.0" });
+    expect(pageOffer(PKG, `${PAGE}?deployment=dep-x`, storage, manifest())).toBeNull();
+  });
+
   it("is the served manifest's own deployment on a deployment's host", () => {
     const served = manifest({ deployment: "dep-b", deployments: [offer("dep-a"), offer("dep-b", "2.0.0")] });
     expect(pageOffer(PKG, PAGE, storage, served)).toEqual({ id: "dep-b", version: "2.0.0" });

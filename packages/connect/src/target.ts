@@ -305,7 +305,10 @@ export function pageOffer(
 ): Offer | null {
   const listed = manifest?.package === pkg ? manifest : null;
   const only = listed?.deployments.length === 1 ? listed.deployments[0]?.id : null;
-  const id = openedDeployment(href, storage) ?? listed?.deployment ?? only;
+  const opened = openedDeployment(href, storage);
+  // On a served page, a link's deployment counts only if this cluster offers the package from it.
+  const linked = manifest && !listed?.deployments.some((d) => d.id === opened) ? null : opened;
+  const id = linked ?? listed?.deployment ?? only;
   if (!id) return null;
   const version = listed?.deployments.find((d) => d.id === id)?.version;
   return version ? { id, version } : { id };
