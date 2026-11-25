@@ -60,8 +60,9 @@ on:
     secrets:
       MERO_SIGN_KEY:
         required: true
-      # Not `required`: release.yml passes '' when the publish runs in an
-      # environment, which then supplies its own. The deploy job checks it.
+      # Not `required`: release.yml passes it only to a production run; a run
+      # in an environment gets none and reads the environment's own secret
+      # (a passed one, even empty, would shadow it). The deploy job checks it.
       CALIMERO_REGISTRY_API_KEY:
         required: false
     inputs:
