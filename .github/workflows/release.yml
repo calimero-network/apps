@@ -24,7 +24,7 @@
 # WHICH REGISTRY: the branch the run is on, through scripts/registry-target.sh
 # (the `target` job) and nowhere else: main publishes to production
 # (apps.calimero.network), staging-test to the staging registry, from the GitHub
-# environment `staging` whose CALIMERO_REGISTRY_API_KEY is the staging key. Any
+# environment `staging` (its vars: cluster, directory); the staging registry key is the repository secret STAGING_REGISTRY_API_KEY. Any
 # other branch, or a tag, publishes nothing. A push to staging-test publishes the
 # component apps it changed without RELEASE_COMPONENTS_ON_PUSH; main still needs
 # it. Moving main to staging and a new `prod` branch to production is an edit to
@@ -278,7 +278,7 @@ jobs:
     #
     # CALIMERO_REGISTRY_API_KEY: the organization secret is the PRODUCTION key,
     # so only this production job (no environment) passes it; `publish-env`
-    # passes none and its environment supplies its own.
+    # passes STAGING_REGISTRY_API_KEY for `staging`.
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
       CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
@@ -309,15 +309,16 @@ jobs:
     #
     # CALIMERO_REGISTRY_API_KEY: the organization secret is the PRODUCTION key,
     # so only this production job (no environment) passes it; `publish-env`
-    # passes none and its environment supplies its own.
-    # No CALIMERO_REGISTRY_API_KEY here: the publish job runs in the
-    # environment and reads that environment's own secret. A secret passed from
-    # this caller, even an empty one, would shadow it (seen on staging
-    # 2026-11-25: "not set in the GitHub environment staging" with the secret
-    # present). An environment without it fails the secret check; the
-    # production key is never sent to another registry.
+    # passes STAGING_REGISTRY_API_KEY for `staging`.
+    # The registry key of the target environment, as a REPOSITORY secret
+    # passed explicitly: a reusable workflow's `secrets` holds only what its
+    # caller passes, so an environment-scoped secret never reaches it (seen on
+    # staging 2026-11-25). Only `staging` is mapped; any other environment
+    # gets '' and fails the secret check. The production key is never sent to
+    # another registry.
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == 'staging' && secrets.STAGING_REGISTRY_API_KEY || '' }}
 
   publish-components:
     name: Publish component
@@ -361,11 +362,12 @@ jobs:
       # environment: a value read here would always be production's.
     # The two the publish needs, never `inherit`; the registry key only in the
     # production job (see `publish`).
-    # No CALIMERO_REGISTRY_API_KEY here: the publish job runs in the
-    # environment and reads that environment's own secret. A secret passed from
-    # this caller, even an empty one, would shadow it (seen on staging
-    # 2026-11-25: "not set in the GitHub environment staging" with the secret
-    # present). An environment without it fails the secret check; the
-    # production key is never sent to another registry.
+    # The registry key of the target environment, as a REPOSITORY secret
+    # passed explicitly: a reusable workflow's `secrets` holds only what its
+    # caller passes, so an environment-scoped secret never reaches it (seen on
+    # staging 2026-11-25). Only `staging` is mapped; any other environment
+    # gets '' and fails the secret check. The production key is never sent to
+    # another registry.
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == 'staging' && secrets.STAGING_REGISTRY_API_KEY || '' }}

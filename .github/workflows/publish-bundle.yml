@@ -60,9 +60,9 @@ on:
     secrets:
       MERO_SIGN_KEY:
         required: true
-      # Not `required`: release.yml passes it only to a production run; a run
-      # in an environment gets none and reads the environment's own secret
-      # (a passed one, even empty, would shadow it). The deploy job checks it.
+      # Not `required`: release.yml passes the production key to a production
+      # run and STAGING_REGISTRY_API_KEY to a `staging` run, '' otherwise. The
+      # deploy job checks it.
       CALIMERO_REGISTRY_API_KEY:
         required: false
     inputs:
@@ -261,7 +261,7 @@ jobs:
         run: |
           missing=0
           [ -n "$MERO_SIGN_KEY" ] || { echo "::error::MERO_SIGN_KEY is not set"; missing=1; }
-          [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY is not set${ENVIRONMENT:+ in the GitHub environment $ENVIRONMENT}"; missing=1; }
+          [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY is not set${ENVIRONMENT:+ for the environment $ENVIRONMENT (repository secret STAGING_REGISTRY_API_KEY)}"; missing=1; }
           exit $missing
 
       - uses: actions/checkout@v4
