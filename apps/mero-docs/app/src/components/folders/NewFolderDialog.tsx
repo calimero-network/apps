@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { describeError } from '@calimero-apps/connect';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -130,8 +131,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
         members: visibility === 'Restricted' ? members : [],
       });
     } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setError(err.message);
+      setError(describeError(e));
       setSubmitting(false);
       return;
     }

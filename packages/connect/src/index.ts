@@ -1,9 +1,11 @@
 export {
   ConfigError,
+  DEPLOYMENT_KEY,
   LOCAL_NODES,
   NotServedError,
   appSource,
   connectTarget,
+  pageOffer,
   policyFor,
   resolveTarget,
   servedNodes,
@@ -12,6 +14,7 @@ export {
   type AppSource,
   type ConnectEnv,
   type ConnectOptions,
+  type Offer,
   type Target,
 } from "./target";
 export type { ClientRoutes } from "./routes";
@@ -20,8 +23,10 @@ export { CLOUD_LINKS, cloudLinks, type CloudLinks } from "./cloud";
 export {
   SessionStore,
   createClient,
+  DEPLOY_NOT_GRANTED_MESSAGE,
   describeError,
   describeSignInError,
+  isDeployNotGranted,
   isPasskeyUnknownHere,
   PASSKEY_UNKNOWN_HERE_MESSAGE,
   PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,

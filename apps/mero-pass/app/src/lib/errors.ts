@@ -18,6 +18,8 @@
  * few messages that name a node condition rather than a mistake by the user.
  */
 
+import { DEPLOY_NOT_GRANTED_MESSAGE, isDeployNotGranted } from '@calimero-apps/connect';
+
 const CORE_PREFIX = 'the method call returned an error: ';
 
 /** Bytes → text, or null when the list is not UTF-8 bytes. */
@@ -123,6 +125,7 @@ export function isTransient(e: unknown): boolean {
 
 /** The sentence to show. */
 export function describeError(e: unknown): string {
+  if (isDeployNotGranted(e)) return DEPLOY_NOT_GRANTED_MESSAGE;
   const reason = rawReason(e);
   for (const [pattern, text] of [...TRANSIENT, ...REWORDED]) {
     if (pattern.test(reason)) return text;

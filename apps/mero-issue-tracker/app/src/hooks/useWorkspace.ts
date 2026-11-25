@@ -257,7 +257,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         return id;
       } catch (e) {
         setAddRepoError(asError(e));
-        return null;
+        throw e;
       } finally {
         after();
       }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { describeError } from '@calimero-apps/connect';
 import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
@@ -40,7 +41,7 @@ export default function AddPipelineDialog({ onAdd, releasePending = false, onClo
       if (!ctxId) { setError('Could not create the pipeline. Try again.'); return; }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the pipeline.');
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }

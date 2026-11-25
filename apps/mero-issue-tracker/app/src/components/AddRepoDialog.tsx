@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { describeError } from '@calimero-apps/connect';
 import { CHECKING_RELEASE } from '@calimero-apps/passkey';
 import { Overlay, Dialog, Close, Field, Actions, SecondaryBtn, PrimaryBtn, ErrorLine, Spin } from './modalKit';
 
@@ -41,7 +42,7 @@ export default function AddRepoDialog({ onAdd, releasePending = false, onClose }
       if (!ctxId) { setError('Could not add the repository. Try again.'); return; }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add the repository.');
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }

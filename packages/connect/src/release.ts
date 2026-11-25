@@ -23,7 +23,7 @@ import type { CalimeroClient, ReportedApp } from "@calimero-network/mero-js";
 
 import type { KeyValueStorage } from "./client";
 import type { ClientRoutes } from "./routes";
-import type { AppSource } from "./target";
+import { pageOffer, sessionStore, type AppSource } from "./target";
 
 /** The tab's note of a release it moved to, read on the page it lands on. */
 export const RELEASE_FOLLOW_KEY = "cp-release:follow";
@@ -62,15 +62,18 @@ export function servedRelease(href: string): string | null {
 }
 
 /**
- * `source` with the release new instances are created from: the newest the
- * account may see (`GET /packages/{package}`, the one a create without a
- * version takes), else the release `href`'s page is served from. As given when
+ * `source` with the release new instances are created from: the one the page's
+ * deployment offers ({@link pageOffer}), else the newest the account may see
+ * (`GET /packages/{package}`, the one a create without a version takes), else
+ * the release `href`'s page is served from. As given when
  * neither is known, for a raw bundle, and for a source that names a version.
  * A read that fails or takes longer than {@link RESOLVE_TIMEOUT_MS} falls
  * through; this never throws.
  */
 export async function resolveSource(client: ClientRoutes<{ packages: "get" }>, source: AppSource, href: string): Promise<AppSource> {
   if (typeof source === "string" || source.version) return source;
+  const offered = pageOffer(source.package, href)?.version;
+  if (offered) return { ...source, version: offered };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<never>((_, reject) => {
@@ -111,14 +114,6 @@ function readNote(storage: KeyValueStorage): FollowNote | null {
     const v = raw ? (JSON.parse(raw) as Partial<FollowNote>) : null;
     if (!v || typeof v.app !== "string" || typeof v.to !== "string" || typeof v.at !== "number") return null;
     return { app: v.app, to: v.to, at: v.at };
-  } catch {
-    return null;
-  }
-}
-
-function sessionStore(): KeyValueStorage | null {
-  try {
-    return (globalThis as { sessionStorage?: KeyValueStorage }).sessionStorage ?? null;
   } catch {
     return null;
   }
