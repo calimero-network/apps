@@ -5,23 +5,27 @@ import {
   ConfirmCancelled,
   ConfirmPromptBlocked,
   LoginRequired,
+  type FrontendManifest,
   type CalimeroSession,
 } from "@calimero-network/mero-js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CLOUD_CONSOLE,
   ConfigError,
+  DEPLOY_NOT_GRANTED_MESSAGE,
   LOCAL_NODES,
   NotServedError,
   PASSKEY_UNKNOWN_HERE_MESSAGE,
   PROMPT_BLOCKED_MESSAGE,
   SessionStore,
   appSource,
+  appTarget,
   connectTarget,
   createClient,
   describeError,
   describeSignInError,
+  pageOffer,
   policyFor,
   resolveTarget,
   servedNodes,
@@ -346,6 +350,11 @@ describe("describeError", () => {
     expect(describeError(new ConfirmPromptBlocked(browser))).toBe(PROMPT_BLOCKED_MESSAGE);
     expect(describeError(new ConfirmCancelled(browser))).toBe("The passkey prompt was cancelled.");
   });
+
+  it("tells an end user an app this cluster offers no deployment of is not available yet", () => {
+    const refused = new CalimeroError(403, "DEPLOY_NOT_GRANTED", "This cluster only lets Calimero Cloud deployers install apps");
+    expect(describeError(refused)).toBe(DEPLOY_NOT_GRANTED_MESSAGE);
+  });
 });
 
 describe("describeSignInError", () => {
@@ -564,5 +573,67 @@ describe("connectTarget, by package", () => {
     await expect(
       connectTarget(FLOOR, { servedNodes: notServed, package: PKG, fetch: answer({ clusters: [{ cluster: "x", primary: true, nodes: [] }] }) }),
     ).rejects.toThrow(/no primary cluster with nodes/);
+  });
+});
+
+describe("creating from the page's deployment", () => {
+  const PKG = "com.example.app";
+  const manifest = (fields: Partial<FrontendManifest> = {}): FrontendManifest => ({
+    package: PKG,
+    deployment: null,
+    versions: ["1.0.0", "2.0.0"],
+    deployments: [],
+    api: ["https://n1.example"],
+    ...fields,
+  });
+  const offer = (id: string, version = "1.0.0") => ({ id, name: id, app: `app-${id}`, version });
+  const PAGE = "https://abc.apps.example/1.0.0/";
+  let storage: KeyValueStorage & { map: Map<string, string> };
+  beforeEach(() => {
+    const map = new Map<string, string>();
+    storage = { map, getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v), removeItem: (k) => void map.delete(k) };
+  });
+
+  it("is the page's ?deployment=, kept for the tab once in-app navigation drops it", () => {
+    expect(pageOffer(PKG, `${PAGE}?deployment=dep-q`, storage, null)).toEqual({ id: "dep-q" });
+    expect(pageOffer(PKG, `${PAGE}lobby`, storage, null)).toEqual({ id: "dep-q" });
+    expect(pageOffer(PKG, `${PAGE}?deployment=dep-r`, storage, null)).toEqual({ id: "dep-r" });
+  });
+
+  it("takes the offered version from the served manifest", () => {
+    const served = manifest({ deployments: [offer("dep-a", "1.0.0"), offer("dep-q", "2.0.0")] });
+    expect(pageOffer(PKG, `${PAGE}?deployment=dep-q`, storage, served)).toEqual({ id: "dep-q", version: "2.0.0" });
+  });
+
+  it("is the served manifest's own deployment on a deployment's host", () => {
+    const served = manifest({ deployment: "dep-b", deployments: [offer("dep-a"), offer("dep-b", "2.0.0")] });
+    expect(pageOffer(PKG, PAGE, storage, served)).toEqual({ id: "dep-b", version: "2.0.0" });
+  });
+
+  it("is the package's only offer, and none when there are several", () => {
+    expect(pageOffer(PKG, PAGE, storage, manifest({ deployments: [offer("dep-a")] }))).toEqual({ id: "dep-a", version: "1.0.0" });
+    expect(pageOffer(PKG, PAGE, storage, manifest({ deployments: [offer("dep-a"), offer("dep-b")] }))).toBeNull();
+    expect(pageOffer(PKG, PAGE, storage, manifest())).toBeNull();
+    expect(pageOffer("com.example.other", PAGE, storage, manifest({ deployments: [offer("dep-a")] }))).toBeNull();
+  });
+
+  it("is none in development and on an open cluster", () => {
+    expect(pageOffer(PKG, "http://localhost:5173/", storage, null)).toBeNull();
+  });
+
+  it("reads the served manifest servedNodes fetched", async () => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.clear();
+    const body = manifest({ deployments: [offer("dep-a", "2.0.0")] });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(body))) as unknown as typeof fetch;
+    expect(await servedNodes("https://abc.apps.example", fetcher)).toEqual(["https://n1.example"]);
+    expect(pageOffer(PKG)).toEqual({ id: "dep-a", version: "2.0.0" });
+  });
+
+  it("creates from the deployment, which decides the version", () => {
+    expect(appTarget({ package: PKG, version: "2.0.0" }, { id: "dep-a", version: "1.0.0" })).toEqual({ package: PKG, deployment: "dep-a" });
+    expect(appTarget({ package: PKG }, { id: "dep-a" })).toEqual({ package: PKG, deployment: "dep-a" });
+    expect(appTarget({ package: PKG, version: "2.0.0" }, null)).toEqual({ package: PKG, version: "2.0.0" });
+    expect(appTarget("ab12", { id: "dep-a" })).toEqual({ bundle: "ab12" });
   });
 });
