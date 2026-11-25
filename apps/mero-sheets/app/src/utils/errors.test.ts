@@ -1,3 +1,5 @@
+import { DEPLOY_NOT_GRANTED_MESSAGE } from '@calimero-apps/connect';
+import { CalimeroError } from '@calimero-network/mero-js';
 import { describe, it, expect } from 'vitest';
 import { describeError, bytesToText } from './errors';
 
@@ -95,5 +97,9 @@ describe('describeError', () => {
     const bytes = Array.from(new TextEncoder().encode(JSON.stringify('invalid input: B1 must be one of Yes, No')));
     const err = { message: 'FunctionCallError', data: `the method call returned an error: [${bytes.join(', ')}]` };
     expect(describeError(err)).toBe('Invalid input: B1 must be one of Yes, No');
+  });
+
+  it('says an app this cluster does not offer is not available yet', () => {
+    expect(describeError(new CalimeroError(403, 'DEPLOY_NOT_GRANTED', 'This cluster only lets Calimero Cloud deployers install apps'))).toBe(DEPLOY_NOT_GRANTED_MESSAGE);
   });
 });

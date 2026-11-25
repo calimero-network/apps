@@ -1,3 +1,5 @@
+import { DEPLOY_NOT_GRANTED_MESSAGE, isDeployNotGranted } from "@calimero-apps/connect";
+
 /**
  * Pull a human-readable message out of an unknown thrown error.
  *
@@ -8,6 +10,7 @@
  * account — names the method; say so plainly rather than leaking a bare 403.
  */
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong"): string {
+  if (isDeployNotGranted(err)) return DEPLOY_NOT_GRANTED_MESSAGE;
   if (err && typeof err === "object") {
     const e = err as { name?: unknown; method?: unknown; explanation?: unknown; message?: unknown };
     if (e.name === "NotForAccountError") {
