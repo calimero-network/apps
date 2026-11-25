@@ -29,7 +29,7 @@ packages:
   # calimero-network/swift-sdk repository it came from is gone.
   MeroKit:
     url: https://github.com/calimero-network/core
-    exactVersion: 1.0.0-rc.35
+    exactVersion: 1.0.0-rc.37
 
 targets:
   MeroChat:
