@@ -171,11 +171,11 @@ catalog:
   "@calimero-network/mero-react": ^10.3.0 # fleet-bump: hold
   # The design system, published from core (sdks/components/mero-design) at
   # core's version; it was @calimero-network/mero-ui up to 1.5.2.
-  "@calimero-network/mero-design": ^1.0.0-rc.35
+  "@calimero-network/mero-design": ^1.0.0-rc.36
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
   # it each pinned their own version.
-  "@calimero-network/mero-icons": ^1.0.0-rc.35
+  "@calimero-network/mero-icons": ^1.0.0-rc.36
   "@calimero-network/mero-platform": ^0.1.0
   "@calimero-network/mero-platform-react": ^0.1.0
   # abi-codegen 2.4.0 (mero-devtools-js#66): a generated client takes any
@@ -280,8 +280,8 @@ catalog:
 # depends on mero-js 1.0.0-rc.32 exactly.
 catalogs:
   component:
-    "@calimero-network/mero-js": 1.0.0-rc.35
-    "@calimero-network/mero-react": 1.0.0-rc.35
+    "@calimero-network/mero-js": 1.0.0-rc.36
+    "@calimero-network/mero-react": 1.0.0-rc.36
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
