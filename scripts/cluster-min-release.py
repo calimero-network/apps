@@ -18,6 +18,14 @@ window would refuse every node.
 
 Prints the version on stdout; reasons on stderr; exits 1 when no node names a
 release.
+
+Both --cluster and --directory are required, with no default: the same script
+reads the staging cluster through the staging directory, and a forgotten
+argument must stop the publish rather than read production's floor
+(scripts/frontend-target.sh picks both per registry).
+
+    scripts/cluster-min-release.py --cluster eu-shared-1 \
+        --directory https://manager.cloud.calimero.network/api/directory
 """
 
 import argparse
@@ -28,7 +36,6 @@ import sys
 import urllib.parse
 import urllib.request
 
-DEFAULT_DIRECTORY = "https://manager.cloud.calimero.network/api/v2/directory"
 RELEASE_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 
 
@@ -121,10 +128,12 @@ def lowest_release(directory, cluster, timeout=10.0, log=sys.stderr):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cluster", default="eu-shared-1")
-    parser.add_argument("--directory", default=DEFAULT_DIRECTORY)
+    parser.add_argument("--cluster", required=True)
+    parser.add_argument("--directory", required=True)
     parser.add_argument("--timeout", type=float, default=10.0)
     args = parser.parse_args(argv)
+    if not args.cluster.strip() or not args.directory.strip():
+        parser.error("--cluster and --directory must not be empty")
     version = lowest_release(args.directory, args.cluster, args.timeout)
     if version is None:
         return 1

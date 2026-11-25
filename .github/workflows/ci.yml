@@ -385,6 +385,18 @@ jobs:
       - name: Assert Release skips only a component nothing changed in
         run: python3 scripts/tests/registry-unchanged-test.py
 
+      # Release publishes to the registry scripts/registry-target.sh maps the
+      # branch to, and to none for a branch it does not map. A wrong answer
+      # publishes an irreversible version to the wrong registry.
+      - name: Assert Release maps each branch to its registry and refuses the rest
+        run: python3 scripts/tests/registry-target-test.py
+
+      # A bundle in the staging registry carries a frontend built for the
+      # staging cluster: the environment's own CALIMERO_CLUSTER and
+      # CALIMERO_DIRECTORY, never production's inherited ones.
+      - name: Assert a staging frontend is never built for the production cluster
+        run: python3 scripts/tests/frontend-target-test.py
+
       # The frontend packed into a bundle is built with the lowest release the
       # cluster runs: too high and it refuses every node of a half-rolled-out
       # cluster, so the derivation is tested against fixture responses.

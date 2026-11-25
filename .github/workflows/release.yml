@@ -13,10 +13,22 @@
 # without it a push only reports what it would have released, and a release is
 # a dispatch.
 #
-# The served frontend is built for the cloud cluster named by the repository
-# variable CALIMERO_CLUSTER (default eu-shared-1, the cluster in the cloud's node
-# directory) and the mero-tee release floor CALIMERO_MIN_RELEASE (no default:
-# it is a trust decision, and publish-component.yml refuses to build without it).
+# The served frontend is built for the cloud cluster named by the variable
+# CALIMERO_CLUSTER and the mero-tee release floor CALIMERO_MIN_RELEASE. On main
+# (production) these are the repository variables (cluster default eu-shared-1;
+# the floor has no default: it is a trust decision, and publish-component.yml
+# refuses to build without it). On staging-test they are the `staging`
+# environment's own variables, with CALIMERO_DIRECTORY, and a publish fails
+# before building when they are missing (scripts/frontend-target.sh).
+#
+# WHICH REGISTRY: the branch the run is on, through scripts/registry-target.sh
+# (the `target` job) and nowhere else: main publishes to production
+# (apps.calimero.network), staging-test to the staging registry, from the GitHub
+# environment `staging` whose CALIMERO_REGISTRY_API_KEY is the staging key. Any
+# other branch, or a tag, publishes nothing. A push to staging-test publishes the
+# component apps it changed without RELEASE_COMPONENTS_ON_PUSH; main still needs
+# it. Moving main to staging and a new `prod` branch to production is an edit to
+# that script's mapping plus the branch list below.
 #
 # The `shared` filter is the capability the per-repo setup could not express at
 # all: bumping the SDK changes EVERY contract's bytes, so a change to the
@@ -27,7 +39,9 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    # Every branch here needs a line in scripts/registry-target.sh, which fails
+    # the run (publishing nothing) for a branch it does not map.
+    branches: [main, staging-test]
     paths:
       # Add "crates/**" when that directory exists.
       - "apps/*/logic/**"
@@ -55,8 +69,31 @@ permissions:
   contents: read
 
 jobs:
+  # The registry and GitHub environment for this branch (push or dispatch
+  # alike). An unmapped branch fails here, and every job below needs this one.
+  target:
+    name: Resolve the registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      registry-url: ${{ steps.map.outputs.registry_url }}
+      environment: ${{ steps.map.outputs.environment }}
+      publish-on-push: ${{ steps.map.outputs.publish_on_push }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Map the branch to a registry
+        id: map
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          out=$(bash scripts/registry-target.sh "$REF")
+          echo "$out" >> "$GITHUB_OUTPUT"
+          echo "::notice::$REF publishes to $(sed -n 's/^registry_url=//p' <<<"$out") (environment: $(sed -n 's/^environment=//p' <<<"$out" | grep . || echo none))"
+
   select:
     name: Select apps
+    needs: target
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -147,7 +184,8 @@ jobs:
           DISPATCH_APP: ${{ inputs.app }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.before }}
-          ON_PUSH: ${{ vars.RELEASE_COMPONENTS_ON_PUSH }}
+          # `always` from the mapping (staging), else the repository variable.
+          ON_PUSH: ${{ needs.target.outputs.publish-on-push == 'always' && 'true' || vars.RELEASE_COMPONENTS_ON_PUSH }}
           V1_APPS: ${{ steps.pick.outputs.apps }}
         run: |
           set -euo pipefail
@@ -216,7 +254,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: select
+    needs: [target, select]
     if: needs.select.outputs.apps != '[]'
     strategy:
       fail-fast: false
@@ -226,6 +264,8 @@ jobs:
     with:
       app: ${{ matrix.app }}
       version: ${{ inputs.version || '' }}
+      registry-url: ${{ needs.target.outputs.registry-url }}
+      environment: ${{ needs.target.outputs.environment }}
     # Only the two the publish needs — not `inherit`, which would forward every
     # org secret into a job holding a production signing key.
     #
@@ -235,13 +275,20 @@ jobs:
     # one by merging. An `environment:` with required reviewers on the deploy job
     # is the gate for that, and it has to be configured in repo settings — it
     # cannot be added from here alone.
+    #
+    # CALIMERO_REGISTRY_API_KEY: the organization secret is the PRODUCTION key,
+    # so it is passed only to a run with no environment (production). With an
+    # environment the publish job reads that environment's own secret (an
+    # environment secret wins over a passed one); passing '' means an
+    # environment that lacks it fails the secret check instead of sending the
+    # production key to another registry.
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
-      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == '' && secrets.CALIMERO_REGISTRY_API_KEY || '' }}
 
   publish-components:
     name: Publish component
-    needs: select
+    needs: [target, select]
     if: needs.select.outputs.components != '[]'
     strategy:
       fail-fast: false
@@ -251,11 +298,13 @@ jobs:
     with:
       app: ${{ matrix.app }}
       version: ${{ inputs.version || '' }}
-      # The served frontend's target (publish-component.yml): the cloud
-      # cluster and the mero-tee release floor every node must attest to.
-      cluster: ${{ vars.CALIMERO_CLUSTER || 'eu-shared-1' }}
-      min-release: ${{ vars.CALIMERO_MIN_RELEASE || '' }}
-    # The two the publish needs, never `inherit` (see the job above).
+      registry-url: ${{ needs.target.outputs.registry-url }}
+      environment: ${{ needs.target.outputs.environment }}
+      # The served frontend's cluster and attestation floor are resolved in
+      # publish-component.yml's deploy job, the one that runs in the
+      # environment: a value read here would always be production's.
+    # The two the publish needs, never `inherit`, and the registry key only to
+    # production (see the job above).
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
-      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == '' && secrets.CALIMERO_REGISTRY_API_KEY || '' }}

@@ -44,7 +44,14 @@ import tarfile
 import urllib.error
 import urllib.request
 
-REGISTRY = os.environ.get("CALIMERO_REGISTRY", "https://apps.calimero.network")
+# Production unless told otherwise. CALIMERO_REGISTRY_URL is the name the
+# publish scripts use (the staging registry is scripts/registry-target.sh's);
+# CALIMERO_REGISTRY is the older spelling, still honoured.
+REGISTRY = (
+    os.environ.get("CALIMERO_REGISTRY_URL")
+    or os.environ.get("CALIMERO_REGISTRY")
+    or "https://apps.calimero.network"
+).rstrip("/")
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
 GREEN, RED, YELLOW, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"

@@ -22,10 +22,17 @@
 #   * An unreachable or unreadable registry stops the release: guessing would
 #     sign below, or over, what is already out there.
 #
-# CALIMERO_REGISTRY_URL overrides https://apps.calimero.network.
+# CALIMERO_REGISTRY_URL overrides https://apps.calimero.network; set but empty
+# is refused rather than read as production.
 set -euo pipefail
 
-registry="${CALIMERO_REGISTRY_URL:-https://apps.calimero.network}"
+registry="${CALIMERO_REGISTRY_URL-https://apps.calimero.network}"
+if [ -z "$registry" ]; then
+  # A lost registry (a staging publish whose URL did not arrive), never a
+  # request for production's.
+  echo "::error::CALIMERO_REGISTRY_URL is set but empty" >&2
+  exit 2
+fi
 api="${registry%/}/api/bundles"
 
 # The well-known development key's signerId (core's `mero_sign::dev_signer_id`,
