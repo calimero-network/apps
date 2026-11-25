@@ -255,7 +255,7 @@ jobs:
   publish:
     name: Publish
     needs: [target, select]
-    if: needs.select.outputs.apps != '[]'
+    if: needs.select.outputs.apps != '[]' && needs.target.outputs.environment == ''
     strategy:
       fail-fast: false
       matrix:
@@ -277,19 +277,52 @@ jobs:
     # cannot be added from here alone.
     #
     # CALIMERO_REGISTRY_API_KEY: the organization secret is the PRODUCTION key,
-    # so it is passed only to a run with no environment (production). With an
-    # environment the publish job reads that environment's own secret (an
-    # environment secret wins over a passed one); passing '' means an
-    # environment that lacks it fails the secret check instead of sending the
-    # production key to another registry.
+    # so only this production job (no environment) passes it; `publish-env`
+    # passes none and its environment supplies its own.
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
-      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == '' && secrets.CALIMERO_REGISTRY_API_KEY || '' }}
+      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+
+  publish-env:
+    name: Publish ({{ needs.target.outputs.environment }})
+    needs: [target, select]
+    if: needs.select.outputs.apps != '[]' && needs.target.outputs.environment != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.apps) }}
+    uses: ./.github/workflows/publish-bundle.yml
+    with:
+      app: ${{ matrix.app }}
+      version: ${{ inputs.version || '' }}
+      registry-url: ${{ needs.target.outputs.registry-url }}
+      environment: ${{ needs.target.outputs.environment }}
+    # Only the two the publish needs — not `inherit`, which would forward every
+    # org secret into a job holding a production signing key.
+    #
+    # NOTE for whoever owns this repo: a publish here is irreversible (the
+    # registry rejects a duplicate version, so a mistaken release can only be
+    # superseded, never withdrawn) and any account with write access can trigger
+    # one by merging. An `environment:` with required reviewers on the deploy job
+    # is the gate for that, and it has to be configured in repo settings — it
+    # cannot be added from here alone.
+    #
+    # CALIMERO_REGISTRY_API_KEY: the organization secret is the PRODUCTION key,
+    # so only this production job (no environment) passes it; `publish-env`
+    # passes none and its environment supplies its own.
+    # No CALIMERO_REGISTRY_API_KEY here: the publish job runs in the
+    # environment and reads that environment's own secret. A secret passed from
+    # this caller, even an empty one, would shadow it (seen on staging
+    # 2026-11-25: "not set in the GitHub environment staging" with the secret
+    # present). An environment without it fails the secret check; the
+    # production key is never sent to another registry.
+    secrets:
+      MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
 
   publish-components:
     name: Publish component
     needs: [target, select]
-    if: needs.select.outputs.components != '[]'
+    if: needs.select.outputs.components != '[]' && needs.target.outputs.environment == ''
     strategy:
       fail-fast: false
       matrix:
@@ -303,8 +336,36 @@ jobs:
       # The served frontend's cluster and attestation floor are resolved in
       # publish-component.yml's deploy job, the one that runs in the
       # environment: a value read here would always be production's.
-    # The two the publish needs, never `inherit`, and the registry key only to
-    # production (see the job above).
+    # The two the publish needs, never `inherit`; the registry key only in the
+    # production job (see `publish`).
     secrets:
       MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
-      CALIMERO_REGISTRY_API_KEY: ${{ needs.target.outputs.environment == '' && secrets.CALIMERO_REGISTRY_API_KEY || '' }}
+      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+
+  publish-components-env:
+    name: Publish component ({{ needs.target.outputs.environment }})
+    needs: [target, select]
+    if: needs.select.outputs.components != '[]' && needs.target.outputs.environment != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.components) }}
+    uses: ./.github/workflows/publish-component.yml
+    with:
+      app: ${{ matrix.app }}
+      version: ${{ inputs.version || '' }}
+      registry-url: ${{ needs.target.outputs.registry-url }}
+      environment: ${{ needs.target.outputs.environment }}
+      # The served frontend's cluster and attestation floor are resolved in
+      # publish-component.yml's deploy job, the one that runs in the
+      # environment: a value read here would always be production's.
+    # The two the publish needs, never `inherit`; the registry key only in the
+    # production job (see `publish`).
+    # No CALIMERO_REGISTRY_API_KEY here: the publish job runs in the
+    # environment and reads that environment's own secret. A secret passed from
+    # this caller, even an empty one, would shadow it (seen on staging
+    # 2026-11-25: "not set in the GitHub environment staging" with the secret
+    # present). An environment without it fails the secret check; the
+    # production key is never sent to another registry.
+    secrets:
+      MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
