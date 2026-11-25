@@ -12,11 +12,7 @@
  * page can render the link without waiting.
  */
 
-/** The apps domain every Calimero Cloud cluster shares. */
-export const APPS_DOMAIN = "apps.calimero.network";
-
-/** Where a person deploys an app of their own on Calimero Cloud. */
-export const CLOUD_DEPLOY = "https://cloud.calimero.network/v2";
+import { cloudLinks } from "./cloud";
 
 const LABEL_DOMAIN = "calimero.app-host.v1\0";
 
@@ -118,8 +114,12 @@ export function appClusterLabel(cluster: string, pkg: string): string {
   return base32(sha256(new TextEncoder().encode(`calimero.app-host.cluster.v1\0${cluster}\0${pkg}`)));
 }
 
-/** `https://{label}.{appsDomain}/`: where Calimero Cloud serves `pkg`'s frontend. */
-export function appUrl(pkg: string, appsDomain: string = APPS_DOMAIN): string {
+/**
+ * `https://{label}.{appsDomain}/`: where Calimero Cloud serves `pkg`'s frontend,
+ * by default on the apps domain of the Calimero Cloud the build names
+ * (`VITE_CALIMERO_ENV`, {@link cloudLinks}).
+ */
+export function appUrl(pkg: string, appsDomain: string = cloudLinks().appsDomain): string {
   const domain = appsDomain.trim().replace(/^\.+|\.+$/g, "").toLowerCase();
   return `https://${appLabel(pkg)}.${domain}/`;
 }

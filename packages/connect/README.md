@@ -62,8 +62,14 @@ through `@calimero-apps/passkey`'s session), so this policy is the only one:
 `CalimeroClient` of its own.
 When nothing runs the package (404), or the build has no floor or package,
 it throws `NotServedError` (a `ConfigError`), which an app shows as "open the app
-from Calimero Cloud" with a link to `CLOUD_CONSOLE`. Any other misconfigured
+from Calimero Cloud" with a link to the build's console (`cloudLinks()`). Any other misconfigured
 production build throws `ConfigError` instead of connecting anywhere.
+Every address a build links to (the console, the deploy page, the apps domain
+`appUrl` uses by default, the App Registry) is `cloudLinks()`: the Calimero
+Cloud `VITE_CALIMERO_ENV` names, folded in at build time, so a staging build
+links to staging only. Release builds a staging bundle with
+`VITE_CALIMERO_ENV=staging` and the staging directory
+(`scripts/frontend-target.sh`); production sets neither.
 `resolveTarget` and `withServedNodes`, which `connectTarget` is built on, are
 still exported for code that only reads the build's environment. Sessions are stored per app and per target. See
 [docs/COMPONENT-APPS.md](../../docs/COMPONENT-APPS.md).

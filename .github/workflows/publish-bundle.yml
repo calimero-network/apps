@@ -386,6 +386,7 @@ jobs:
           require-min-release: "true"
           floor-cluster: ${{ steps.target.outputs.floor_cluster }}
           directory: ${{ steps.target.outputs.directory }}
+          cloud-env: ${{ steps.target.outputs.cloud_env }}
 
       # `--app-version`, not `--bump`: the check job already resolved the number
       # against the registry, and cargo-mero's own --bump floors an empty

@@ -20,6 +20,12 @@
 #   floor_cluster=  the cluster name the build and the derived floor use
 #   directory=      the node directory cluster-min-release.py reads
 #   min_release=    VITE_CALIMERO_MIN_RELEASE, empty = derive it from floor_cluster
+#   cloud_env=      VITE_CALIMERO_ENV: the Calimero Cloud the frontend links to,
+#                   asks and trusts. Empty in production (the build sets no
+#                   variable, as before); `staging` for the GitHub environment
+#                   `staging`, which the build also gives `directory` as
+#                   VITE_CALIMERO_DIRECTORY. Any other environment names no
+#                   Calimero Cloud and fails.
 #
 # PRODUCTION (no environment) is today's behaviour: the repository variables,
 # cluster eu-shared-1 when CALIMERO_CLUSTER is unset, the production directory.
@@ -55,8 +61,13 @@ min_release=${MIN_RELEASE:-}
 if [ -z "$environment" ]; then
   floor_cluster=${cluster:-$PROD_CLUSTER}
   directory=$PROD_DIRECTORY
+  cloud_env=""
 else
   where="the GitHub environment '$environment'"
+  case "$environment" in
+    staging) cloud_env=staging ;;
+    *) fail "$where names no Calimero Cloud: its frontend would link to and trust production (VITE_CALIMERO_ENV is production or staging)" ;;
+  esac
   [ -n "$cluster" ] ||
     fail "$where sets no variable CALIMERO_CLUSTER; its bundles would be built for the production cluster"
   if [ -n "${OUTSIDE_CLUSTER:-}" ] && [ "$cluster" = "$OUTSIDE_CLUSTER" ]; then
@@ -90,3 +101,4 @@ echo "cluster=$cluster"
 echo "floor_cluster=$floor_cluster"
 echo "directory=${directory%/}"
 echo "min_release=$min_release"
+echo "cloud_env=$cloud_env"

@@ -92,7 +92,7 @@ describe("App", () => {
     // The node-served copy: mdma's `app_host.app_url("com.calimero.scaffolding-e2e")`.
     expect(open.getAttribute("href")).toBe("https://qckbkkvlixbqw4j52gqoy42wmdnlfesmicyhb5kxacymtsj5geaq.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });

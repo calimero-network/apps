@@ -1,4 +1,4 @@
-import { APPS_DOMAIN, appUrl } from "@calimero-apps/connect";
+import { CLOUD_LINKS, appUrl } from "@calimero-apps/connect";
 
 /** What every run checks unless `SMOKE_PACKAGES` says otherwise. */
 export const DEFAULT_PACKAGES = ["com.calimero.kv-store"];
@@ -40,6 +40,6 @@ export function smokeTargets(env: NodeJS.ProcessEnv = process.env): SmokeTarget[
     if (packages.length !== 1) throw new Error("SMOKE_URL names one app: give SMOKE_PACKAGES one package with it");
     return [{ package: packages[0] as string, url: override }];
   }
-  const domain = env.SMOKE_APPS_DOMAIN?.trim() || APPS_DOMAIN;
+  const domain = env.SMOKE_APPS_DOMAIN?.trim() || CLOUD_LINKS.production.appsDomain;
   return packages.map((pkg) => ({ package: pkg, url: appUrl(pkg, domain) }));
 }

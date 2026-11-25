@@ -27,6 +27,7 @@ import {
 
 import { nodeBasename } from '@calimero-apps/node-served';
 
+import { cloudLinks } from '@calimero-apps/connect';
 import { InstallAppButton } from '@calimero-apps/install';
 import { CONFIG } from './landing.config';
 import type { IconComponent, OverviewExtras } from './landingTypes';
@@ -74,7 +75,8 @@ function readStoredTheme(): 'light' | 'dark' | null {
 }
 
 const LINKS = {
-  registry: 'https://apps.calimero.network',
+  // The build's Calimero Cloud's registry (VITE_CALIMERO_ENV): staging's on a staging build.
+  registry: cloudLinks().registry,
   docs: 'https://docs.calimero.network',
   site: 'https://calimero.network',
   download: 'https://calimero.network/download',

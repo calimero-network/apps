@@ -32,6 +32,7 @@ import {
   Upload,
 } from '@calimero-network/mero-icons';
 
+import { cloudLinks } from '@calimero-apps/connect';
 import { InstallAppButton } from '@calimero-apps/install';
 import BrandMark from '../../components/BrandMark';
 import SignInDialog from '../../components/SignInDialog';
@@ -43,8 +44,9 @@ import './landing.css';
 const LINKS = {
   site: 'https://calimero.network',
   download: 'https://calimero.network/download',
-  cloud: 'https://cloud.calimero.network',
-  registry: 'https://apps.calimero.network',
+  // The build's Calimero Cloud (VITE_CALIMERO_ENV): staging's on a staging build.
+  cloud: cloudLinks().console,
+  registry: cloudLinks().registry,
   docs: 'https://docs.calimero.network',
   core: 'https://github.com/calimero-network/core',
   repo: 'https://github.com/calimero-network/apps/tree/main/apps/mero-pass',

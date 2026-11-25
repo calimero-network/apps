@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppListing } from "./AppListing";
 import { listingCopy, renderListing } from "./listing";
@@ -16,7 +16,7 @@ describe("AppListing", () => {
     expect(screen.getByRole("link", { name: "Open KV Store" }).getAttribute("href")).toBe(KV_URL);
     expect(screen.getByText("This link works once KV Store runs on Calimero Cloud.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(screen.queryByTestId("listing-dev")).toBeNull();
     // No developer error on the listing.
@@ -40,7 +40,7 @@ describe("renderListing", () => {
     expect(open.textContent).toBe("Open KV Store");
     expect(open.getAttribute("href")).toBe(KV_URL);
     expect(host.querySelector("[data-testid=listing-deploy]")?.getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(host.querySelector("[data-testid=listing-dev]")?.textContent).toBe(
       listingCopy({ ...props, dev: true }).devCommand && "For local play run pnpm dev:local kv-store.",
@@ -52,5 +52,21 @@ describe("renderListing", () => {
     renderListing(host, { name: "<b>x</b>", package: "p" });
     expect(host.querySelector("b")).toBeNull();
     expect(host.querySelector("h2")?.textContent).toBe("<b>x</b>");
+  });
+});
+
+describe("listingCopy on a staging build", () => {
+  it("opens staging's served copy and deploys on staging's console, never production's", () => {
+    vi.stubEnv("VITE_CALIMERO_ENV", "staging");
+    try {
+      const copy = listingCopy(props);
+      expect(copy.openUrl).toBe(
+        "https://2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq.apps.relay.staging.cloud.calimero.network/",
+      );
+      expect(copy.deployUrl).toBe("https://staging.cloud.calimero.network/deploy");
+      expect(JSON.stringify(copy)).not.toMatch(/\/\/(cloud|[a-z2-7]{52}\.apps)\.calimero\.network/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

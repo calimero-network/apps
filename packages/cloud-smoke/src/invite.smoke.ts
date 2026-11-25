@@ -14,7 +14,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appUrl } from "@calimero-apps/connect";
+import { CLOUD_LINKS, appUrl } from "@calimero-apps/connect";
 import { copyPasskey, serveLocally, virtualAuthenticator } from "./smoke-kit";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -66,7 +66,7 @@ test("an invite made in the shared dialog is accepted in the shared dialog", asy
   mkdirSync(SHOTS, { recursive: true });
   expect(existsSync(join(DIST, "index.html")), `no production build at ${DIST}`).toBe(true);
 
-  const origin = new URL(appUrl(PACKAGE)).origin;
+  const origin = new URL(appUrl(PACKAGE, CLOUD_LINKS.production.appsDomain)).origin;
   const manifest = (await (await (await browser.newContext()).request.get(`${origin}/.well-known/calimero.json`)).json()) as { versions: string[] };
   const version = manifest.versions[0]!;
   const base = `${origin}/${version}/`;

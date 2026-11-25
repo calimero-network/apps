@@ -545,7 +545,7 @@ describe("launcher", () => {
     expect(open?.textContent).toBe("Open Hyperfeed Blocks");
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-blocks")`.
     expect(open?.getAttribute("href")).toBe("https://k3fyuodnomq2d2i3woo47t6blm42ur6mfy4icg4rsaxtkujph2vq.apps.calimero.network/");
-    expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/v2");
+    expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/deploy");
     expect(q("#mbl-play")?.textContent).not.toContain("VITE_CALIMERO_CLUSTER");
   });
 

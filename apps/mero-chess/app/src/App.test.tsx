@@ -182,7 +182,7 @@ describe("App", () => {
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-chess")`.
     expect(open.getAttribute("href")).toBe("https://3ivxhznpoikah6ubhlzsco4mvjdbfckcjcotgzps3fokcpjpynjq.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
