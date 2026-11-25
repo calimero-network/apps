@@ -250,7 +250,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         return id;
       } catch (e) {
         setAddPipelineError(asError(e));
-        return null;
+        throw e;
       } finally {
         after();
       }

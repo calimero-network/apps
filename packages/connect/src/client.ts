@@ -144,6 +144,14 @@ export const PROMPT_BLOCKED_MESSAGE =
   "The passkey prompt was blocked: another passkey prompt or a password manager's popup is still open. " +
   "Finish or close it, then try again.";
 
+/** A create refused because this cluster offers no deployment of the app the account may create from. */
+export const DEPLOY_NOT_GRANTED_MESSAGE = "This app isn't available on this cluster yet. Ask the app's developer.";
+
+/** A create the node refused because the account may not install apps and no deployment offers this one (`403 DEPLOY_NOT_GRANTED`). */
+export function isDeployNotGranted(error: unknown): boolean {
+  return error instanceof CalimeroError && error.code === "DEPLOY_NOT_GRANTED";
+}
+
 /** A one-line, user-facing account of a failed request. */
 export function describeError(error: unknown): string {
   if (error instanceof AppError) {
@@ -156,6 +164,7 @@ export function describeError(error: unknown): string {
   if (error instanceof ConfirmPromptBlocked) return PROMPT_BLOCKED_MESSAGE;
   if (error instanceof UnavailableError) return "The cluster is unavailable; try again shortly.";
   if (error instanceof DirectoryError) return `No node of the cluster could be found: ${error.message}`;
+  if (isDeployNotGranted(error)) return DEPLOY_NOT_GRANTED_MESSAGE;
   if (error instanceof CalimeroError) return error.message;
   if (error instanceof Error) return error.message;
   return String(error);

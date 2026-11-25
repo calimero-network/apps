@@ -501,13 +501,13 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
-        version: 1.0.0-rc.35(react@19.2.8)
+        version: 1.0.0-rc.37(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 1.0.0-rc.35
+        version: 1.0.0-rc.37
       '@calimero-network/mero-react':
         specifier: catalog:component
-        version: 1.0.0-rc.35(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.0.0-rc.37(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2654,7 +2654,7 @@ importers:
         version: link:../../../packages/passkey
       '@calimero-network/mero-js':
         specifier: catalog:component
-        version: 1.0.0-rc.35
+        version: 1.0.0-rc.37
       react:
         specifier: 'catalog:'
         version: 19.2.8

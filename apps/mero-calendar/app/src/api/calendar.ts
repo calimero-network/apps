@@ -1,3 +1,4 @@
+import { describeError } from "@calimero-apps/connect";
 import { AppError } from "@calimero-network/mero-js";
 
 import type {
@@ -236,8 +237,7 @@ export function messageOf(error: unknown): string {
         return e.message || e.appCode;
     }
   }
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return describeError(error);
 }
 
 // ── The contract ─────────────────────────────────────────────────────────────

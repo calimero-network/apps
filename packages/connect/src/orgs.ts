@@ -17,7 +17,7 @@ import type { AppInfo, AppTeams, CalimeroClient, OrgMode } from "@calimero-netwo
 
 import { appTeams } from "./appTeams";
 import { mayCreateIn, type OrgAccessView } from "./invite";
-import type { AppSource } from "./target";
+import { pageOffer, type AppSource, type Offer } from "./target";
 import type { ClientRoutes } from "./routes";
 
 /** An organization the account is in, as `/me` lists it. */
@@ -63,10 +63,15 @@ export function appFilter(source: AppSource): { bundle: string } | { package: st
 
 /**
  * What `client.apps.create` takes to make an instance of `source`: the dev
- * bundle's hash, or the package (and the version, when it names one).
+ * bundle's hash, or the package from the page's deployment ({@link pageOffer}),
+ * which decides the version; with none, the package (at its version, if named).
  */
-export function appTarget(source: AppSource): { bundle: string } | { package: string; version?: string } {
-  return typeof source === "string" ? { bundle: source } : source;
+export function appTarget(
+  source: AppSource,
+  offer: Offer | null = typeof source === "string" ? null : pageOffer(source.package),
+): { bundle: string } | { package: string; version?: string; deployment?: string } {
+  if (typeof source === "string") return { bundle: source };
+  return offer ? { package: source.package, deployment: offer.id } : source;
 }
 
 /**

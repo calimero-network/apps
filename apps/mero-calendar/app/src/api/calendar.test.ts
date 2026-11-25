@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { AppError } from "@calimero-network/mero-js";
+import { DEPLOY_NOT_GRANTED_MESSAGE } from "@calimero-apps/connect";
+import { AppError, CalimeroError } from "@calimero-network/mero-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { MeroCalendarClient } from "../generated/client";
@@ -58,5 +59,6 @@ describe("messageOf", () => {
     expect(messageOf(err("Invalid", { message: "username cannot be empty" }))).toBe("username cannot be empty");
     expect(messageOf(err("SlotUnavailable"))).toBe("that time is not available");
     expect(messageOf(new Error("plain"))).toBe("plain");
+    expect(messageOf(new CalimeroError(403, "DEPLOY_NOT_GRANTED", "This cluster only lets Calimero Cloud deployers install apps"))).toBe(DEPLOY_NOT_GRANTED_MESSAGE);
   });
 });

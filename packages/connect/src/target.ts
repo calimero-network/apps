@@ -11,9 +11,16 @@ import {
   CLOUD_ENVIRONMENTS,
   DEFAULT_DIRECTORY,
   cloudEnvironment,
+  pageDeployment,
   type CloudEnvironment,
+  type FrontendManifest,
   type NodePolicy,
 } from "@calimero-network/mero-js";
+
+import type { KeyValueStorage } from "./client";
+
+/** Where the tab keeps the deployment its page was opened for ({@link pageOffer}). */
+export const DEPLOYMENT_KEY = "cp-deployment";
 
 /** The nodes `merod local` starts: node i listens on 2500 + i. */
 export const LOCAL_NODES: readonly string[] = [
@@ -273,31 +280,97 @@ export function appSource(env: ConnectEnv, defaultPackage: string): AppSource {
   };
 }
 
+/** A deployment offering the app's package: new instances are created from it, at its version. */
+export interface Offer {
+  id: string;
+  /** The release it offers, when the served manifest lists it. */
+  version?: string;
+}
+
+/** The manifest {@link servedNodes} last read: where {@link pageOffer} finds the cluster's offers. */
+let servedManifest: FrontendManifest | null = null;
+
+/**
+ * The deployment new instances of `pkg` are created from: the page's
+ * `?deployment=` (the console opens `/d/{id}/`, which redirects there), kept in
+ * the tab so in-app navigation and reloads keep it; else the served manifest's
+ * own deployment (a deployment's host); else the package's only offer. `null`
+ * without one: development, an open cluster, a page no cluster serves.
+ */
+export function pageOffer(
+  pkg: string,
+  href: string | undefined = globalThis.location?.href,
+  storage: KeyValueStorage | null = sessionStore(),
+  manifest: FrontendManifest | null = servedManifest,
+): Offer | null {
+  const listed = manifest?.package === pkg ? manifest : null;
+  const only = listed?.deployments.length === 1 ? listed.deployments[0]?.id : null;
+  const opened = openedDeployment(href, storage);
+  // On a served page, a link's deployment counts only if this cluster offers the package from it.
+  const linked = manifest && !listed?.deployments.some((d) => d.id === opened) ? null : opened;
+  const id = linked ?? listed?.deployment ?? only;
+  if (!id) return null;
+  const version = listed?.deployments.find((d) => d.id === id)?.version;
+  return version ? { id, version } : { id };
+}
+
+/** The tab's `sessionStorage`; `null` where it is blocked. */
+export function sessionStore(): KeyValueStorage | null {
+  try {
+    return (globalThis as { sessionStorage?: KeyValueStorage }).sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function openedDeployment(href: string | undefined, storage: KeyValueStorage | null): string | null {
+  const asked = href ? pageDeployment(href) : null;
+  try {
+    if (asked) storage?.setItem(DEPLOYMENT_KEY, asked);
+    return asked ?? storage?.getItem(DEPLOYMENT_KEY) ?? null;
+  } catch {
+    return asked;
+  }
+}
+
+// Read at load, before an app's router can drop the query.
+openedDeployment(globalThis.location?.href, sessionStore());
+
 /**
  * The cluster's API URLs when this page is a frontend the cluster serves from
  * the app's bundle (`{label}.{apps_domain}`): the node publishes them at
  * `/.well-known/calimero.json`, and the page's CSP lets it connect to those and
  * nothing else, so the node directory is neither needed nor reachable there.
- * `null` anywhere else (the dev server, a static host, no such file).
+ * `null` anywhere else (the dev server, a static host, no such file). Keeps the
+ * manifest for {@link pageOffer}.
  */
 export async function servedNodes(
   origin: string | undefined = globalThis.location?.origin,
   fetcher: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<string[] | null> {
+  servedManifest = null;
   if (!origin || !/^https?:/.test(origin)) return null;
   try {
     const response = await fetcher(new URL("/.well-known/calimero.json", origin).toString(), {
       headers: { accept: "application/json" },
     });
     if (!response.ok) return null;
-    const body: unknown = await response.json();
-    const api = (body as { api?: unknown } | null)?.api;
+    const body = (await response.json()) as Partial<FrontendManifest> | null;
+    servedManifest = manifestOf(body);
+    const api = body?.api as unknown;
     if (!Array.isArray(api)) return null;
     const nodes = api.filter((u): u is string => typeof u === "string" && /^https?:\/\//.test(u));
     return nodes.length > 0 ? nodes : null;
   } catch {
     return null;
   }
+}
+
+/** `body` as a served manifest, keeping only the offers that name an id. */
+function manifestOf(body: Partial<FrontendManifest> | null): FrontendManifest | null {
+  if (typeof body?.package !== "string") return null;
+  const deployments = Array.isArray(body.deployments) ? body.deployments.filter((d) => typeof d?.id === "string" && d.id) : [];
+  return { ...body, deployment: typeof body.deployment === "string" ? body.deployment : null, deployments } as FrontendManifest;
 }
 
 /** `target` with the served node list when it is a cloud target on a served page. */
