@@ -156,7 +156,7 @@ class ChatAppViewModel(
             when (target) {
                 is ClusterTarget.Url -> client(SignInMode.CLOUD, target.url, emptyList())
                 is ClusterTarget.Name ->
-                    CalimeroClient.connect(CalimeroConnectOptions(cluster = target.name, policy = CloudPolicy.production, httpClient = http))
+                    CalimeroClient.connect(CalimeroConnectOptions(cluster = target.name, policy = meroCloud.policy(), directory = meroCloud.directory, httpClient = http))
             }
         val s = open(SignInMode.CLOUD, client)
         if (create) s.signUp(PlatformPasskey(activity), name) else s.signIn(PlatformPasskey(activity))
@@ -242,7 +242,7 @@ class ChatAppViewModel(
             CalimeroClientOptions(
                 baseUrl = url,
                 nodes = nodes,
-                policy = if (mode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production,
+                policy = if (mode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy(),
                 httpClient = http,
             ),
         )

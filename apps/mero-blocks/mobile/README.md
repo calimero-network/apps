@@ -200,3 +200,10 @@ build, the game page inside the `.app`) and `.github/workflows/mero-blocks-andro
 page rebuilt from the web engine and compared with the committed one; fetch the SDK, ktlint,
 detekt, unit tests, Android lint, `assembleDebug`, the game page inside the APK), each
 path-filtered to its folders.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

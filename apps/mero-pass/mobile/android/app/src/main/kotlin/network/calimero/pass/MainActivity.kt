@@ -294,12 +294,12 @@ class PassViewModel(
         target = trimmed
         store.setValue(KEY_MODE, newMode.name)
         store.setValue(KEY_TARGET, trimmed)
-        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production
+        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy()
         val client =
             if (newMode == SignInMode.DEV || isNodeUrl(trimmed)) {
                 CalimeroClient(CalimeroClientOptions(baseUrl = trimmed, policy = policy))
             } else {
-                CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = policy))
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = trimmed, policy = policy, directory = meroCloud.directory))
             }
         val s = MeroAppSession(client, PassConstants.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, store, scope = viewModelScope)
         session = s

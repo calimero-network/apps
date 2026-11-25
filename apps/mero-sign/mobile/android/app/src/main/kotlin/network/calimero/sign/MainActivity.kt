@@ -281,10 +281,10 @@ class SignViewModel(
     ): MeroAppSession {
         store.setValue(KEY_MODE, newMode.name)
         store.setValue(KEY_TARGET, target)
-        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production
+        val policy = if (newMode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy()
         val client =
             if (newMode == SignInMode.CLOUD && !isNodeUrl(target)) {
-                CalimeroClient.connect(CalimeroConnectOptions(cluster = target, policy = policy))
+                CalimeroClient.connect(CalimeroConnectOptions(cluster = target, policy = policy, directory = meroCloud.directory))
             } else {
                 CalimeroClient(CalimeroClientOptions(baseUrl = target.trimEnd('/'), policy = policy))
             }

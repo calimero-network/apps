@@ -107,3 +107,10 @@ error copy.
 - Search, drafts, member lists, roles and moderation, channel info editing, leaving a workspace.
 - Presence and typing indicators (the SDK has relay presence intents; not wired up).
 - Push notifications: live updates run only while a channel is open.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

@@ -151,3 +151,10 @@ Both run without a node: the view models are tested on the SDKs' in-memory backe
 on the core package; XcodeGen and a build of the app) and
 `.github/workflows/mero-stream-android.yml` (fetch the SDK, ktlint, detekt, unit tests, Android
 lint, `assembleDebug`), each path-filtered to its folder.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

@@ -273,8 +273,8 @@ class StreamViewModel(
                     choice is ClusterChoice.Development ->
                         CalimeroClient(CalimeroClientOptions(baseUrl = value, policy = CloudPolicy.development))
                     ClusterChoice.isUrl(value) ->
-                        CalimeroClient(CalimeroClientOptions(baseUrl = value, policy = CloudPolicy.production))
-                    else -> CalimeroClient.connect(CalimeroConnectOptions(cluster = value, policy = CloudPolicy.production))
+                        CalimeroClient(CalimeroClientOptions(baseUrl = value, policy = meroCloud.policy()))
+                    else -> CalimeroClient.connect(CalimeroConnectOptions(cluster = value, policy = meroCloud.policy(), directory = meroCloud.directory))
                 }
             } catch (e: CancellationException) {
                 throw e

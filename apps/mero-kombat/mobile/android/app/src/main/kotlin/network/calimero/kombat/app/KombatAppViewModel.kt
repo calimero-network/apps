@@ -226,8 +226,8 @@ class KombatAppViewModel(
             when {
                 choice.kind == ClusterKind.DEVELOPMENT ->
                     CalimeroClient(CalimeroClientOptions(baseUrl = entry, policy = CloudPolicy.development))
-                choice.isUrl -> CalimeroClient(CalimeroClientOptions(baseUrl = entry, policy = CloudPolicy.production))
-                else -> CalimeroClient.connect(CalimeroConnectOptions(cluster = entry, policy = CloudPolicy.production))
+                choice.isUrl -> CalimeroClient(CalimeroClientOptions(baseUrl = entry, policy = meroCloud.policy()))
+                else -> CalimeroClient.connect(CalimeroConnectOptions(cluster = entry, policy = meroCloud.policy(), directory = meroCloud.directory))
             }
         val s = MeroAppSession(client, KombatConstants.PACKAGE_NAME, BuildConfig.CONSENT_CALLBACK_URL, store, scope = viewModelScope)
         _cluster.value = choice.copy(entry = entry)

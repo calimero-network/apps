@@ -142,3 +142,10 @@ each path-filtered to its folder.
 - **Setting your display name** in the org from the app (names set on the web show up).
 - **Push notifications** for "your turn": the apps refresh live while open (events + polling).
 - **An Android demo mode**: the in-memory demo is iOS only.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

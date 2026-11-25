@@ -151,3 +151,10 @@ manifest's intent filter is built).
 - **Fighter portraits** drawn by the engine: the shell uses a figure in the fighter's colour.
 - **Universal links**: `links.calimero.network` publishes no apple-app-site-association/assetlinks
   for this app; pasting the link into **Join with a link** always works.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

@@ -165,3 +165,10 @@ JSON and the hand-kept types in `CrmCore/Records.swift` and `crm/generated/CrmRe
 - Invitation links open the apps as `calimero://com.calimero.mero-crm/join?invitation=…`; the
   https form needs Associated Domains / App Links on `links.calimero.network`, which that host does
   not publish for this app yet, so a pasted https link goes through **Join with an invitation**.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

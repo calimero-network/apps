@@ -117,3 +117,10 @@ sign-in on a real cluster needs the cluster's relying party as an associated dom
 `.github/workflows/mero-chess-ios.yml` (macOS: `swift test` on ChessCore, XcodeGen, build)
 and `.github/workflows/mero-chess-android.yml` (fetch the SDK, ktlint, detekt, unit tests, Android
 lint, `assembleDebug`), each path-filtered to its folder.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

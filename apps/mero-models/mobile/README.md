@@ -167,3 +167,10 @@ on `mero-models://consent`.
 CI: `.github/workflows/mero-models-ios.yml` (ModelsCore tests on macOS, simulator build) and
 `.github/workflows/mero-models-android.yml` (ktlint, detekt, unit tests, Android Lint,
 `assembleDebug`), each path-filtered to its folder and the viewer bundle.
+
+### Staging (Android)
+
+`-PmeroStaging=true` makes a debug build reach Calimero Cloud's staging: its node directory, and
+its debug node images trusted (the SDK's `CloudEnvironment.STAGING`). A release build, the one
+people install from Google Play, is always production, whatever is passed; a staging cluster's
+name or node URL in it is refused. `scripts/check-mobile-staging.py` keeps it that way.

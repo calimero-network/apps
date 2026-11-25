@@ -197,7 +197,7 @@ class DocsAppViewModel(
                 client(SignInMode.CLOUD, target)
             } else {
                 CalimeroClient.connect(
-                    CalimeroConnectOptions(cluster = target, policy = CloudPolicy.production, httpClient = CalimeroClientOptions.defaultHttpClient()),
+                    CalimeroConnectOptions(cluster = target, policy = meroCloud.policy(), directory = meroCloud.directory, httpClient = CalimeroClientOptions.defaultHttpClient()),
                 )
             }
         store.setValue(KEY_CLUSTER, target)
@@ -330,7 +330,7 @@ class DocsAppViewModel(
             CalimeroClientOptions(
                 baseUrl = url,
                 nodes = nodes,
-                policy = if (mode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production,
+                policy = if (mode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy(),
                 httpClient = CalimeroClientOptions.defaultHttpClient(),
             ),
         )

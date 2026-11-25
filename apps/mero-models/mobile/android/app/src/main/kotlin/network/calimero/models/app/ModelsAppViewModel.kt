@@ -183,7 +183,7 @@ class ModelsAppViewModel(
                 is ClusterTarget.Url -> client(SignInMode.CLOUD, target.url, emptyList())
                 is ClusterTarget.Name ->
                     CalimeroClient.connect(
-                        CalimeroConnectOptions(cluster = target.name, policy = CloudPolicy.production, httpClient = http),
+                        CalimeroConnectOptions(cluster = target.name, policy = meroCloud.policy(), directory = meroCloud.directory, httpClient = http),
                     )
             }
         val s = open(SignInMode.CLOUD, client)
@@ -264,7 +264,7 @@ class ModelsAppViewModel(
             CalimeroClientOptions(
                 baseUrl = url,
                 nodes = nodes,
-                policy = if (mode == SignInMode.DEV) CloudPolicy.development else CloudPolicy.production,
+                policy = if (mode == SignInMode.DEV) CloudPolicy.development else meroCloud.policy(),
                 httpClient = http,
             ),
         )

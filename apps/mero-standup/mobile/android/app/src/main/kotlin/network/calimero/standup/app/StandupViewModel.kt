@@ -207,7 +207,7 @@ class StandupViewModel(
     private suspend fun openCloud(cluster: String): MeroAppSession {
         store.setValue(KEY_CLUSTER, cluster)
         if (isUrl(cluster)) return open(SignInMode.CLOUD, listOf(cluster.trimEnd('/')))
-        val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = CloudPolicy.production))
+        val client = CalimeroClient.connect(CalimeroConnectOptions(cluster = cluster, policy = meroCloud.policy(), directory = meroCloud.directory))
         return adopt(SignInMode.CLOUD, client, client.nodes)
     }
 
@@ -215,7 +215,7 @@ class StandupViewModel(
         mode: SignInMode,
         nodes: List<String>,
     ): MeroAppSession {
-        val policy = if (mode == SignInMode.DEVELOPMENT) CloudPolicy.development else CloudPolicy.production
+        val policy = if (mode == SignInMode.DEVELOPMENT) CloudPolicy.development else meroCloud.policy()
         val client =
             CalimeroClient(
                 CalimeroClientOptions(
