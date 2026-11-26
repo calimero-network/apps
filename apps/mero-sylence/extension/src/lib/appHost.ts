@@ -3,7 +3,7 @@
  * `label` is the unpadded lowercase base32 of SHA-256("calimero.app-host.v1\0" + package),
  * as core's `app_host::label` and packages/connect `appLabel` (checked against it in tests).
  */
-export const PACKAGE = "com.calimero.mero-sylence";
+export const PACKAGE = "com.calimero.sylence";
 export const APPS_DOMAIN = "apps.calimero.network";
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";

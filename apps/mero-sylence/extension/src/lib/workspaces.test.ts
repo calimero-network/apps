@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pickWorkspaces } from "./workspaces";
 
-const PKG = "com.calimero.mero-sylence";
+const PKG = "com.calimero.sylence";
 const apps = [
   { appId: "b", name: "Sales", package: PKG },
   { appId: "a", name: "", package: PKG },

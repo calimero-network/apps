@@ -16,7 +16,7 @@ export { describeTarget, type Session, type SessionApi, type SessionDeps } from 
 export const APP = "mero-sylence";
 
 /** The app's package in the registry. */
-export const APP_PACKAGE = "com.calimero.mero-sylence";
+export const APP_PACKAGE = "com.calimero.sylence";
 
 /** The product's name, as every screen says it. */
 export const PRODUCT = "Sylence";

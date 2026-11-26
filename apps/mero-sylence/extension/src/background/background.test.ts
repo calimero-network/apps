@@ -31,7 +31,7 @@ class FakeNode {
   down = false;
   signedOut = false;
   actions: Array<{ meetingId: string; text: string; assignee: string; sourceSeq: number }> = [];
-  apps: Array<{ appId: string; name: string; package: string }> = [{ appId: "app1", name: "Team", package: "com.calimero.mero-sylence" }];
+  apps: Array<{ appId: string; name: string; package: string }> = [{ appId: "app1", name: "Team", package: "com.calimero.sylence" }];
   private n = 0;
 
   private gate(): void {
@@ -587,7 +587,7 @@ describe("service worker: when recording goes wrong", () => {
     });
 
     it("keeps a live session and unchooses a workspace that is gone", async () => {
-      node.apps = [{ appId: "other", name: "Other", package: "com.calimero.mero-sylence" }];
+      node.apps = [{ appId: "other", name: "Other", package: "com.calimero.sylence" }];
       const r = await request({ type: "checkSession" });
       expect(r).toEqual({ ok: true, value: { signedIn: true } });
       expect((h.local.get("sylence:auth") as AuthState).workspace).toBeNull();

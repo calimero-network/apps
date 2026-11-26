@@ -28,12 +28,12 @@ serde_json = "1"
 
 # Read by `meroctl app pack`.
 [package.metadata.calimero]
-package = "com.calimero.mero-sylence"
+package = "com.calimero.sylence"
 name = "Sylence"
 description = "Transcribe your calls on Google Meet, Zoom and Teams with a browser extension. Speech is turned into text on your own laptop, and the transcript and action items are kept in your workspace."
 author = "Calimero"
 # The slug IS the package id: a deep link resolves by `Application.package`.
-slug = "com.calimero.mero-sylence"
+slug = "com.calimero.sylence"
 # A real icon, not a placeholder (check-app-icons.py).
 icon = "../app/public/icon-512.png"
 category = "productivity"
@@ -43,7 +43,7 @@ github = "https://github.com/calimero-network/apps"
 min-runtime-version = "1.0.0-rc.38"
 # The listing's link. The production frontend is the one packed below: a Cloud
 # node trusts passkey ceremonies only from frontends it serves from a bundle.
-frontend = "https://mero-sylence.vercel.app"
+frontend = "https://sylence.vercel.app"
 # The built frontend the bundle carries. Build it first: `pnpm -F mero-sylence build`.
 frontend-dir = "../app/dist"
 
