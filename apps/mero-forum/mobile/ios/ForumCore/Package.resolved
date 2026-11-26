@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/calimero-network/core",
       "state" : {
-        "revision" : "9c258c0adda0d96ebaa87619f9858bb453f60ecf",
-        "version" : "1.0.0-rc.37"
+        "revision" : "41e3ebc6fb474aeef29f1879d6f0edc69b5ccba8",
+        "version" : "1.0.0-rc.38"
       }
     },
     {

@@ -20,7 +20,7 @@ packages:
   # is built against (logic/Cargo.toml), never a branch.
   core:
     url: https://github.com/calimero-network/core
-    exactVersion: 1.0.0-rc.35
+    exactVersion: 1.0.0-rc.38
   # Mero Tag's non-UI layer: the generated contract client, the models, the
   # space service and the tracker store, tested with `swift test` on macOS.
   # Keep its core pin equal to the one above.
