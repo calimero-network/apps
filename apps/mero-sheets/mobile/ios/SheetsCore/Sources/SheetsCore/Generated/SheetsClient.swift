@@ -15,9 +15,6 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct SheetsClient: Sendable {
-    /// The app type `Attrs`: the ABI names it without its shape, so it is its JSON.
-    public typealias Attrs = JSONValue
-
 
     /// The app type `ActivityEntry`.
     public struct ActivityEntry: Codable, Sendable, Equatable {
@@ -963,9 +960,9 @@ public struct SheetsClient: Sendable {
     /// The app type `NoteChange`.
     public enum NoteChange: Codable, Sendable, Equatable {
         /// `Retain`.
-        case retain(retain: UInt32, attributes: Attrs?)
+        case retain(retain: UInt32, attributes: [String: String?]?)
         /// `Insert`.
-        case insert(insert: String, attributes: Attrs?)
+        case insert(insert: String, attributes: [String: String?]?)
         /// `Delete`.
         case delete(delete: UInt32)
 
@@ -973,14 +970,14 @@ public struct SheetsClient: Sendable {
             do {
                 let fields = try decoder.container(keyedBy: Key.self)
                 let v0 = try fields.decode(UInt32.self, forKey: Key("retain"))
-                let v1 = try fields.decodeIfPresent(Attrs.self, forKey: Key("attributes"))
+                let v1 = try fields.decodeIfPresent([String: String?].self, forKey: Key("attributes"))
                 self = .retain(retain: v0, attributes: v1)
                 return
             } catch {}
             do {
                 let fields = try decoder.container(keyedBy: Key.self)
                 let v0 = try fields.decode(String.self, forKey: Key("insert"))
-                let v1 = try fields.decodeIfPresent(Attrs.self, forKey: Key("attributes"))
+                let v1 = try fields.decodeIfPresent([String: String?].self, forKey: Key("attributes"))
                 self = .insert(insert: v0, attributes: v1)
                 return
             } catch {}

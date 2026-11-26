@@ -27,30 +27,38 @@ public final class MeroService: Sendable {
     /// that the account can reach it, and make a service for it.
     public static func open(transport: any ContextTransport, appId: String) async throws -> MeroService {
         let contract = TagClient(contract: transport.bound(to: appId))
-        let me = try ContractCoding.decode(Me.self, from: try await contract.whoami(), method: "whoami")
+        let me: Me = try await reread("whoami") { try await contract.whoami() }
         return MeroService(transport: transport, appId: appId, memberId: me.memberId)
     }
 
-    private func read<T: Decodable>(_ method: String, _ answer: JSONValue) throws -> T {
-        try ContractCoding.decode(T.self, from: answer, method: method)
+    /// The generated client's typed answer, read into this app's model through
+    /// the same JSON the contract sent.
+    /// An answer the client cannot read is `ContractError.unexpectedResponse`.
+    private static func reread<A: Encodable, T: Decodable>(
+        _ method: String, _ call: () async throws -> A
+    ) async throws -> T {
+        let answer: A
+        do { answer = try await call() } catch is DecodingError { throw ContractError.unexpectedResponse(method: method) }
+        let json = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(answer))
+        return try ContractCoding.decode(T.self, from: json, method: method)
     }
 
-    private func read<T: Decodable>(_ method: String, _ answer: [JSONValue]) throws -> [T] {
-        try ContractCoding.decode([T].self, from: .array(answer), method: method)
+    private func read<A: Encodable, T: Decodable>(_ method: String, _ call: () async throws -> A) async throws -> T {
+        try await Self.reread(method, call)
     }
 
     // MARK: Reads
 
-    public func whoami() async throws -> Me { try read("whoami", try await contract.whoami()) }
-    public func getSpace() async throws -> SpaceInfo { try read("getSpace", try await contract.getSpace()) }
-    public func getTrackers() async throws -> [Tracker] { try read("getTrackers", try await contract.getTrackers()) }
-    public func getMembers() async throws -> [Member] { try read("getMembers", try await contract.getMembers()) }
-    public func getGroups() async throws -> [TagGroup] { try read("getGroups", try await contract.getGroups()) }
-    public func getGeofences() async throws -> [Geofence] { try read("getGeofences", try await contract.getGeofences()) }
-    public func getPresence() async throws -> [Presence] { try read("getPresence", try await contract.getPresence()) }
+    public func whoami() async throws -> Me { try await read("whoami") { try await contract.whoami() } }
+    public func getSpace() async throws -> SpaceInfo { try await read("getSpace") { try await contract.getSpace() } }
+    public func getTrackers() async throws -> [Tracker] { try await read("getTrackers") { try await contract.getTrackers() } }
+    public func getMembers() async throws -> [Member] { try await read("getMembers") { try await contract.getMembers() } }
+    public func getGroups() async throws -> [TagGroup] { try await read("getGroups") { try await contract.getGroups() } }
+    public func getGeofences() async throws -> [Geofence] { try await read("getGeofences") { try await contract.getGeofences() } }
+    public func getPresence() async throws -> [Presence] { try await read("getPresence") { try await contract.getPresence() } }
 
     public func getHistory(trackerId: String, since: UInt64 = 0) async throws -> [LocationSample] {
-        try read("getHistory", try await contract.getHistory(trackerId: trackerId, since: since))
+        try await read("getHistory") { try await contract.getHistory(trackerId: trackerId, since: since) }
     }
 
     // MARK: Members

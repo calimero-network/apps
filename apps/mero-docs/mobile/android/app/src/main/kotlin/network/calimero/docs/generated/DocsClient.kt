@@ -1351,13 +1351,13 @@ class DocsClient private constructor(
         /** `Retain`. */
         data class Retain(
             val retain: UInt,
-            val attributes: JsonElement?,
+            val attributes: Map<String, String?>?,
         ) : Change
 
         /** `Insert`. */
         data class Insert(
             val insert: String,
-            val attributes: JsonElement?,
+            val attributes: Map<String, String?>?,
         ) : Change
 
         /** `Delete`. */
@@ -1378,11 +1378,11 @@ class DocsClient private constructor(
                         when (value) {
                             is Retain -> buildJsonObject {
                                 put("retain", encode(UInt.serializer(), value.retain))
-                                if (value.attributes != null) put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
+                                if (value.attributes != null) put("attributes", encode(MapSerializer(String.serializer(), String.serializer().nullable).nullable, value.attributes))
                             }
                             is Insert -> buildJsonObject {
                                 put("insert", encode(String.serializer(), value.insert))
-                                if (value.attributes != null) put("attributes", encode(JsonElement.serializer().nullable, value.attributes))
+                                if (value.attributes != null) put("attributes", encode(MapSerializer(String.serializer(), String.serializer().nullable).nullable, value.attributes))
                             }
                             is Delete -> buildJsonObject {
                                 put("delete", encode(UInt.serializer(), value.delete))
@@ -1397,14 +1397,14 @@ class DocsClient private constructor(
                             val fields = obj(data, "Change")
                             Retain(
                                 retain = field(fields, "retain", UInt.serializer()),
-                                attributes = field(fields, "attributes", JsonElement.serializer().nullable),
+                                attributes = field(fields, "attributes", MapSerializer(String.serializer(), String.serializer().nullable).nullable),
                             )
                         }
                         ?: attempt {
                             val fields = obj(data, "Change")
                             Insert(
                                 insert = field(fields, "insert", String.serializer()),
-                                attributes = field(fields, "attributes", JsonElement.serializer().nullable),
+                                attributes = field(fields, "attributes", MapSerializer(String.serializer(), String.serializer().nullable).nullable),
                             )
                         }
                         ?: attempt {
@@ -1641,7 +1641,7 @@ class DocsClient private constructor(
     @Serializable(with = Span.Companion.Wire::class)
     data class Span(
         val text: String,
-        val attributes: JsonElement,
+        val attributes: Map<String, String>,
     ) {
         companion object {
             /** `Span`'s JSON form. */
@@ -1655,7 +1655,7 @@ class DocsClient private constructor(
                     (encoder as JsonEncoder).encodeJsonElement(
                         buildJsonObject {
                             put("text", encode(String.serializer(), value.text))
-                            put("attributes", encode(JsonElement.serializer(), value.attributes))
+                            put("attributes", encode(MapSerializer(String.serializer(), String.serializer()), value.attributes))
                         },
                     )
                 }
@@ -1665,7 +1665,7 @@ class DocsClient private constructor(
                     val fields = obj(data, "Span")
                     return Span(
                         text = field(fields, "text", String.serializer()),
-                        attributes = field(fields, "attributes", JsonElement.serializer()),
+                        attributes = field(fields, "attributes", MapSerializer(String.serializer(), String.serializer())),
                     )
                 }
             }

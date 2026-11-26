@@ -74,7 +74,7 @@ public final class MeroARService: @unchecked Sendable {
 
     /// `Option<SceneObject>`: absent and `null` both come back as nil.
     public func getObject(id: String) async throws -> SceneObject? {
-        guard let value = try await contract.getObject(id: id), value != .null else { return nil }
+        guard let value = try await contract.getObject(id: id) else { return nil }
         return try Self.model(value)
     }
 
@@ -104,11 +104,11 @@ public final class MeroARService: @unchecked Sendable {
 
     /// Adds the object; the contract answers its id, which is `object.id`.
     public func addObject(_ object: SceneObject) async throws {
-        _ = try await contract.addObject(object: try JSONValue(encoding: object))
+        _ = try await contract.addObject(object: try Self.model(object))
     }
 
     public func updateTransform(id: String, transform: Transform) async throws {
-        try await contract.updateTransform(id: id, transform: try JSONValue(encoding: transform))
+        try await contract.updateTransform(id: id, transform: try Self.model(transform))
     }
 
     public func updateColor(id: String, color: String) async throws {
@@ -123,7 +123,7 @@ public final class MeroARService: @unchecked Sendable {
     // MARK: - Comments
 
     public func addComment(text: String, position: Vec3) async throws {
-        try await contract.addComment(id: UUID().uuidString, text: text, position: try JSONValue(encoding: position))
+        try await contract.addComment(id: UUID().uuidString, text: text, position: try Self.model(position))
     }
 
     public func deleteComment(id: String) async throws { try await contract.deleteComment(id: id) }
@@ -132,7 +132,7 @@ public final class MeroARService: @unchecked Sendable {
 
     public func updatePresence(position: Vec3, rotation: Quat) async throws {
         try await contract.updatePresence(
-            cameraPosition: try JSONValue(encoding: position), cameraRotation: try JSONValue(encoding: rotation))
+            cameraPosition: try Self.model(position), cameraRotation: try Self.model(rotation))
     }
 
     // MARK: - World map (ARWorldMap relocalization)
@@ -162,7 +162,7 @@ public final class MeroARService: @unchecked Sendable {
 
     /// The room's current scan, if one has been published.
     public func getRoomScan() async throws -> RoomScanRecord? {
-        guard let value = try await contract.getRoomScan(), value != .null else { return nil }
+        guard let value = try await contract.getRoomScan() else { return nil }
         return try Self.model(value)
     }
 
@@ -223,11 +223,13 @@ public final class MeroARService: @unchecked Sendable {
 
     /// The ABI names the contract's records without their shape, so the client
     /// answers their JSON; this reads it into the models the app keeps.
-    private static func model<T: Decodable>(_ value: JSONValue) throws -> T {
+    /// A value read into another type through its JSON: the generated client's
+    /// answers into this app's models, and the models into the client's arguments.
+    private static func model<A: Encodable, T: Decodable>(_ value: A) throws -> T {
         try MeroJSON.decode(T.self, from: try MeroJSON.encode(value))
     }
 
-    private static func models<T: Decodable>(_ values: [JSONValue]) throws -> [T] {
+    private static func models<A: Encodable, T: Decodable>(_ values: [A]) throws -> [T] {
         try values.map { try model($0) }
     }
 }

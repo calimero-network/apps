@@ -15,35 +15,561 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct MeroArClient: Sendable {
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
 
-    /// The app type `MemberRole`: the ABI names it without its shape, so it is its JSON.
-    public typealias MemberRole = JSONValue
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var username: String
+        public var avatar: String?
+        public var joinedAt: UInt64
 
-    /// The app type `Presence`: the ABI names it without its shape, so it is its JSON.
-    public typealias Presence = JSONValue
+        public init(
+            id: String,
+            username: String,
+            avatar: String? = nil,
+            joinedAt: UInt64
+        ) {
+            self.id = id
+            self.username = username
+            self.avatar = avatar
+            self.joinedAt = joinedAt
+        }
 
-    /// The app type `Quat`: the ABI names it without its shape, so it is its JSON.
-    public typealias Quat = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("avatar"))
+            let v3 = try fields.decode(UInt64.self, forKey: Key("joinedAt"))
+            self.id = v0
+            self.username = v1
+            self.avatar = v2
+            self.joinedAt = v3
+        }
 
-    /// The app type `RoomInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias RoomInfo = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(self.avatar, forKey: Key("avatar"))
+            try fields.encode(self.joinedAt, forKey: Key("joinedAt"))
+        }
+    }
 
-    /// The app type `RoomScan`: the ABI names it without its shape, so it is its JSON.
-    public typealias RoomScan = JSONValue
+    /// The app type `MemberRole`.
+    public struct MemberRole: Codable, Sendable, Equatable {
+        public var member: String
+        public var role: String
 
-    /// The app type `SceneObject`: the ABI names it without its shape, so it is its JSON.
-    public typealias SceneObject = JSONValue
+        public init(
+            member: String,
+            role: String
+        ) {
+            self.member = member
+            self.role = role
+        }
 
-    /// The app type `SpatialComment`: the ABI names it without its shape, so it is its JSON.
-    public typealias SpatialComment = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("member"))
+            let v1 = try fields.decode(String.self, forKey: Key("role"))
+            self.member = v0
+            self.role = v1
+        }
 
-    /// The app type `Transform`: the ABI names it without its shape, so it is its JSON.
-    public typealias Transform = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.member, forKey: Key("member"))
+            try fields.encode(self.role, forKey: Key("role"))
+        }
+    }
 
-    /// The app type `Vec3`: the ABI names it without its shape, so it is its JSON.
-    public typealias Vec3 = JSONValue
+    /// The app type `ObjectData`.
+    public enum ObjectData: Codable, Sendable, Equatable {
+        /// `cube`.
+        case cube
+        /// `sphere`.
+        case sphere
+        /// `arrow`.
+        case arrow
+        /// `marker`.
+        case marker
+        /// `text`.
+        case text(content: String)
+        /// `image`.
+        case image(blobId: String?, naturalWidth: UInt32?, naturalHeight: UInt32?)
+        /// `furniture`.
+        case furniture(item: String)
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            let tag = try container.decode(String.self, forKey: Key("kind"))
+            switch tag {
+            case "cube":
+                self = .cube
+            case "sphere":
+                self = .sphere
+            case "arrow":
+                self = .arrow
+            case "marker":
+                self = .marker
+            case "text":
+                let v0 = try container.decode(String.self, forKey: Key("content"))
+                self = .text(content: v0)
+            case "image":
+                let v0 = try container.decodeIfPresent(String.self, forKey: Key("blobId"))
+                let v1 = try container.decodeIfPresent(UInt32.self, forKey: Key("naturalWidth"))
+                let v2 = try container.decodeIfPresent(UInt32.self, forKey: Key("naturalHeight"))
+                self = .image(blobId: v0, naturalWidth: v1, naturalHeight: v2)
+            case "furniture":
+                let v0 = try container.decode(String.self, forKey: Key("item"))
+                self = .furniture(item: v0)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: Key("kind"), in: container, debugDescription: "ObjectData: unknown variant \(tag)")
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .cube:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("cube", forKey: Key("kind"))
+            case .sphere:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("sphere", forKey: Key("kind"))
+            case .arrow:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("arrow", forKey: Key("kind"))
+            case .marker:
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("marker", forKey: Key("kind"))
+            case .text(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("text", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("content"))
+            case .image(let v0, let v1, let v2):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("image", forKey: Key("kind"))
+                try container.encodeIfPresent(v0, forKey: Key("blobId"))
+                try container.encodeIfPresent(v1, forKey: Key("naturalWidth"))
+                try container.encodeIfPresent(v2, forKey: Key("naturalHeight"))
+            case .furniture(let v0):
+                var container = encoder.container(keyedBy: Key.self)
+                try container.encode("furniture", forKey: Key("kind"))
+                try container.encode(v0, forKey: Key("item"))
+            }
+        }
+    }
+
+    /// The app type `Presence`.
+    public struct Presence: Codable, Sendable, Equatable {
+        public var identity: String
+        public var member: String
+        public var cameraPosition: Vec3
+        public var cameraRotation: Quat
+        public var updatedAt: UInt64
+
+        public init(
+            identity: String,
+            member: String,
+            cameraPosition: Vec3,
+            cameraRotation: Quat,
+            updatedAt: UInt64
+        ) {
+            self.identity = identity
+            self.member = member
+            self.cameraPosition = cameraPosition
+            self.cameraRotation = cameraRotation
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("identity"))
+            let v1 = try fields.decode(String.self, forKey: Key("member"))
+            let v2 = try fields.decode(Vec3.self, forKey: Key("cameraPosition"))
+            let v3 = try fields.decode(Quat.self, forKey: Key("cameraRotation"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.identity = v0
+            self.member = v1
+            self.cameraPosition = v2
+            self.cameraRotation = v3
+            self.updatedAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.identity, forKey: Key("identity"))
+            try fields.encode(self.member, forKey: Key("member"))
+            try fields.encode(self.cameraPosition, forKey: Key("cameraPosition"))
+            try fields.encode(self.cameraRotation, forKey: Key("cameraRotation"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
+
+    /// The app type `Quat`.
+    public struct Quat: Codable, Sendable, Equatable {
+        public var x: Double
+        public var y: Double
+        public var z: Double
+        public var w: Double
+
+        public init(
+            x: Double,
+            y: Double,
+            z: Double,
+            w: Double
+        ) {
+            self.x = x
+            self.y = y
+            self.z = z
+            self.w = w
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Double.self, forKey: Key("x"))
+            let v1 = try fields.decode(Double.self, forKey: Key("y"))
+            let v2 = try fields.decode(Double.self, forKey: Key("z"))
+            let v3 = try fields.decode(Double.self, forKey: Key("w"))
+            self.x = v0
+            self.y = v1
+            self.z = v2
+            self.w = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+            try fields.encode(self.w, forKey: Key("w"))
+        }
+    }
+
+    /// The app type `RoomInfo`.
+    public struct RoomInfo: Codable, Sendable, Equatable {
+        public var name: String
+        public var objectCount: UInt32
+        public var memberCount: UInt32
+        public var worldMapBlob: String
+        public var version: UInt64
+        public var owner: String?
+
+        public init(
+            name: String,
+            objectCount: UInt32,
+            memberCount: UInt32,
+            worldMapBlob: String,
+            version: UInt64,
+            owner: String? = nil
+        ) {
+            self.name = name
+            self.objectCount = objectCount
+            self.memberCount = memberCount
+            self.worldMapBlob = worldMapBlob
+            self.version = version
+            self.owner = owner
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("objectCount"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("memberCount"))
+            let v3 = try fields.decode(String.self, forKey: Key("worldMapBlob"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("version"))
+            let v5 = try fields.decodeIfPresent(String.self, forKey: Key("owner"))
+            self.name = v0
+            self.objectCount = v1
+            self.memberCount = v2
+            self.worldMapBlob = v3
+            self.version = v4
+            self.owner = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.objectCount, forKey: Key("objectCount"))
+            try fields.encode(self.memberCount, forKey: Key("memberCount"))
+            try fields.encode(self.worldMapBlob, forKey: Key("worldMapBlob"))
+            try fields.encode(self.version, forKey: Key("version"))
+            try fields.encode(self.owner, forKey: Key("owner"))
+        }
+    }
+
+    /// The app type `RoomScan`.
+    public struct RoomScan: Codable, Sendable, Equatable {
+        public var jsonBlob: String
+        public var jsonSize: UInt64
+        public var usdzBlob: String?
+        public var usdzSize: UInt64?
+        public var width: Double
+        public var length: Double
+        public var height: Double
+        public var objectCount: UInt32
+        public var sample: Bool
+        public var scannedBy: String
+        public var scannedAt: UInt64
+        public var version: UInt64
+
+        public init(
+            jsonBlob: String,
+            jsonSize: UInt64,
+            usdzBlob: String? = nil,
+            usdzSize: UInt64? = nil,
+            width: Double,
+            length: Double,
+            height: Double,
+            objectCount: UInt32,
+            sample: Bool,
+            scannedBy: String,
+            scannedAt: UInt64,
+            version: UInt64
+        ) {
+            self.jsonBlob = jsonBlob
+            self.jsonSize = jsonSize
+            self.usdzBlob = usdzBlob
+            self.usdzSize = usdzSize
+            self.width = width
+            self.length = length
+            self.height = height
+            self.objectCount = objectCount
+            self.sample = sample
+            self.scannedBy = scannedBy
+            self.scannedAt = scannedAt
+            self.version = version
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("jsonBlob"))
+            let v1 = try fields.decode(UInt64.self, forKey: Key("jsonSize"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("usdzBlob"))
+            let v3 = try fields.decodeIfPresent(UInt64.self, forKey: Key("usdzSize"))
+            let v4 = try fields.decode(Double.self, forKey: Key("width"))
+            let v5 = try fields.decode(Double.self, forKey: Key("length"))
+            let v6 = try fields.decode(Double.self, forKey: Key("height"))
+            let v7 = try fields.decode(UInt32.self, forKey: Key("objectCount"))
+            let v8 = try fields.decode(Bool.self, forKey: Key("sample"))
+            let v9 = try fields.decode(String.self, forKey: Key("scannedBy"))
+            let v10 = try fields.decode(UInt64.self, forKey: Key("scannedAt"))
+            let v11 = try fields.decode(UInt64.self, forKey: Key("version"))
+            self.jsonBlob = v0
+            self.jsonSize = v1
+            self.usdzBlob = v2
+            self.usdzSize = v3
+            self.width = v4
+            self.length = v5
+            self.height = v6
+            self.objectCount = v7
+            self.sample = v8
+            self.scannedBy = v9
+            self.scannedAt = v10
+            self.version = v11
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.jsonBlob, forKey: Key("jsonBlob"))
+            try fields.encode(self.jsonSize, forKey: Key("jsonSize"))
+            try fields.encode(self.usdzBlob, forKey: Key("usdzBlob"))
+            try fields.encode(self.usdzSize, forKey: Key("usdzSize"))
+            try fields.encode(self.width, forKey: Key("width"))
+            try fields.encode(self.length, forKey: Key("length"))
+            try fields.encode(self.height, forKey: Key("height"))
+            try fields.encode(self.objectCount, forKey: Key("objectCount"))
+            try fields.encode(self.sample, forKey: Key("sample"))
+            try fields.encode(self.scannedBy, forKey: Key("scannedBy"))
+            try fields.encode(self.scannedAt, forKey: Key("scannedAt"))
+            try fields.encode(self.version, forKey: Key("version"))
+        }
+    }
+
+    /// The app type `SceneObject`.
+    public struct SceneObject: Codable, Sendable, Equatable {
+        public var id: String
+        public var data: ObjectData
+        public var transform: Transform
+        public var color: String
+        public var lockedBy: String?
+        public var createdBy: String
+        public var createdAt: UInt64
+        public var updatedAt: UInt64
+        public var version: UInt64
+
+        public init(
+            id: String,
+            data: ObjectData,
+            transform: Transform,
+            color: String,
+            lockedBy: String? = nil,
+            createdBy: String,
+            createdAt: UInt64,
+            updatedAt: UInt64,
+            version: UInt64
+        ) {
+            self.id = id
+            self.data = data
+            self.transform = transform
+            self.color = color
+            self.lockedBy = lockedBy
+            self.createdBy = createdBy
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.version = version
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(ObjectData.self, forKey: Key("data"))
+            let v2 = try fields.decode(Transform.self, forKey: Key("transform"))
+            let v3 = try fields.decode(String.self, forKey: Key("color"))
+            let v4 = try fields.decodeIfPresent(String.self, forKey: Key("lockedBy"))
+            let v5 = try fields.decode(String.self, forKey: Key("createdBy"))
+            let v6 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            let v7 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            let v8 = try fields.decode(UInt64.self, forKey: Key("version"))
+            self.id = v0
+            self.data = v1
+            self.transform = v2
+            self.color = v3
+            self.lockedBy = v4
+            self.createdBy = v5
+            self.createdAt = v6
+            self.updatedAt = v7
+            self.version = v8
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.data, forKey: Key("data"))
+            try fields.encode(self.transform, forKey: Key("transform"))
+            try fields.encode(self.color, forKey: Key("color"))
+            try fields.encode(self.lockedBy, forKey: Key("lockedBy"))
+            try fields.encode(self.createdBy, forKey: Key("createdBy"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+            try fields.encode(self.version, forKey: Key("version"))
+        }
+    }
+
+    /// The app type `SpatialComment`.
+    public struct SpatialComment: Codable, Sendable, Equatable {
+        public var id: String
+        public var text: String
+        public var position: Vec3
+        public var author: String
+        public var createdAt: UInt64
+
+        public init(
+            id: String,
+            text: String,
+            position: Vec3,
+            author: String,
+            createdAt: UInt64
+        ) {
+            self.id = id
+            self.text = text
+            self.position = position
+            self.author = author
+            self.createdAt = createdAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("text"))
+            let v2 = try fields.decode(Vec3.self, forKey: Key("position"))
+            let v3 = try fields.decode(String.self, forKey: Key("author"))
+            let v4 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            self.id = v0
+            self.text = v1
+            self.position = v2
+            self.author = v3
+            self.createdAt = v4
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.text, forKey: Key("text"))
+            try fields.encode(self.position, forKey: Key("position"))
+            try fields.encode(self.author, forKey: Key("author"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+        }
+    }
+
+    /// The app type `Transform`.
+    public struct Transform: Codable, Sendable, Equatable {
+        public var position: Vec3
+        public var rotation: Quat
+        public var scale: Vec3
+
+        public init(
+            position: Vec3,
+            rotation: Quat,
+            scale: Vec3
+        ) {
+            self.position = position
+            self.rotation = rotation
+            self.scale = scale
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Vec3.self, forKey: Key("position"))
+            let v1 = try fields.decode(Quat.self, forKey: Key("rotation"))
+            let v2 = try fields.decode(Vec3.self, forKey: Key("scale"))
+            self.position = v0
+            self.rotation = v1
+            self.scale = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.position, forKey: Key("position"))
+            try fields.encode(self.rotation, forKey: Key("rotation"))
+            try fields.encode(self.scale, forKey: Key("scale"))
+        }
+    }
+
+    /// The app type `Vec3`.
+    public struct Vec3: Codable, Sendable, Equatable {
+        public var x: Double
+        public var y: Double
+        public var z: Double
+
+        public init(
+            x: Double,
+            y: Double,
+            z: Double
+        ) {
+            self.x = x
+            self.y = y
+            self.z = z
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Double.self, forKey: Key("x"))
+            let v1 = try fields.decode(Double.self, forKey: Key("y"))
+            let v2 = try fields.decode(Double.self, forKey: Key("z"))
+            self.x = v0
+            self.y = v1
+            self.z = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.x, forKey: Key("x"))
+            try fields.encode(self.y, forKey: Key("y"))
+            try fields.encode(self.z, forKey: Key("z"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)
