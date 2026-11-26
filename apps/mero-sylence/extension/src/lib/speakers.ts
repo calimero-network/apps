@@ -301,11 +301,12 @@ export function nameFor(
   timeline: readonly SpeakerChange[],
   from: number,
   to: number,
-  options: { exclude?: string | null; participants?: readonly string[] } = {},
+  options: { exclude?: string | null | readonly (string | null)[]; participants?: readonly string[] } = {},
 ): string {
   const a = from - SLACK_MS;
   const b = Math.max(to, from) + SLACK_MS;
-  const exclude = options.exclude ?? null;
+  // The recorder, under every name we know for them: their lines come from the mic, not the call.
+  const mine = new Set((Array.isArray(options.exclude) ? options.exclude : [options.exclude]).filter((n): n is string => !!n));
   const time = new Map<string, number>();
   for (let i = 0; i < timeline.length; i++) {
     const entry = timeline[i]!;
@@ -313,7 +314,7 @@ export function nameFor(
     const end = Math.min(b, timeline[i + 1]?.at ?? b);
     if (end <= start) continue;
     for (const name of entry.names) {
-      if (name === exclude) continue;
+      if (mine.has(name)) continue;
       time.set(name, (time.get(name) ?? 0) + (end - start));
     }
   }
@@ -328,10 +329,10 @@ export function nameFor(
     if (entry.at > b) continue;
     const ended = timeline[i + 1]?.at ?? b;
     if (ended < a - RECENT_MS) break;
-    const name = entry.names.find((n) => n !== exclude);
+    const name = entry.names.find((n) => !mine.has(n));
     if (name) return name;
   }
-  const others = (options.participants ?? []).filter((p) => p !== exclude);
+  const others = (options.participants ?? []).filter((p) => !mine.has(p));
   return others.length === 1 ? others[0]! : "";
 }
 

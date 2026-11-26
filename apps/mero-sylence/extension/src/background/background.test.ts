@@ -26,6 +26,8 @@ class FakeNode {
   deleted: string[] = [];
   appendCalls = 0;
   dropCalls: [number, number][] = [];
+  /** Org member metadata: the names people set. */
+  names: Record<string, { name: string }> = {};
   /** Calls to fail with "offline" before answering again. */
   offline = 0;
   /** Fail every append (the node is down for the whole recording). */
@@ -128,7 +130,10 @@ vi.mock("../lib/session", () => ({
       node.offline -= 1;
       throw new Error("offline");
     }
-    const client = { apps: { list: async () => ({ apps: node.apps }) } };
+    const client = {
+      apps: { list: async () => ({ apps: node.apps }) },
+      orgs: { get: async () => ({ memberMetadata: node.names }) },
+    };
     return work(client, node.app(auth.workspace?.appId ?? ""));
   },
   isSignedOut: (e: unknown) => e instanceof LoginRequired,
@@ -884,6 +889,20 @@ describe("service worker: speaker names", () => {
     await request({ type: "stop" });
     await event({ type: "drained", durationMs: 9_000 });
     expect(h.tabMessages).toContainEqual({ tabId: 7, message: { target: "speakers", type: "stop" } });
+  });
+
+  it("names the recorder's lines with their name in the org when the call page doesn't show it", async () => {
+    node.apps = [{ appId: "app1", name: "Team", package: "com.calimero.sylence", org: "org1" } as never];
+    node.names = { [AUTH.accountId]: { name: "Fran" } };
+    h.tab = { url: "https://app.zoom.us/wc/81234567890/join", title: "Sync - Zoom" };
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    // Zoom says who is talking, never who "you" are; the recorder's own name in it is left out of the call's lines.
+    await speakers(T0, ["Fran", "Ana"], { participants: ["Ana", "Fran"] });
+    await event(segment("others", 0, "Hi from Ana", T0));
+    await event(segment("you", 3_000, "And me", T0));
+    const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
+    expect(lines.map((l) => l.name)).toEqual(["Ana", "Fran"]);
   });
 
   it("ignores a reader in another tab, and leaves lines unnamed without one", async () => {

@@ -139,8 +139,10 @@ interface SpeakerState {
   timeline: SpeakerChange[];
   participants: string[];
   self: string | null;
+  /** The recorder's name in the workspace's organization: names their lines when the call page doesn't say who they are. */
+  me?: string | null;
 }
-const NO_SPEAKERS: SpeakerState = { tab: null, timeline: [], participants: [], self: null };
+const NO_SPEAKERS: SpeakerState = { tab: null, timeline: [], participants: [], self: null, me: null };
 /** Changes kept: lines are named within minutes of being spoken, even when transcription lags. */
 const TIMELINE_LIMIT = 5_000;
 let speakerState: SpeakerState | null = null;
@@ -155,9 +157,32 @@ async function saveSpeakers(next: SpeakerState): Promise<void> {
   await write("session", KEYS.speakers, next);
 }
 
+/**
+ * The name the recorder goes by in the workspace's organization (the name
+ * they set on the Sylence page, shared by every app in the org), or null.
+ */
+async function recorderName(workspace: Workspace): Promise<string | null> {
+  try {
+    const a = await auth();
+    if (!a) return null;
+    let org = workspace.org;
+    if (!org) {
+      const { apps } = await onNode((client) => client.apps.list({}));
+      org = (apps as { appId: string; org?: string }[]).find((x) => x.appId === workspace.appId)?.org;
+    }
+    if (!org) return null;
+    const o = (await onNode((client) => client.orgs.get({ org: org! }))) as { memberMetadata?: Record<string, { name?: unknown } | null> };
+    const name = o.memberMetadata?.[a.accountId]?.name;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  } catch (e) {
+    await log(`speakers: no name for the recorder: ${describe(e)}`);
+    return null;
+  }
+}
+
 /** Starts the reader in the recorded tab. Without it (another site, a refused injection) lines stay You / Others. */
-async function startSpeakerReader(tabId: number): Promise<void> {
-  await saveSpeakers({ ...NO_SPEAKERS, tab: tabId });
+async function startSpeakerReader(tabId: number, me: string | null): Promise<void> {
+  await saveSpeakers({ ...NO_SPEAKERS, tab: tabId, me });
   try {
     await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["speakers.js"] });
     await log("speakers: reader started");
@@ -200,9 +225,9 @@ async function onSpeakers(e: SpeakersEvent, tabId: number | undefined): Promise<
 async function lineName(speaker: "you" | "others", startedAt: number | undefined, startMs: number, endMs: number): Promise<string> {
   if (!(await settings()).speakerNames) return "";
   const st = await speakers();
-  if (speaker === "you") return st.self ?? "";
+  if (speaker === "you") return st.self ?? st.me ?? "";
   if (startedAt === undefined) return "";
-  return nameFor(st.timeline, startedAt + startMs, startedAt + endMs, { exclude: st.self, participants: st.participants });
+  return nameFor(st.timeline, startedAt + startMs, startedAt + endMs, { exclude: [st.self, st.me ?? null], participants: st.participants });
 }
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
@@ -328,8 +353,9 @@ async function start(tabId: number): Promise<void> {
     }
     await log("tab stream id taken, capturing");
     await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
-    if (s.speakerNames && platform !== "other") await startSpeakerReader(tabId);
-    else await saveSpeakers({ ...NO_SPEAKERS });
+    const me = s.speakerNames ? await recorderName(workspace) : null;
+    if (s.speakerNames && platform !== "other") await startSpeakerReader(tabId, me);
+    else await saveSpeakers({ ...NO_SPEAKERS, me });
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
     // No audio can come: drop the empty meeting rather than leave it behind.

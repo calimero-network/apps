@@ -132,6 +132,8 @@ test.beforeAll(async () => {
   webgpu = !!caps?.webgpu;
   console.log(`fake call: ${SCRIPT.length} lines, ${(call.durationMs / 1000).toFixed(0)} s; live model ${TIER}; WebGPU ${webgpu ? "yes (second pass runs)" : "no (second pass skipped)"}`);
 
+  // The recorder's name in the org, as they'd set it on the Sylence page: Zoom and Teams never say who "you" are.
+  await node.person.client.orgs.memberMetadata({ org: node.org, account: node.person.accountId, metadata: { name: ME } });
   const session = await node.session();
   const workspace = node.workspaces[0]!;
   await setStorage(worker, "local", {
@@ -221,6 +223,8 @@ for (const platform of PLATFORMS) {
 
     // The call plays out; then Stop.
     await page.waitForTimeout(Math.max(0, t0 + call.durationMs - Date.now()) + 1_000);
+    // What the side panel showed during the call (before the second pass replaces it).
+    const live = await getStorage<{ speaker: string; name?: string; text: string; startMs: number }[]>(await serviceWorker(context), "session", "sylence:transcript");
     await popup.evaluate(() => chrome.runtime.sendMessage({ type: "stop" }));
     await expect.poll(async () => (await status()).phase, { timeout: 1_100_000, intervals: [3_000] }).toBe("saved");
     const st = await status();
@@ -233,12 +237,19 @@ for (const platform of PLATFORMS) {
     const speakers = await getStorage<{ timeline: unknown[] }>(await serviceWorker(context), "session", "sylence:speakers");
 
     const { rows, found, missed } = score(page1.segments, call.lines, ME);
+    const liveScore = score(
+      (live ?? []).map((l, i) => ({ seq: i, speaker: l.speaker, name: l.name ?? "", startMs: l.startMs, text: l.text })),
+      call.lines,
+      ME,
+    );
+    const liveMatched = liveScore.rows.filter((r) => r.line);
     const matched = rows.filter((r) => r.line);
     const right = matched.filter((r) => r.right);
     const echoes = rows.filter((r) => r.saved.speaker === "you" && r.line && !r.line.me && r.score >= 0.6);
     const lines = [
       `Platform: ${m.platform} · live model: ${st.tier ?? TIER} · second pass: ${st.improved ? (st.improved.done ? "done" : `skipped (${st.improved.why})`) : "off"} · revised: ${m.revised}`,
       `Script lines heard: ${found.length}/${call.lines.length} · saved lines matched: ${matched.length}/${rows.length} · named right: ${right.length}/${matched.length}`,
+      `Live (side panel, during the call): ${liveScore.rows.length} lines, named right ${liveMatched.filter((r) => r.right).length}/${liveMatched.length}; shown as: ${[...new Set(liveScore.rows.map((r) => r.shown))].join(", ")}`,
       `Echo lines under "You": ${echoes.length} · speaker changes the reader saw: ${speakers?.timeline?.length ?? 0}`,
       `Action items: ${actions.map((a) => `${a.text}${a.assignee ? ` (${a.assignee})` : ""}`).join("; ") || "none"}`,
     ];

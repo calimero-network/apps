@@ -45,6 +45,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export interface Workspace {
   appId: string;
   name: string;
+  /** The organization the workspace is in (where the recorder's name is). */
+  org?: string;
 }
 
 export interface AuthState {

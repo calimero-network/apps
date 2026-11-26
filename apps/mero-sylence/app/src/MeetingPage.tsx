@@ -66,7 +66,8 @@ export function MeetingPage({
   }
 
   const m = meeting.data;
-  const recorderName = m.recorder === me ? "You" : displayName(m.recorder, null, nameOf(m.recorder));
+  // The recorder's lines carry their name; "You" only while you haven't set one.
+  const recorderName = m.recorder === me ? (nameOf(m.recorder) ?? "You") : displayName(m.recorder, null, nameOf(m.recorder));
   return (
     <MeetingBody
       workspace={workspace}

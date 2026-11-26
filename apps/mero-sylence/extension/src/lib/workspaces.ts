@@ -4,6 +4,7 @@ export interface AppRow {
   appId: string;
   name?: string | null;
   package?: string | null;
+  org?: string | null;
 }
 
 /**
@@ -16,6 +17,6 @@ export interface AppRow {
 export function pickWorkspaces(apps: AppRow[], pkg: string, dev: boolean): Workspace[] {
   return apps
     .filter((a) => a.package === pkg || (dev && !a.package))
-    .map((a) => ({ appId: a.appId, name: a.name || "Untitled workspace" }))
+    .map((a) => ({ appId: a.appId, name: a.name || "Untitled workspace", ...(a.org ? { org: a.org } : {}) }))
     .sort((x, y) => x.name.localeCompare(y.name));
 }
