@@ -169,7 +169,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (WATCH && context) {
+  if (WATCH && context && process.env.SYLENCE_CALL_NOWAIT !== "1") {
     console.log("\nThe browser stays open: close it to finish.");
     await new Promise<void>((r) => context.on("close", () => r()));
   }
@@ -190,6 +190,13 @@ async function patchWorker(worker: Worker): Promise<void> {
   });
 }
 
+/** A new browser window, empty, as a page this test drives. */
+async function windowPage(worker: Worker, mark: string, bounds: chrome.windows.CreateData): Promise<Page> {
+  const opened = context.waitForEvent("page", { predicate: (p) => p.url().endsWith(`#sylence-${mark}`) });
+  await worker.evaluate(([b, m]) => chrome.windows.create({ ...(b as chrome.windows.CreateData), url: `about:blank#sylence-${m}` }), [bounds, mark] as const);
+  return opened;
+}
+
 async function status(): Promise<Status> {
   return getStorage<Status>(await serviceWorker(context), "session", "sylence:status");
 }
@@ -200,12 +207,17 @@ for (const platform of PLATFORMS) {
     const { url, title } = CALL_URLS[platform];
     const worker = await serviceWorker(context);
     let page: Page;
+    let popup!: Page;
     if (WATCH) {
-      // Two windows side by side: the call, and Sylence's live transcript.
-      const opened = context.waitForEvent("page", { predicate: (p) => p.url().startsWith(url) });
-      await worker.evaluate((u) => chrome.windows.create({ url: u, left: 0, top: 0, width: 960, height: 760, focused: true }), url);
-      page = await opened;
-      await worker.evaluate((u) => chrome.windows.create({ url: u, type: "popup", left: 970, top: 0, width: 420, height: 760 }), `chrome-extension://${ID}/sidepanel.html`);
+      // Windows side by side: the call, and Sylence's live transcript; the
+      // popup that presses Record in a small one of its own, so the call stays
+      // the visible tab. Each opens empty and is navigated from here: a window
+      // the extension opens on an address would skip the stand-in call page.
+      page = await windowPage(worker, "call", { left: 0, top: 0, width: 960, height: 760, focused: true });
+      await page.goto(url);
+      const panel = await windowPage(worker, "panel", { type: "popup", left: 970, top: 0, width: 420, height: 760 });
+      await panel.goto(`chrome-extension://${ID}/sidepanel.html`);
+      popup = await windowPage(worker, "popup", { type: "popup", left: 970, top: 780, width: 420, height: 200 });
     } else {
       page = await context.newPage();
       await page.goto(url);
@@ -214,7 +226,16 @@ for (const platform of PLATFORMS) {
     await patchWorker(worker);
     const tabId = await worker.evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url?.startsWith(u))!.id!, url);
 
-    const popup = await openPopup(context, { id: tabId, url, title });
+    if (WATCH) {
+      await popup.addInitScript((t) => {
+        const query = chrome.tabs.query.bind(chrome.tabs);
+        chrome.tabs.query = (async (q: chrome.tabs.QueryInfo) =>
+          q?.active ? [{ ...t, active: true, windowId: 1, index: 0 }] : query(q)) as typeof chrome.tabs.query;
+      }, { id: tabId, url, title });
+      await popup.goto(`chrome-extension://${ID}/popup.html`);
+    } else {
+      popup = await openPopup(context, { id: tabId, url, title });
+    }
     await offscreen.evaluate(() => ((window as unknown as { __t0: number }).__t0 = 0));
     await popup.getByRole("button", { name: "Record meeting" }).click();
     await expect.poll(() => offscreen.evaluate(() => (window as unknown as { __t0: number }).__t0), { timeout: 30_000 }).toBeGreaterThan(0);
@@ -270,15 +291,14 @@ for (const platform of PLATFORMS) {
     if (WATCH) {
       // The saved meeting on the Sylence page, signed in as the test account (its passkey in this browser).
       const link = (await status()).link ?? `http://localhost:5173/#/w/${meeting.appId}/m/${meeting.id}`;
-      const opened = context.waitForEvent("page", { predicate: (p) => p.url().startsWith("http://localhost:5173") });
-      await worker.evaluate((u) => chrome.windows.create({ url: u, left: 120, top: 60, width: 1200, height: 820, focused: true }), link);
-      const meetingPage = await opened;
+      const meetingPage = await windowPage(worker, "meeting", { left: 120, top: 60, width: 1200, height: 820, focused: true });
       const cdp = await context.newCDPSession(meetingPage);
       await cdp.send("WebAuthn.enable");
       const { authenticatorId } = (await cdp.send("WebAuthn.addVirtualAuthenticator", {
         options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
       })) as { authenticatorId: string };
       await cdp.send("WebAuthn.addCredential", { authenticatorId, credential: await node!.person.passkey.toBrowser() });
+      await meetingPage.goto(link);
       console.log(`The saved meeting: ${link} (sign in: the passkey is in this browser)`);
     }
     await popup.evaluate(() => chrome.runtime.sendMessage({ type: "dismiss" }));

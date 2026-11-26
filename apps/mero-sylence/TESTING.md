@@ -42,7 +42,7 @@ Note: the reader tests use page snapshots written by hand. Meet, Zoom and Teams 
 ## Fake call (watch it)
 
 ```bash
-apps/mero-sylence/fake-call.sh            # Meet; or: meet-captions | zoom | teams | all
+apps/mero-sylence/fake-call.sh            # every platform; or one: meet | meet-captions | zoom | teams; or all (no windows)
 ```
 
 - **The call:** four macOS voices (Ana, Marko, Sandi, and "you" on the mic, with the call leaking into it) talk through a short launch meeting. Each platform gets a stand-in page that shows who is talking the way that platform does.

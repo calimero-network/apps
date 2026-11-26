@@ -4,8 +4,8 @@
 # names each line and saves it to a local node. Then the saved meeting opens
 # on the Sylence page. See extension/e2e/fake-call.spec.ts.
 #
-#   apps/mero-sylence/fake-call.sh                 # watch it on Meet
-#   apps/mero-sylence/fake-call.sh zoom            # meet | meet-captions | zoom | teams
+#   apps/mero-sylence/fake-call.sh                 # watch it on every platform, one after another
+#   apps/mero-sylence/fake-call.sh zoom            # one: meet | meet-captions | zoom | teams
 #   apps/mero-sylence/fake-call.sh all             # every platform, no windows; reports only
 #
 # Reports: apps/mero-sylence/extension/e2e/.fake-call/report-<platform>.md
@@ -15,7 +15,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-PLATFORM="${1:-meet}"
+PLATFORM="${1:-meet,meet-captions,zoom,teams}"
 
 [ "$(uname)" = "Darwin" ] || { echo "The fake call needs macOS (its voices come from \`say\`)." >&2; exit 1; }
 
