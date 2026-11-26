@@ -56,7 +56,7 @@ describe("worlds are app instances", () => {
   });
 
   it("are listed by bundle or package, by name", async () => {
-    const listApps = vi.fn(async () => [app("2", "b", "org-1"), app("1", "a", "org-1")]);
+    const listApps = vi.fn(async () => [app("2", "b", ""), app("1", "a", "")]);
     expect((await listWorlds(withRoutes({ listApps }), "abc")).map((w) => w.name)).toEqual(["a", "b"]);
     expect(listApps).toHaveBeenLastCalledWith({ bundle: "abc" });
     await listWorlds(withRoutes({ listApps }), { package: "p" });

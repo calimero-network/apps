@@ -26,8 +26,8 @@ export interface Block {
 
 /** The app type `Change`. */
 export type Change =
-  | { retain: number; attributes?: AttrDelta | null }
-  | { insert: string; attributes?: AttrDelta | null }
+  | { retain: number; attributes?: Record<string, string | null> | null }
+  | { insert: string; attributes?: Record<string, string | null> | null }
   | { delete: number };
 
 /** The app type `CommentView`. */
@@ -78,7 +78,7 @@ export interface Run {
 /** The app type `Span`. */
 export interface Span {
   text: string;
-  attributes: Attrs;
+  attributes: Record<string, string>;
 }
 
 /** The app type `TagView`. */
@@ -112,12 +112,6 @@ export interface ViewView {
   query: string;
   createdBy: string;
 }
-
-/** The app type `AttrDelta`: the ABI names it without its shape. */
-export type AttrDelta = unknown;
-
-/** The app type `Attrs`: the ABI names it without its shape. */
-export type Attrs = unknown;
 
 /** The arguments of `addComment`. */
 export interface AddCommentArgs {

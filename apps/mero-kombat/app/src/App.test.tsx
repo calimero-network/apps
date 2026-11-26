@@ -278,7 +278,7 @@ describe("App", () => {
     const client = fakeClient([], arenaView({ p1: corner("p1", "acct-bob", "Fighter") }));
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Ring", org: null }));
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Ring", org: "" }));
     render(<App deps={deps(client)} storage={storage} />);
 
     // A corner filed under the contract's default name shows a short account id.

@@ -742,14 +742,6 @@
         ],
         "type": "object"
       },
-      "AttrDelta": {
-        "description": "The app type `AttrDelta`. The ABI names it without describing its shape, so any JSON value is accepted here.",
-        "x-calimero-abi-type": "AttrDelta"
-      },
-      "Attrs": {
-        "description": "The app type `Attrs`. The ABI names it without describing its shape, so any JSON value is accepted here.",
-        "x-calimero-abi-type": "Attrs"
-      },
       "Block": {
         "properties": {
           "attrs": {
@@ -1165,7 +1157,17 @@
               "attributes": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/AttrDelta"
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
                   },
                   {
                     "type": "null"
@@ -1189,7 +1191,17 @@
               "attributes": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/AttrDelta"
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
                   },
                   {
                     "type": "null"
@@ -4604,7 +4616,10 @@
       "Span": {
         "properties": {
           "attributes": {
-            "$ref": "#/components/schemas/Attrs"
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "text": {
             "type": "string"
