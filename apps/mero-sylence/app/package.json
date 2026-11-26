@@ -12,6 +12,7 @@
     "test": "vitest run",
     "lint": "eslint .",
     "icons": "node scripts/gen-icons.mjs",
+    "og": "node scripts/gen-og.mjs",
     "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-sylence -o src/generated",
     "test:e2e": "playwright test"
   },

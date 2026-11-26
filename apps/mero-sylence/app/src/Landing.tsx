@@ -178,12 +178,10 @@ function Reveal({
 
 /** In-page links: the hash is the app's router, so scroll instead of setting it. */
 function scrollTo(id: string) {
-  document
-    .getElementById(id)
-    ?.scrollIntoView({
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
-      block: "start",
-    });
+  document.getElementById(id)?.scrollIntoView({
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
+    block: "start",
+  });
 }
 function jump(id: string) {
   return (e: React.MouseEvent) => {
@@ -622,16 +620,25 @@ function useSectionWheel() {
   useEffect(() => {
     let lock = 0;
     const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || Math.abs(e.deltaY) < 4 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      if (
+        e.ctrlKey ||
+        Math.abs(e.deltaY) < 4 ||
+        Math.abs(e.deltaY) < Math.abs(e.deltaX)
+      )
+        return;
       const now = performance.now();
       if (now < lock) {
         e.preventDefault();
         lock = Math.max(lock, now + 150);
         return;
       }
-      const els = SECTIONS.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => el !== null);
+      const els = SECTIONS.map((s) => document.getElementById(s.id)).filter(
+        (el): el is HTMLElement => el !== null,
+      );
       if (els.length === 0) return;
-      const tops = els.map((el) => el.getBoundingClientRect().top + window.scrollY);
+      const tops = els.map(
+        (el) => el.getBoundingClientRect().top + window.scrollY,
+      );
       const view = window.scrollY + NAV_H;
       let i = 0;
       tops.forEach((t, k) => {
@@ -645,7 +652,10 @@ function useSectionWheel() {
       if (next < 0 || next >= els.length) return;
       e.preventDefault();
       lock = now + 900;
-      window.scrollTo({ top: next === 0 ? 0 : tops[next]! - NAV_H, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+      window.scrollTo({
+        top: next === 0 ? 0 : tops[next]! - NAV_H,
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      });
     };
     window.addEventListener("wheel", onWheel, { passive: false });
     return () => window.removeEventListener("wheel", onWheel);
@@ -674,6 +684,121 @@ function SectionDots() {
   );
 }
 
+/** The landing page's top bar. `sections`: the in-page links, only on the landing itself. */
+export function LandingNav({
+  onSignIn,
+  sections = true,
+}: {
+  /** Absent when signed in: the button opens the app instead. */
+  onSignIn?: () => void;
+  sections?: boolean;
+}) {
+  return (
+    <header className="lp-nav">
+      <div className="lp-inner lp-nav-inner">
+        <a className="brand" href="#/" aria-label={`${PRODUCT} home`}>
+          <img src="./favicon.svg" alt="" width={26} height={26} />
+          <span className="brand-name">{PRODUCT}</span>
+        </a>
+        {sections ? (
+          <nav className="lp-links" aria-label="sections">
+            <a href="#how" onClick={jump("how")}>
+              How it works
+            </a>
+            <a href="#private" onClick={jump("private")}>
+              Privacy
+            </a>
+            <a href="#features" onClick={jump("features")}>
+              Features
+            </a>
+            <a href="#open" onClick={jump("open")}>
+              Open source
+            </a>
+          </nav>
+        ) : (
+          <span className="lp-links" />
+        )}
+        <div className="lp-nav-right">
+          <a
+            className="lp-icon-link"
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Sylence on GitHub"
+          >
+            <GitHubMark size={18} />
+          </a>
+          {onSignIn ? (
+            <button type="button" className="btn small" onClick={onSignIn}>
+              Sign in
+            </button>
+          ) : (
+            <a className="btn small" href="#/">
+              Open {PRODUCT}
+            </a>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+export function LandingFooter() {
+  return (
+    <footer className="lp-footer">
+      <div className="lp-inner lp-footer-inner">
+        <div className="brand">
+          <img src="./favicon.svg" alt="" width={20} height={20} />
+          <span className="brand-name">{PRODUCT}</span>
+          <a
+            href={CALIMERO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="lp-built"
+          >
+            <CalimeroMark size={13} /> Built on Calimero
+          </a>
+        </div>
+        <nav aria-label="links">
+          <a href="#/install">Install</a>
+          <a href="#/faq">FAQ</a>
+          <a href="#/privacy">Privacy</a>
+          <a href="#/terms">Terms</a>
+          <a href={REPO_URL} target="_blank" rel="noreferrer">
+            Source
+          </a>
+          <a href={CALIMERO_URL} target="_blank" rel="noreferrer">
+            calimero.network
+          </a>
+          <a href={CALIMERO_GITHUB} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a href={CALIMERO_DOCS} target="_blank" rel="noreferrer">
+            Docs
+          </a>
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
+/** A signed-out page other than the landing (the install page), in the landing's frame. */
+export function LandingPage({
+  onSignIn,
+  children,
+}: {
+  onSignIn?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="landing lp-page">
+      <LandingNav onSignIn={onSignIn} sections={false} />
+      <main className="lp-page-main">{children}</main>
+      <LandingFooter />
+    </div>
+  );
+}
+
 /** The front door when signed out. */
 export function Landing({
   onSignIn,
@@ -694,42 +819,7 @@ export function Landing({
   }, []);
   return (
     <div className="landing">
-      <header className="lp-nav">
-        <div className="lp-inner lp-nav-inner">
-          <a className="brand" href="#/" aria-label={`${PRODUCT} home`}>
-            <img src="./favicon.svg" alt="" width={26} height={26} />
-            <span className="brand-name">{PRODUCT}</span>
-          </a>
-          <nav className="lp-links" aria-label="sections">
-            <a href="#how" onClick={jump("how")}>
-              How it works
-            </a>
-            <a href="#private" onClick={jump("private")}>
-              Privacy
-            </a>
-            <a href="#features" onClick={jump("features")}>
-              Features
-            </a>
-            <a href="#open" onClick={jump("open")}>
-              Open source
-            </a>
-          </nav>
-          <div className="lp-nav-right">
-            <a
-              className="lp-icon-link"
-              href={REPO_URL}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Sylence on GitHub"
-            >
-              <GitHubMark size={18} />
-            </a>
-            <button type="button" className="btn small" onClick={onSignIn}>
-              Sign in
-            </button>
-          </div>
-        </div>
-      </header>
+      <LandingNav onSignIn={onSignIn} />
 
       <section id="top" className="lp-hero lp-sect">
         <div className="lp-inner">
@@ -974,36 +1064,7 @@ export function Landing({
           </div>
         </div>
 
-        <footer className="lp-footer">
-          <div className="lp-inner lp-footer-inner">
-            <div className="brand">
-              <img src="./favicon.svg" alt="" width={20} height={20} />
-              <span className="brand-name">{PRODUCT}</span>
-              <a
-                href={CALIMERO_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="lp-built"
-              >
-                <CalimeroMark size={13} /> Built on Calimero
-              </a>
-            </div>
-            <nav aria-label="links">
-              <a href={REPO_URL} target="_blank" rel="noreferrer">
-                Source
-              </a>
-              <a href={CALIMERO_URL} target="_blank" rel="noreferrer">
-                calimero.network
-              </a>
-              <a href={CALIMERO_GITHUB} target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-              <a href={CALIMERO_DOCS} target="_blank" rel="noreferrer">
-                Docs
-              </a>
-            </nav>
-          </div>
-        </footer>
+        <LandingFooter />
       </section>
 
       <SectionDots />

@@ -6,11 +6,31 @@ import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
 import { installableApp } from "@calimero-apps/install/vite";
 import { extensionDownload } from "./extensionDownload";
+import type { Plugin } from "vite";
+
+/**
+ * Link-preview crawlers need an absolute image URL. The build is relative
+ * (`base: "./"`), so the address comes from the environment: `SITE_URL`, or
+ * Vercel's production domain. Without either, the tags stay relative.
+ */
+function absoluteSocialImage(): Plugin {
+  const host = process.env.SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const origin = host ? (host.startsWith("http") ? host : `https://${host}`).replace(/\/$/, "") : "";
+  return {
+    name: "absolute-social-image",
+    transformIndexHtml(html) {
+      if (!origin) return html;
+      return html
+        .replaceAll('content="./og.png"', `content="${origin}/og.png"`)
+        .replace("<meta property=\"og:type\"", `<meta property="og:url" content="${origin}/" />\n    <meta property="og:type"`);
+    },
+  };
+}
 
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [extensionDownload(), installableApp({ cacheId: "mero-sylence" }), servedAssetsFallback(), react()],
+  plugins: [absoluteSocialImage(), extensionDownload(), installableApp({ cacheId: "mero-sylence" }), servedAssetsFallback(), react()],
   server: {
     // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
     // (`pnpm dev:local mero-sylence` passes it too). `strictPort` so a busy port

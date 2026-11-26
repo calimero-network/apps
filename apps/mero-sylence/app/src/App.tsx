@@ -3,8 +3,9 @@ import { ManageInHomeLink, NativeApproval, NodeShield } from "@calimero-apps/pas
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { InstallAppIconButton } from "@calimero-apps/install";
 
+import { InfoPage } from "./InfoPages";
 import { InstallPage } from "./InstallPage";
-import { Landing } from "./Landing";
+import { Landing, LandingPage } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
 import { OpenActions } from "./OpenActions";
@@ -167,6 +168,18 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
   const [signingIn, setSigningIn] = useState(false);
+  const [route] = useRoute();
+  // FAQ, privacy and terms read the same signed in or out, in the landing's frame.
+  if (route.page === "doc") {
+    return (
+      <>
+        <LandingPage onSignIn={signedIn ? undefined : () => setSigningIn(true)}>
+          <InfoPage doc={route.doc} />
+        </LandingPage>
+        {!signedIn && <SignInModal open={signingIn} onClose={() => setSigningIn(false)} />}
+      </>
+    );
+  }
   if (api.session.status === "connecting") {
     return (
       <Shell shield={false}>
@@ -192,9 +205,9 @@ function SignedOutPages({ onSignIn }: { onSignIn: () => void }) {
   const [route, go] = useRoute();
   if (route.page === "install") {
     return (
-      <Shell shield={false} right={<button type="button" className="btn small" onClick={onSignIn}>Sign in</button>}>
-        <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Sylence" />
-      </Shell>
+      <LandingPage onSignIn={onSignIn}>
+        <InstallPage onSignIn={onSignIn} />
+      </LandingPage>
     );
   }
   return <Welcome onSignIn={onSignIn} onInstall={() => go({ page: "install" })} />;
@@ -491,6 +504,9 @@ function Menu({
           <div className="menu-section">
             <a className="menu-item home-link" href="#/install" onClick={() => setOpen(false)}>
               Get the extension
+            </a>
+            <a className="menu-item home-link" href="#/faq" onClick={() => setOpen(false)}>
+              Help and FAQ
             </a>
             <ManageInHomeLink session={api.session} org={org} className="menu-item home-link" />
             {onSwitchWorkspace && (
