@@ -570,8 +570,7 @@
 
 /* ── bands ── */
 .lp-band {
-  padding: 112px 0;
-  scroll-margin-top: 60px;
+  padding: 88px 0;
 }
 .lp-band.soft {
   background: var(--lp-soft);
@@ -1595,5 +1594,305 @@ body.on-landing [data-node-shield-host] {
     gap: 8px;
     padding: 5px 4px;
     font-size: 12.5px;
+  }
+}
+
+/* ── one section per screen ── */
+html.lp-snap {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: 60px;
+}
+@media (max-width: 720px), (max-height: 600px) {
+  html.lp-snap {
+    scroll-snap-type: y proximity;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html.lp-snap {
+    scroll-behavior: smooth;
+  }
+}
+.lp-sect {
+  scroll-snap-align: start;
+  min-height: calc(100svh - 60px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.lp-sect > .lp-inner {
+  width: 100%;
+}
+.lp-hero {
+  padding: 24px 0;
+}
+.lp-hero-copy {
+  margin-top: 28px;
+}
+.lp-hero .lp-down {
+  margin-top: 24px;
+}
+.lp-last {
+  justify-content: stretch;
+}
+.lp-final-band {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.lp-final-band > .lp-inner {
+  width: 100%;
+}
+
+/* the section dots */
+.lp-dots {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  z-index: 40;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lp-card) 78%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--lp-line);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.25);
+}
+.lp-dots button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.lp-dots button::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--lp-text-2);
+  opacity: 0.45;
+  transition: height 0.3s var(--ease-out), background 0.2s, opacity 0.2s;
+}
+.lp-dots button:hover::before {
+  opacity: 0.9;
+}
+.lp-dots button.on {
+  height: 34px;
+}
+.lp-dots button.on::before {
+  height: 24px;
+  background: var(--p-coral);
+  opacity: 1;
+}
+.lp-dots button {
+  transition: height 0.3s var(--ease-out);
+}
+.lp-dot-label {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  translate: 0 -50%;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--lp-ink);
+  color: var(--lp-bg);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity 0.15s, transform 0.15s var(--ease-out);
+}
+.lp-dots button:hover .lp-dot-label,
+.lp-dots button:focus-visible .lp-dot-label {
+  opacity: 1;
+  transform: none;
+}
+@media (max-width: 720px) {
+  .lp-dots {
+    right: 8px;
+    padding: 6px 2px;
+  }
+  .lp-dots button {
+    width: 18px;
+    height: 18px;
+  }
+  .lp-dots button::before {
+    width: 6px;
+    height: 6px;
+  }
+  .lp-dots button.on {
+    height: 26px;
+  }
+  .lp-dots button.on::before {
+    height: 18px;
+  }
+  .lp-dot-label {
+    display: none;
+  }
+}
+
+/* ── hero fits one screen: the demo takes what the copy leaves ── */
+.demo {
+  height: clamp(300px, calc(100svh - 60px - 410px), 440px);
+}
+.lp-hero-copy h1 {
+  font-size: clamp(22px, 2.6vw, 28px);
+  margin-bottom: 8px;
+}
+.lp-hero-copy p {
+  font-size: 15px;
+  margin-bottom: 18px;
+}
+.lp-hero .btn.large {
+  height: 44px;
+}
+.lp-hero .available {
+  margin-top: 14px;
+}
+.lp-hero .lp-down {
+  margin-top: 18px;
+}
+@media (max-height: 780px) and (min-width: 721px) {
+  .demo-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+  .demo-controls {
+    height: 44px;
+  }
+  .demo-controls i {
+    width: 26px;
+    height: 26px;
+  }
+  .demo-controls i.end {
+    width: 36px;
+  }
+}
+
+/* phone: the call is a row of four, the transcript gets the rest */
+@media (max-width: 720px) {
+  .demo {
+    grid-template-columns: 1fr;
+    grid-template-rows: 84px minmax(0, 1fr);
+    height: clamp(290px, calc(100svh - 60px - 385px), 520px);
+    border-radius: 16px;
+  }
+  .demo-bar,
+  .demo-controls {
+    display: none;
+  }
+  .demo-call {
+    border-right: 0;
+    border-bottom: 1px solid var(--lp-line);
+  }
+  .demo-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: 1fr;
+    gap: 6px;
+    padding: 8px;
+  }
+  .demo-tile {
+    gap: 4px;
+    border-radius: 10px;
+  }
+  .demo-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+  .demo-tile.speaking .demo-avatar {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--hue) 25%, transparent);
+  }
+  .demo-name {
+    position: static;
+    font-size: 11px;
+  }
+  .demo-wave {
+    top: 6px;
+    right: 6px;
+    bottom: auto;
+    height: 8px;
+  }
+  .demo-ended {
+    inset: 8px;
+    font-size: 13px;
+  }
+  .demo-panel {
+    padding: 10px 12px 12px;
+  }
+  .demo-lines {
+    gap: 8px;
+  }
+  .demo-line {
+    font-size: 13px;
+  }
+  .lp-hero {
+    padding: 16px 0;
+  }
+  .lp-hero-copy {
+    margin-top: 18px;
+  }
+  .lp-hero-copy h1 {
+    font-size: 22px;
+  }
+  .lp-hero-copy p {
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  .lp-hero .btn.large {
+    height: 42px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+  .lp-hero .available {
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .lp-hero .lp-down {
+    width: 38px;
+    height: 38px;
+    margin-top: 12px;
+  }
+  .saved-head {
+    height: 44px;
+    padding: 0 12px;
+  }
+  .saved-side {
+    padding: 8px;
+    gap: 8px;
+  }
+  .saved-side section {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .saved-side p {
+    -webkit-line-clamp: 2;
+    font-size: 12.5px;
+  }
+  .saved-side ul {
+    gap: 6px;
+  }
+  .saved-action-meta {
+    display: none;
+  }
+  .saved-side li {
+    font-size: 12.5px;
+  }
+}
+@media (max-width: 720px) {
+  .lp-dots {
+    display: none;
   }
 }

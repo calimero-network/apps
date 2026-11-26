@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { PRODUCT } from "./session";
 import "./landing.css";
 
-export const REPO_URL = "https://github.com/calimero-network/apps/tree/main/apps/mero-sylence";
+export const REPO_URL =
+  "https://github.com/calimero-network/apps/tree/main/apps/mero-sylence";
 export const CALIMERO_URL = "https://calimero.network";
 export const CALIMERO_GITHUB = "https://github.com/calimero-network";
 export const CALIMERO_DOCS = "https://docs.calimero.network";
@@ -13,17 +20,38 @@ export const CALIMERO_DOCS = "https://docs.calimero.network";
 
 export function ChromeMark({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="10" />
       <circle cx="12" cy="12" r="4" />
-      <path d="M12 8h9.3M8.54 14 3.9 5.95M15.46 14l-4.65 8" strokeLinecap="round" />
+      <path
+        d="M12 8h9.3M8.54 14 3.9 5.95M15.46 14l-4.65 8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 export function BraveMark({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
       <path d="M7.2 2.5h9.6l1.6 2 2.1-.4-.6 2.4.9 1.6-3.6 10.2L12 21.5l-5.2-3.2L3.2 8.1l.9-1.6-.6-2.4 2.1.4 1.6-2Z" />
       <path d="M9 10.5 10.6 13M15 10.5 13.4 13M10.4 16.2 12 17.4l1.6-1.2M12 14.2v3.2" />
     </svg>
@@ -32,7 +60,13 @@ export function BraveMark({ size = 20 }: { size?: number }) {
 
 function GitHubMark({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z" />
     </svg>
   );
@@ -40,7 +74,15 @@ function GitHubMark({ size = 16 }: { size?: number }) {
 
 function CalimeroMark({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
       <circle cx="8" cy="3" r="1.8" />
       <circle cx="3.2" cy="12" r="1.8" />
       <circle cx="12.8" cy="12" r="1.8" />
@@ -49,7 +91,13 @@ function CalimeroMark({ size = 16 }: { size?: number }) {
   );
 }
 
-function Arrow({ dir = "right", size = 16 }: { dir?: "right" | "down"; size?: number }) {
+function Arrow({
+  dir = "right",
+  size = 16,
+}: {
+  dir?: "right" | "down";
+  size?: number;
+}) {
   return (
     <svg
       width={size}
@@ -71,13 +119,19 @@ function Arrow({ dir = "right", size = 16 }: { dir?: "right" | "down"; size?: nu
 // ── motion helpers ──────────────────────────────────────────────────────────
 
 function prefersReducedMotion() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /** True once the element has scrolled into view (always true without IntersectionObserver). */
 function useSeen<T extends Element>(): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T>(null);
-  const [seen, setSeen] = useState(() => typeof IntersectionObserver === "undefined" || prefersReducedMotion());
+  const [seen, setSeen] = useState(
+    () => typeof IntersectionObserver === "undefined" || prefersReducedMotion(),
+  );
   useEffect(() => {
     if (seen || !ref.current) return;
     const io = new IntersectionObserver(
@@ -95,9 +149,22 @@ function useSeen<T extends Element>(): [React.RefObject<T | null>, boolean] {
   return [ref, seen];
 }
 
-function Reveal({ children, className = "", delay = 0, as = "div" }: { children: ReactNode; className?: string; delay?: number; as?: "div" | "li" }) {
+function Reveal({
+  children,
+  className = "",
+  delay = 0,
+  as = "div",
+}: {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+  as?: "div" | "li";
+}) {
   const [ref, seen] = useSeen<HTMLElement>();
-  const props = { className: `reveal ${seen ? "in" : ""} ${className}`, style: { transitionDelay: `${delay}ms` } };
+  const props = {
+    className: `reveal ${seen ? "in" : ""} ${className}`,
+    style: { transitionDelay: `${delay}ms` },
+  };
   return as === "li" ? (
     <li ref={ref as React.RefObject<HTMLLIElement>} {...props}>
       {children}
@@ -111,7 +178,12 @@ function Reveal({ children, className = "", delay = 0, as = "div" }: { children:
 
 /** In-page links: the hash is the app's router, so scroll instead of setting it. */
 function scrollTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+  document
+    .getElementById(id)
+    ?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      block: "start",
+    });
 }
 function jump(id: string) {
   return (e: React.MouseEvent) => {
@@ -196,7 +268,11 @@ function CallDemo() {
         </div>
         <div className="demo-tiles">
           {PEOPLE.map((p) => (
-            <div key={p.name} className={`demo-tile ${speaking === p ? "speaking" : ""}`} style={hue(p)}>
+            <div
+              key={p.name}
+              className={`demo-tile ${speaking === p ? "speaking" : ""}`}
+              style={hue(p)}
+            >
               <span className="demo-avatar">{p.name[0]}</span>
               <span className="demo-name">{p.name}</span>
               <span className="demo-wave" aria-hidden="true">
@@ -236,7 +312,9 @@ function CallDemo() {
           </span>
         </div>
         <div className="demo-progress" aria-hidden="true">
-          <i className={step === CLEAN ? "run" : step === SAVED ? "full" : ""} />
+          <i
+            className={step === CLEAN ? "run" : step === SAVED ? "full" : ""}
+          />
         </div>
         <ol className="demo-lines">
           {lines.map((l, i) => (
@@ -366,9 +444,21 @@ function SceneRead() {
 }
 
 const STEPS: { scene: ReactNode; title: string; body: string }[] = [
-  { scene: <SceneInstall />, title: "Add it to your browser", body: "Install Sylence in Chrome or Brave and sign in with a passkey. No password, no bot account." },
-  { scene: <SceneRecord />, title: "Press record on the call", body: "Open Meet, Zoom or Teams in the browser and click Record. Nobody new joins the call." },
-  { scene: <SceneRead />, title: "Read it, tick it off", body: "The transcript lands in your team's workspace with who said what, and the follow-ups to do." },
+  {
+    scene: <SceneInstall />,
+    title: "Add it to your browser",
+    body: "Install Sylence in Chrome or Brave and sign in with a passkey. No password, no bot account.",
+  },
+  {
+    scene: <SceneRecord />,
+    title: "Press record on the call",
+    body: "Open Meet, Zoom or Teams in the browser and click Record. Nobody new joins the call.",
+  },
+  {
+    scene: <SceneRead />,
+    title: "Read it, tick it off",
+    body: "The transcript lands in your team's workspace with who said what, and the follow-ups to do.",
+  },
 ];
 
 // ── what you get: drawn tiles ───────────────────────────────────────────────
@@ -429,7 +519,8 @@ function TileSearch() {
   return (
     <div className="search-demo" aria-hidden="true">
       <div className="field">
-        deck<span className="caret" />
+        deck
+        <span className="caret" />
       </div>
       <p>
         <Name p={EVE} /> …send the <mark>deck</mark> to design by Friday?
@@ -470,20 +561,136 @@ function Available() {
   );
 }
 
-function Down({ to, label, dark = false }: { to: string; label: string; dark?: boolean }) {
+function Down({
+  to,
+  label,
+  dark = false,
+}: {
+  to: string;
+  label: string;
+  dark?: boolean;
+}) {
   return (
-    <button type="button" className={`lp-down ${dark ? "on-dark" : ""}`} onClick={() => scrollTo(to)} aria-label={label}>
+    <button
+      type="button"
+      className={`lp-down ${dark ? "on-dark" : ""}`}
+      onClick={() => scrollTo(to)}
+      aria-label={label}
+    >
       <Arrow dir="down" size={18} />
     </button>
   );
 }
 
+const SECTIONS = [
+  { id: "top", label: "Sylence" },
+  { id: "how", label: "How it works" },
+  { id: "private", label: "Privacy" },
+  { id: "features", label: "Features" },
+  { id: "open", label: "Open source" },
+  { id: "get", label: "Get Sylence" },
+];
+
+/** The section in the middle of the screen. */
+function useActiveSection(): string {
+  const [active, setActive] = useState(SECTIONS[0]!.id);
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) if (e.isIntersecting) setActive(e.target.id);
+      },
+      { rootMargin: "-45% 0px -50% 0px" },
+    );
+    for (const s of SECTIONS) {
+      const el = document.getElementById(s.id);
+      if (el) io.observe(el);
+    }
+    return () => io.disconnect();
+  }, []);
+  return active;
+}
+
+const NAV_H = 60;
+
+/**
+ * A wheel step moves one whole section. A section taller than the screen
+ * scrolls normally until its edge. A trackpad's momentum keeps
+ * extending the pause, so one swipe is one section.
+ */
+function useSectionWheel() {
+  useEffect(() => {
+    let lock = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || Math.abs(e.deltaY) < 4 || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      const now = performance.now();
+      if (now < lock) {
+        e.preventDefault();
+        lock = Math.max(lock, now + 150);
+        return;
+      }
+      const els = SECTIONS.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => el !== null);
+      if (els.length === 0) return;
+      const tops = els.map((el) => el.getBoundingClientRect().top + window.scrollY);
+      const view = window.scrollY + NAV_H;
+      let i = 0;
+      tops.forEach((t, k) => {
+        if (t <= view + 8) i = k;
+      });
+      const bottom = tops[i]! + els[i]!.offsetHeight;
+      const down = e.deltaY > 0;
+      if (down && bottom > window.scrollY + window.innerHeight + 8) return;
+      if (!down && tops[i]! < view - 8) return;
+      const next = down ? i + 1 : i - 1;
+      if (next < 0 || next >= els.length) return;
+      e.preventDefault();
+      lock = now + 900;
+      window.scrollTo({ top: next === 0 ? 0 : tops[next]! - NAV_H, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+}
+
+/** Dots on the right edge, one per section; the current one is lit. */
+function SectionDots() {
+  const active = useActiveSection();
+  useSectionWheel();
+  return (
+    <nav className="lp-dots" aria-label="Page sections">
+      {SECTIONS.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={s.id === active ? "on" : ""}
+          aria-label={s.label}
+          aria-current={s.id === active ? "true" : undefined}
+          onClick={() => scrollTo(s.id)}
+        >
+          <span className="lp-dot-label">{s.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 /** The front door when signed out. */
-export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInstall?: () => void }) {
+export function Landing({
+  onSignIn,
+  onInstall,
+}: {
+  onSignIn: () => void;
+  onInstall?: () => void;
+}) {
   // The fleet's node badge floats on every page; a visitor has no node to judge yet.
   useEffect(() => {
     document.body.classList.add("on-landing");
-    return () => document.body.classList.remove("on-landing");
+    // One section per screen: the page snaps from section to section.
+    document.documentElement.classList.add("lp-snap");
+    return () => {
+      document.body.classList.remove("on-landing");
+      document.documentElement.classList.remove("lp-snap");
+    };
   }, []);
   return (
     <div className="landing">
@@ -508,7 +715,13 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
             </a>
           </nav>
           <div className="lp-nav-right">
-            <a className="lp-icon-link" href={REPO_URL} target="_blank" rel="noreferrer" aria-label="Sylence on GitHub">
+            <a
+              className="lp-icon-link"
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Sylence on GitHub"
+            >
               <GitHubMark size={18} />
             </a>
             <button type="button" className="btn small" onClick={onSignIn}>
@@ -518,21 +731,32 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
         </div>
       </header>
 
-      <section className="lp-hero">
+      <section id="top" className="lp-hero lp-sect">
         <div className="lp-inner">
           <div className="lp-stage">
             <CallDemo />
           </div>
           <div className="lp-hero-copy">
             <h1>Meeting notes that write themselves, privately.</h1>
-            <p>Record Meet, Zoom and Teams from your browser. Speech becomes text on your laptop, so the audio never leaves it.</p>
+            <p>
+              Record Meet, Zoom and Teams from your browser. Speech becomes text
+              on your laptop, so the audio never leaves it.
+            </p>
             <div className="lp-cta">
               {onInstall && (
-                <button type="button" className="btn primary large" onClick={onInstall}>
+                <button
+                  type="button"
+                  className="btn primary large"
+                  onClick={onInstall}
+                >
                   Get the extension
                 </button>
               )}
-              <button type="button" className={onInstall ? "btn large" : "btn primary large"} onClick={onSignIn}>
+              <button
+                type="button"
+                className={onInstall ? "btn large" : "btn primary large"}
+                onClick={onSignIn}
+              >
                 Sign in
               </button>
             </div>
@@ -542,7 +766,7 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
         </div>
       </section>
 
-      <section id="how" className="lp-band dark">
+      <section id="how" className="lp-sect lp-band dark">
         <div className="lp-inner">
           <Reveal className="lp-head">
             <span className="lp-eyebrow">How it works</span>
@@ -562,15 +786,16 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
         </div>
       </section>
 
-      <section id="private" className="lp-band">
+      <section id="private" className="lp-sect lp-band">
         <div className="lp-inner lp-split">
           <Reveal>
             <span className="lp-eyebrow">Private by design</span>
             <h2 className="lp-h2">The audio stays on your laptop.</h2>
             <p className="lp-p">
-              Recording, speech to text and naming all happen inside your browser. Only the finished text goes to your
-              workspace, which lives on a Calimero node only your organization reaches. Nobody in between reads it, us
-              included.
+              Recording, speech to text and naming all happen inside your
+              browser. Only the finished text goes to your workspace, which
+              lives on a Calimero node only your organization reaches. Nobody in
+              between reads it, us included.
             </p>
             <ul className="lp-ticks">
               <li>No bot in the call, nothing to admit</li>
@@ -579,7 +804,11 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
             </ul>
           </Reveal>
           <Reveal delay={150}>
-            <div className="flow" role="img" aria-label="The call's audio goes into your browser; only text goes on to your node.">
+            <div
+              className="flow"
+              role="img"
+              aria-label="The call's audio goes into your browser; only text goes on to your node."
+            >
               <div className="station">
                 <span className="station-art bars" aria-hidden="true">
                   <i />
@@ -619,7 +848,7 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
         </div>
       </section>
 
-      <section id="features" className="lp-band soft">
+      <section id="features" className="lp-sect lp-band soft">
         <div className="lp-inner">
           <Reveal className="lp-head">
             <span className="lp-eyebrow">What you get</span>
@@ -629,12 +858,18 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
             <Reveal className="tile wide">
               <TileSpeakers />
               <h3 className="lp-h3">Knows who said what</h3>
-              <p>Names come from the call itself: the tiles, the captions, whoever is lit up.</p>
+              <p>
+                Names come from the call itself: the tiles, the captions,
+                whoever is lit up.
+              </p>
             </Reveal>
             <Reveal className="tile" delay={100}>
               <TileCleanup />
               <h3 className="lp-h3">Cleaned up after the call</h3>
-              <p>A second, slower pass rewrites the transcript once everyone hangs up.</p>
+              <p>
+                A second, slower pass rewrites the transcript once everyone
+                hangs up.
+              </p>
             </Reveal>
             <Reveal className="tile">
               <TileActions />
@@ -656,20 +891,24 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
                 <span className="stat-n">0</span>
                 <span className="stat-unit">bytes of audio uploaded</span>
               </div>
-              <p>Whisper runs on your laptop&apos;s GPU through WebGPU, with a smaller model for machines without one.</p>
+              <p>
+                Whisper runs on your laptop&apos;s GPU through WebGPU, with a
+                smaller model for machines without one.
+              </p>
             </Reveal>
           </div>
         </div>
       </section>
 
-      <section id="open" className="lp-band dark">
+      <section id="open" className="lp-sect lp-band dark">
         <div className="lp-inner lp-split">
           <Reveal>
             <span className="lp-eyebrow">Built on Calimero</span>
             <h2 className="lp-h2">Open source, on infrastructure you own.</h2>
             <p className="lp-p">
-              The extension, the page and the workspace logic are open on GitHub. {PRODUCT} runs on Calimero, a framework
-              for private, peer-to-peer apps where your data lives on nodes you control.
+              The extension, the page and the workspace logic are open on
+              GitHub. {PRODUCT} runs on Calimero, a framework for private,
+              peer-to-peer apps where your data lives on nodes you control.
             </p>
           </Reveal>
           <Reveal delay={120}>
@@ -709,48 +948,65 @@ export function Landing({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
         </div>
       </section>
 
-      <section className="lp-band coral">
-        <div className="lp-inner lp-final">
-          <h2 className="lp-h2">Record your next call with {PRODUCT}.</h2>
-          <div className="lp-cta">
-            {onInstall && (
-              <button type="button" className="btn large lp-btn-ink" onClick={onInstall}>
-                Get the extension
+      <section id="get" className="lp-sect lp-last">
+        <div className="lp-band coral lp-final-band">
+          <div className="lp-inner lp-final">
+            <h2 className="lp-h2">Record your next call with {PRODUCT}.</h2>
+            <div className="lp-cta">
+              {onInstall && (
+                <button
+                  type="button"
+                  className="btn large lp-btn-ink"
+                  onClick={onInstall}
+                >
+                  Get the extension
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn large lp-btn-line"
+                onClick={onSignIn}
+              >
+                Sign in
               </button>
-            )}
-            <button type="button" className="btn large lp-btn-line" onClick={onSignIn}>
-              Sign in
-            </button>
+            </div>
+            <Available />
           </div>
-          <Available />
         </div>
+
+        <footer className="lp-footer">
+          <div className="lp-inner lp-footer-inner">
+            <div className="brand">
+              <img src="./favicon.svg" alt="" width={20} height={20} />
+              <span className="brand-name">{PRODUCT}</span>
+              <a
+                href={CALIMERO_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="lp-built"
+              >
+                <CalimeroMark size={13} /> Built on Calimero
+              </a>
+            </div>
+            <nav aria-label="links">
+              <a href={REPO_URL} target="_blank" rel="noreferrer">
+                Source
+              </a>
+              <a href={CALIMERO_URL} target="_blank" rel="noreferrer">
+                calimero.network
+              </a>
+              <a href={CALIMERO_GITHUB} target="_blank" rel="noreferrer">
+                GitHub
+              </a>
+              <a href={CALIMERO_DOCS} target="_blank" rel="noreferrer">
+                Docs
+              </a>
+            </nav>
+          </div>
+        </footer>
       </section>
 
-      <footer className="lp-footer">
-        <div className="lp-inner lp-footer-inner">
-          <div className="brand">
-            <img src="./favicon.svg" alt="" width={20} height={20} />
-            <span className="brand-name">{PRODUCT}</span>
-            <a href={CALIMERO_URL} target="_blank" rel="noreferrer" className="lp-built">
-              <CalimeroMark size={13} /> Built on Calimero
-            </a>
-          </div>
-          <nav aria-label="links">
-            <a href={REPO_URL} target="_blank" rel="noreferrer">
-              Source
-            </a>
-            <a href={CALIMERO_URL} target="_blank" rel="noreferrer">
-              calimero.network
-            </a>
-            <a href={CALIMERO_GITHUB} target="_blank" rel="noreferrer">
-              GitHub
-            </a>
-            <a href={CALIMERO_DOCS} target="_blank" rel="noreferrer">
-              Docs
-            </a>
-          </nav>
-        </div>
-      </footer>
+      <SectionDots />
     </div>
   );
 }
