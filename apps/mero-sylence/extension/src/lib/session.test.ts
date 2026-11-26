@@ -4,7 +4,7 @@ import type { AuthState } from "./messages";
 
 const rotate = { next: null as null | Record<string, unknown> };
 
-vi.mock("@calimero-network/mero-js", () => {
+vi.mock("@calimero-network/mero-js", async (importOriginal) => {
   class LoginRequired extends Error {}
   class AppError extends Error {
     constructor(
@@ -24,7 +24,7 @@ vi.mock("@calimero-network/mero-js", () => {
       if (rotate.next) this.session = rotate.next;
     }
   }
-  return { CalimeroClient, LoginRequired, AppError };
+  return { ...(await importOriginal<object>()), CalimeroClient, LoginRequired, AppError };
 });
 
 const { withClient, makeClient, isSignedOut, describe: say } = await import("./session");
@@ -72,8 +72,8 @@ describe("withClient", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it("points the client at every node, with Cloud's release policy", () => {
-    const client = makeClient(AUTH) as unknown as { opts: { baseUrl: string; nodes: string[]; policy: unknown } };
+  it("points the client at every node, with Cloud's release policy", async () => {
+    const client = (await makeClient(AUTH)) as unknown as { opts: { baseUrl: string; nodes: string[]; policy: unknown } };
     expect(client.opts.baseUrl).toBe("https://node-1.example");
     expect(client.opts.nodes).toEqual(AUTH.nodes);
     expect(client.opts.policy).toHaveProperty("release");

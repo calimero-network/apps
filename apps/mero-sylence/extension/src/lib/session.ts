@@ -4,6 +4,7 @@
  * session is written back after every request, as packages/connect's
  * `SessionStore.sync` does on the page.
  */
+import { createClient, policyFor as connectPolicy, type Target } from "@calimero-apps/connect";
 import { AppError, CalimeroClient, LoginRequired, type NodePolicy } from "@calimero-network/mero-js";
 import type { AuthState } from "./messages";
 import { MeroSylenceClient } from "../generated/client";
@@ -11,20 +12,27 @@ import { MeroSylenceClient } from "../generated/client";
 /** The lowest mero-tee release a Cloud node may run (VITE_CALIMERO_MIN_RELEASE at build). */
 export const MIN_RELEASE: string = (import.meta.env.VITE_CALIMERO_MIN_RELEASE as string | undefined) || "0.0.0";
 
-/** A development cluster (`merod local`) runs mock TEEs; Cloud runs signed releases. */
-export function policyFor(nodeUrl: string): NodePolicy {
+/**
+ * Where the session's nodes are: a development cluster (`merod local`, mock
+ * TEEs) or Cloud nodes reached by URL (signed releases).
+ */
+export function targetFor(nodeUrl: string, nodes: string[] = []): Target {
   const host = new URL(nodeUrl).hostname;
-  const local = host === "localhost" || host === "127.0.0.1" || host === "[::1]";
-  return local ? { allowMock: true } : { release: { minReleaseVersion: MIN_RELEASE } };
+  const all = [nodeUrl, ...nodes];
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") return { kind: "local", nodes: all };
+  return { kind: "cloud", cluster: host, direct: true, nodes: all, minReleaseVersion: MIN_RELEASE };
 }
 
-export function makeClient(auth: Pick<AuthState, "nodeUrl" | "nodes" | "session">, fetcher?: typeof fetch): CalimeroClient {
-  const client = new CalimeroClient({
-    baseUrl: auth.nodeUrl,
-    nodes: auth.nodes,
-    policy: policyFor(auth.nodeUrl),
-    ...(fetcher ? { fetch: fetcher } : {}),
-  });
+/** The trust policy for a node, decided by @calimero-apps/connect. */
+export function policyFor(nodeUrl: string): NodePolicy {
+  return connectPolicy(targetFor(nodeUrl));
+}
+
+export async function makeClient(
+  auth: Pick<AuthState, "nodeUrl" | "nodes" | "session">,
+  fetcher?: typeof fetch,
+): Promise<CalimeroClient> {
+  const client = await createClient(targetFor(auth.nodeUrl, auth.nodes), fetcher ? { fetch: fetcher } : {});
   client.useSession(auth.session);
   return client;
 }
@@ -39,7 +47,7 @@ export async function withClient<T>(
   work: (client: CalimeroClient, app: MeroSylenceClient<CalimeroClient>) => Promise<T>,
   fetcher?: typeof fetch,
 ): Promise<T> {
-  const client = makeClient(auth, fetcher);
+  const client = await makeClient(auth, fetcher);
   const app = new MeroSylenceClient(client, auth.workspace?.appId ?? "");
   try {
     return await work(client, app);

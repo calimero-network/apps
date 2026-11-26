@@ -16,14 +16,14 @@ crate-type = ["cdylib"]
 
 # Core at `component-core-tag` (root Cargo.toml); scripts/check-component-pins.py asserts it.
 [dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.37" }
 serde = { version = "1", features = ["derive"] }
 # Meeting and action ids are random bytes from the host, rendered as hex.
 hex = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35", features = ["testing"] }
-calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.35" }
+calimero-sdk       = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.37", features = ["testing"] }
+calimero-app-build = { git = "https://github.com/calimero-network/core", tag = "1.0.0-rc.37" }
 serde_json = "1"
 
 # Read by `meroctl app pack`.
@@ -40,7 +40,7 @@ category = "productivity"
 tags = ["meetings", "transcription", "notes", "action items", "productivity"]
 github = "https://github.com/calimero-network/apps"
 # `component-min-runtime-version` in the root Cargo.toml.
-min-runtime-version = "1.0.0-rc.35"
+min-runtime-version = "1.0.0-rc.37"
 # The listing's link. The production frontend is the one packed below: a Cloud
 # node trusts passkey ceremonies only from frontends it serves from a bundle.
 frontend = "https://mero-sylence.vercel.app"
