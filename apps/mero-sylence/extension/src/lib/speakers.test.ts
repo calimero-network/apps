@@ -18,6 +18,9 @@ const page = (html: string): Document => new DOMParser().parseFromString(`<body>
 describe("cleanName", () => {
   it("keeps names and drops what the call adds", () => {
     expect(cleanName("  Ana Horvat (Guest) ")).toBe("Ana Horvat");
+    expect(cleanName("Sandi FaticSandi Fatic")).toBe("Sandi Fatic");
+    expect(cleanName("Ana Horvat Ana Horvat")).toBe("Ana Horvat");
+    expect(cleanName("Anna")).toBe("Anna");
     expect(cleanName("Marko (Host)")).toBe("Marko");
     expect(cleanName("Presentation from Ana")).toBe("Ana");
     expect(cleanName("Željka")).toBe("Željka");
@@ -48,6 +51,17 @@ describe("nameFor", () => {
   it("names the only other person in a two-person call when the page showed nobody", () => {
     expect(nameFor([], T, T + 2_000, { exclude: "Fran", participants: ["Fran", "Ana"] })).toBe("Ana");
     expect(nameFor([], T, T + 2_000, { exclude: "Fran", participants: ["Fran", "Ana", "Marko"] })).toBe("");
+  });
+  it("names a line two talked over: the one who held the indicator most, else who spoke just before", () => {
+    const flicker = [
+      { at: T, names: ["Ana"] },
+      { at: T + 200, names: [] },
+      { at: T + 900, names: ["Marko"] },
+      { at: T + 1_100, names: [] },
+    ];
+    expect(nameFor(flicker, T, T + 6_000)).toBe("Ana");
+    const before = [{ at: T, names: ["Marko"] }, { at: T + 2_000, names: [] }];
+    expect(nameFor(before, T + 2_600, T + 8_000)).toBe("Marko");
   });
   it("needs enough overlap", () => {
     expect(nameFor([{ at: T, names: ["Ana"] }, { at: T + 100, names: [] }], T + 2_000, T + 6_000)).toBe("");

@@ -30,7 +30,9 @@ export function Saved({ status }: { status: RecorderStatus }) {
         <p className="by-line" data-testid="notes-by">
           {status.notesBy.kind === "model"
             ? `Written by ${NOTES_MODELS[status.notesBy.model].name} on this laptop.`
-            : `Found from phrases said in the call.${status.notesBy.why ? ` ${status.notesBy.why}` : ""}`}
+            : (status.actions ?? 0) > 0
+              ? `Found from phrases said in the call.${status.notesBy.why ? ` ${status.notesBy.why}` : ""}`
+              : `No action items found. Sylence looks for phrases like “I’ll…”, “can you…” or “we need to…”.${status.notesBy.why ? ` ${status.notesBy.why}` : " Smart notes (Settings → Experimental) finds more."}`}
         </p>
       )}
       {status.error && (

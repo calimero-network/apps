@@ -94,7 +94,7 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
         <div className="row" style={{ cursor: "default" }}>
           <span className="grow">
             <span className="name">Find action items</span>
-            <span className="meta">Added to the meeting when it ends.</span>
+            <span className="meta">From phrases like “I’ll…”, “can you…”, “we need to…”, added when the meeting ends. Smart notes (Experimental) finds more.</span>
           </span>
           <button
             className="switch"

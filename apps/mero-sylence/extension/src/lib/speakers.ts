@@ -41,6 +41,8 @@ const NOT_A_NAME =
 export function cleanName(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let n = raw.replace(/\s+/g, " ").trim();
+  // Meet renders a tile's name twice (shown + for screen readers): "Ana HorvatAna Horvat".
+  n = n.replace(/^(.{2,}?)\s*\1$/u, "$1");
   n = n.replace(/\s*\((you|host|co-host|guest|external|me|presenting|organi[sz]er)\)\s*$/i, "").trim();
   n = n.replace(/^(presentation|screen) (from|by)\s+/i, "").replace(/\s+is presenting$/i, "").trim();
   if (n.length < 1 || n.length > 60) return null;
@@ -292,6 +294,9 @@ export const SLACK_MS = 400;
  * the call's audio. A call with one other person names that person when the
  * timeline is silent. "" when nobody can be named.
  */
+/** How far back the last speaker still names a line nobody clearly held, ms. */
+const RECENT_MS = 1_000;
+
 export function nameFor(
   timeline: readonly SpeakerChange[],
   from: number,
@@ -314,6 +319,18 @@ export function nameFor(
   }
   const best = [...time].sort((x, y) => y[1] - x[1])[0];
   if (best && best[1] >= Math.min(600, (b - a) * 0.2)) return best[0];
+  // Two talking at once: the indicator flickers and nobody holds it long. The
+  // one who held it most is still a better guess than no name; failing that,
+  // whoever was speaking just before it began.
+  if (best && best[1] >= 150) return best[0];
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i]!;
+    if (entry.at > b) continue;
+    const ended = timeline[i + 1]?.at ?? b;
+    if (ended < a - RECENT_MS) break;
+    const name = entry.names.find((n) => n !== exclude);
+    if (name) return name;
+  }
   const others = (options.participants ?? []).filter((p) => p !== exclude);
   return others.length === 1 ? others[0]! : "";
 }

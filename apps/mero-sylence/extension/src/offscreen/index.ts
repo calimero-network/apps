@@ -6,10 +6,11 @@
  */
 import tapUrl from "../audio/tap.worklet.ts?worker&url";
 import { detectCaps } from "../lib/caps";
+import { EchoGate, isMicPhantom, voicedMs } from "../lib/echo";
 import type { OffscreenCommand, OffscreenEvent } from "../lib/messages";
 import { Resampler, rms } from "../lib/resample";
 import { Scheduler } from "../lib/scheduler";
-import { Segmenter } from "../lib/segmenter";
+import { Segmenter, type Chunk } from "../lib/segmenter";
 import { cleanTranscript } from "../lib/text";
 import { stepDown, type TierId } from "../lib/tiers";
 import type { FromWorker, ToWorker } from "../transcribe/protocol";
@@ -42,6 +43,11 @@ interface Recording {
   levels: Record<Speaker, number>;
   timers: number[];
   stopping: boolean;
+  /** The call's loudness, to tell it leaking into the mic from the user talking. */
+  echo: EchoGate;
+  /** How long each mic stretch sent to the model was clearly voiced, ms, by job id. */
+  voiced: Map<number, number>;
+  dropped: { echo: number; phantom: number };
 }
 
 let rec: Recording | null = null;
@@ -61,11 +67,25 @@ async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, aud
     if (!r) return;
     const block = resampler.push(e.data);
     r.levels[speaker] = Math.max(rms(block), r.levels[speaker] * 0.6);
+    if (speaker === "others") r.echo.pushReference(block);
     const seg = r.segmenters.get(speaker);
     if (!seg || r.stopping) return;
-    for (const chunk of seg.push(block)) r.scheduler.enqueue(chunk, speaker);
+    for (const chunk of seg.push(block)) enqueue(chunk, speaker);
     pump();
   };
+}
+
+/** Queues a stretch for the model, unless it is the call leaking into the mic. */
+function enqueue(chunk: Chunk, speaker: Speaker): void {
+  const r = rec;
+  if (!r) return;
+  if (speaker === "you" && r.echo.isEcho(chunk.audio, chunk.startMs)) {
+    r.dropped.echo++;
+    void emit({ type: "log", message: `mic ${chunk.startMs}-${chunk.endMs}ms follows the call: echo, skipped` });
+    return;
+  }
+  const job = r.scheduler.enqueue(chunk, speaker);
+  if (speaker === "you") r.voiced.set(job.id, voicedMs(chunk.audio));
 }
 
 async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promise<void> {
@@ -87,6 +107,9 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
     levels: { you: 0, others: 0 },
     timers: [],
     stopping: false,
+    echo: new EchoGate(),
+    voiced: new Map(),
+    dropped: { echo: 0, phantom: 0 },
   };
   await tap(ctx, tab, "others", true);
   if (c.mic) {
@@ -95,7 +118,8 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       rec.streams.push(mic);
-      rec.segmenters.set("you", new Segmenter());
+      // The mic starts a little after the tab: its times count from the recording's start.
+      rec.segmenters.set("you", new Segmenter({ offsetMs: Date.now() - rec.startedAt }));
       await tap(ctx, mic, "you", false);
     } catch {
       void emit({
@@ -175,7 +199,16 @@ function onWorker(m: FromWorker): void {
     }
     case "text": {
       const job = r?.scheduler.done(m.id, m.ms);
-      const text = cleanTranscript(m.text);
+      let text = cleanTranscript(m.text);
+      if (r && job?.speaker === "you") {
+        const voiced = r.voiced.get(job.id) ?? Infinity;
+        r.voiced.delete(job.id);
+        if (text && isMicPhantom(text, voiced)) {
+          r.dropped.phantom++;
+          void emit({ type: "log", message: `mic "${text}" with ${voiced}ms of voice: phantom, skipped` });
+          text = "";
+        }
+      }
       if (job && text) void emit({ type: "segment", speaker: job.speaker, startMs: job.startMs, endMs: job.endMs, text, startedAt: r?.startedAt });
       pump();
       return;
@@ -195,7 +228,7 @@ async function stop(): Promise<void> {
     return;
   }
   r.stopping = true;
-  for (const [speaker, seg] of r.segmenters) for (const chunk of seg.flush()) r.scheduler.enqueue(chunk, speaker);
+  for (const [speaker, seg] of r.segmenters) for (const chunk of seg.flush()) enqueue(chunk, speaker);
   for (const s of r.streams) for (const t of s.getTracks()) t.stop();
   // A model still loading transcribes what was captured once it is ready
   // (`ready` pumps the queue); only a model that cannot load at all ends empty.

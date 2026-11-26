@@ -83,7 +83,9 @@ export function platformName(value: string): string {
  * and "Others" for the call.
  */
 export function speakerLabel(speaker: string, recorderName: string, name = ""): string {
-  return name.trim() || (speaker === "you" ? recorderName : "Others");
+  // Early extension builds saved Meet's name twice ("Ana HorvatAna Horvat").
+  const n = name.replace(/\s+/g, " ").trim().replace(/^(.{2,}?)\s*\1$/u, "$1");
+  return n || (speaker === "you" ? recorderName : "Others");
 }
 
 /** The speakers in `segments`, in the order they first spoke, with their line counts. */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckSquare, Clock, FileText } from "@calimero-network/mero-icons";
 import type { MeetingView } from "./sylenceApi";
 import type { SearchHit, SearchResult } from "./generated/client";
-import { formatClock, formatDuration, formatWhen, highlightParts, platformName, queryWords, searchMeetings } from "./lib/transcript";
+import { formatClock, formatDuration, formatWhen, highlightParts, platformName, queryWords, searchMeetings, speakerLabel } from "./lib/transcript";
 import { PlatformMark } from "./PlatformMark";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
@@ -166,7 +166,7 @@ function TranscriptHits({
                     <span className="dot" aria-hidden="true" />
                     <span className="mono">{formatClock(h.startMs ?? 0)}</span>
                     <span className="dot" aria-hidden="true" />
-                    <span>{h.name?.trim() || (h.speaker === "you" ? "Recorder" : "Others")}</span>
+                    <span>{speakerLabel(h.speaker ?? "", "Recorder", h.name ?? "")}</span>
                   </span>
                 </span>
               </button>

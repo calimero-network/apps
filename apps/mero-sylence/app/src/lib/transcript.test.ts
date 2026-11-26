@@ -75,6 +75,7 @@ describe("formatting", () => {
     expect(speakerLabel("you", "Ana")).toBe("Ana");
     expect(speakerLabel("others", "Ana")).toBe("Others");
     expect(speakerLabel("others", "Ana", "Marko")).toBe("Marko");
+    expect(speakerLabel("others", "Ana", "Sandi FaticSandi Fatic")).toBe("Sandi Fatic");
     expect(speakerLabel("you", "Ana", " ")).toBe("Ana");
   });
   it("makes a file name from a title", () => {
