@@ -17,6 +17,7 @@ import {
 
 const seg = (seq: number, text: string, speaker = "others", startMs = seq * 3_000): SegmentView => ({
   seq,
+  name: "",
   startMs,
   endMs: startMs + 2_500,
   speaker,

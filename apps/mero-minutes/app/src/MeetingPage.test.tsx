@@ -8,6 +8,7 @@ afterEach(cleanup);
 
 const seg = (seq: number, text: string, speaker = "others"): SegmentView => ({
   seq,
+  name: "",
   startMs: seq * 65_000,
   endMs: seq * 65_000 + 2_500,
   speaker,

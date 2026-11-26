@@ -62,8 +62,8 @@ describe("MeetingsList", () => {
   it("searches the transcripts too and opens a meeting at the matching line", async () => {
     const result: SearchResult = {
       hits: [
-        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: null, startMs: null, speaker: null, text: null },
-        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: 4, startMs: 65_000, speaker: "others", text: "The pricing page ships Friday" },
+        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: null, startMs: null, speaker: null, name: null, text: null },
+        { meetingId: "b2", title: "Weekly sync", platform: "meet", startedAt: "1700000000000", seq: 4, startMs: 65_000, speaker: "others", name: null, text: "The pricing page ships Friday" },
       ],
       more: false,
     };
