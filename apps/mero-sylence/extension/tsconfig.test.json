@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": [
+      "node",
+      "vite/client",
+      "chrome"
+    ]
+  },
+  "include": [
+    "src"
+  ]
+}

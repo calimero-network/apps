@@ -59,6 +59,7 @@ CONVERTED = {
     "mero-issue-tracker",
     "mero-docs",
     "mero-forms",
+    "mero-sylence",
     "mero-forum",
     "mero-pass",
     "mero-pixart",

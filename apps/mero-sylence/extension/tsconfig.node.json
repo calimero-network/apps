@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/node",
+    "tsBuildInfoFile": "./dist-types/node.tsbuildinfo",
+    "types": [
+      "node",
+      "chrome"
+    ]
+  },
+  "include": [
+    "vite.config.ts",
+    "vite.background.config.ts",
+    "vite.content.config.ts",
+    "src/manifest.ts",
+    "scripts/*.mjs",
+    "playwright.config.ts"
+  ]
+}

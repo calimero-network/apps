@@ -1,0 +1,168 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AcceptInviteDialog } from "@calimero-network/mero-react";
+import { SignInPanel as SharedSignInPanel, useAskedInvite, usePendingInvite } from "@calimero-apps/passkey";
+import "@calimero-apps/passkey/passkey.css";
+
+import { inviteWorkspace, invites } from "./lib/orgs";
+import { setActive } from "./lib/workspaceStore";
+import { LISTING, PRODUCT, takeJoinedAtSignUp } from "./session";
+import { useMaybeSignedIn, useSessionApi } from "./sessionContext";
+
+/** Opens and closes a `<dialog>` as `open` says. */
+function useDialog(ref: React.RefObject<HTMLDialogElement | null>, open: boolean) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) {
+      // jsdom has no showModal.
+      if (typeof el.showModal === "function") el.showModal();
+      else el.setAttribute("open", "");
+    } else if (!open && el.open) {
+      if (typeof el.close === "function") el.close();
+      else el.removeAttribute("open");
+    }
+  }, [ref, open]);
+}
+
+/**
+ * The shared sign-in body (`@calimero-apps/passkey`): the sign-in popup and
+ * the invitation page both render it, so the copy and the passkey flow
+ * (create your account and join, join with a passkey, the two-prompt
+ * sign-up) are the same wherever a visitor starts.
+ */
+export function SignInPanel({ titleId }: { titleId: string }) {
+  const { api } = useSessionApi();
+  return (
+    <SharedSignInPanel
+      api={api}
+      appName={PRODUCT}
+      joining="the workspace"
+      invited={invites.token() !== null}
+      listing={LISTING}
+      titleId={titleId}
+      classNames={{ text: "empty", error: "err" }}
+    />
+  );
+}
+
+/** Sign in with a passkey, or create an account with a new one. */
+export function SignInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { api } = useSessionApi();
+  const ref = useRef<HTMLDialogElement | null>(null);
+  useDialog(ref, open);
+
+  useEffect(() => {
+    if (open && api.session.status === "signed-in") onClose();
+  }, [open, api.session.status, onClose]);
+
+  return (
+    <dialog ref={ref} className="dialog" onClose={onClose} data-testid="signin-modal" aria-labelledby="signin-title">
+      <div className="dialog-body">
+        <SignInPanel titleId="signin-title" />
+        <button type="button" className="ghost" onClick={onClose} disabled={api.busy}>
+          Close
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+const ACCEPT_LABELS = {
+  title: "Join this workspace",
+  body: "You were invited to a workspace in Sylence. Join it to read its meetings and action items.",
+  join: "Join the workspace",
+};
+
+/**
+ * The invitation screens, wrapped around the app because a link can land on
+ * any page. `main.tsx` took `?invite=` into storage before React mounted, so
+ * the token survives a sign-up. While it is pending the visitor sees a page
+ * about the invitation instead of the app (the address, and the app's hash
+ * route, is left alone, so a deep link opens where it pointed afterwards):
+ *
+ *  - signed out: "You're invited", with the same passkey sign-in and sign-up
+ *    as the landing page's popup. "Not now" shows the landing page and keeps
+ *    the token, so signing in later still asks.
+ *  - signed in: the shared join dialog (`AcceptInviteDialog`, through the node's
+ *    consent page) straight away. It asks rather than joins: joining puts you
+ *    in someone's organization.
+ *
+ * Redeeming spends one of the invite's uses even for someone already in the
+ * org, so the dialog checks a link that names its org first, and a member is
+ * told so instead of being asked.
+ */
+export function InvitationHost({ onJoined, children }: { onJoined: () => void; children: ReactNode }) {
+  const { api } = useSessionApi();
+  const signedIn = useMaybeSignedIn();
+  const pending = usePendingInvite(invites);
+  // The invite the dialog asks about stays held until it closes, though the store drops it first.
+  const { invite: asked, close } = useAskedInvite(invites, signedIn !== null);
+  const invite = asked ?? pending;
+  const [deferred, setDeferred] = useState(false);
+
+  const client = signedIn?.client ?? null;
+  // Signed up from a page holding the invite: already joined, and the
+  // session opened the workspace the link named.
+  useEffect(() => {
+    const joined = client ? takeJoinedAtSignUp() : null;
+    if (!joined) return;
+    if (joined.workspace) setActive(joined.workspace);
+    onJoined();
+  }, [client, onJoined]);
+
+  if (!invite) return <>{children}</>;
+  if (api.session.status === "connecting") return <>{children}</>;
+
+  if (!signedIn) {
+    if (deferred) return <>{children}</>;
+    return (
+      <main className="invitation-page">
+        <section className="dialog dialog-body" aria-labelledby="invite-signin-title" data-testid="invitation-page">
+          <SignInPanel titleId="invite-signin-title" />
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setDeferred(true)}
+            disabled={api.busy}
+            data-testid="invitation-later"
+          >
+            Not now
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  const open = (org: string | null) => {
+    const workspace = inviteWorkspace(invite);
+    if (workspace) setActive({ appId: workspace, org });
+    onJoined();
+  };
+
+  return (
+    <>
+      {children}
+      <AcceptInviteDialog
+        key={invite.token}
+        open
+        client={signedIn.client}
+        passkey={signedIn.passkey()}
+        token={invite.token}
+        org={invite.org ?? undefined}
+        appName={PRODUCT}
+        labels={ACCEPT_LABELS}
+        onError={() => invites.drop()}
+        onClose={() => {
+          invites.drop();
+          close();
+        }}
+        onJoined={({ org }) => {
+          invites.drop();
+          signedIn.after();
+          close();
+          open(org ?? invite.org);
+        }}
+      />
+    </>
+  );
+}

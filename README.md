@@ -1,6 +1,6 @@
 # Mero Apps
 
-**Twenty-seven real apps on [Calimero](https://github.com/calimero-network/core), built so the host
+**Twenty-eight real apps on [Calimero](https://github.com/calimero-network/core), built so the host
 can't read them.**
 
 Calimero is your app's whole backend, like Firebase. Except nobody can read your data, not even us.
@@ -62,7 +62,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Twenty-seven apps, each `apps/<name>/{logic,app}`, every one a component app (Calimero 1.0). **Package** is the registry id; the linked name is the
+Twenty-eight apps, each `apps/<name>/{logic,app}`, every one a component app (Calimero 1.0). **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -95,6 +95,7 @@ Start here. These exist to be read, not shipped.
 | [mero-standup](apps/mero-standup) | — | Async standups and a decision log for a small team: each member's own update per day (started from yesterday's), help on blockers, a weekly digest, and tagged write-once decisions superseded rather than edited. A component app (Calimero 1.0) on `calimero-sdk`: v1's storage-tier write rules as method checks, tables with indexes and counts; frontend on mero-js `CalimeroClient`. | `com.calimero.mero-standup` |
 | [mero-forms](apps/mero-forms) | — | A component app (Calimero 1.0): forms with typed questions the contract checks, responses with a summary and CSV, filled in by hand, through a public link or by a website's API key that can answer one form; any response goes on to [Mero CRM](apps/mero-crm) as a contact and a deal. | `com.calimero.mero-forms` |
 | [mero-tag](apps/mero-tag) | — | Live location sharing for an organization, a native iOS app (SwiftUI + MapKit) on the Swift SDK: trackers, sharing, groups and geofences in a component app (Calimero 1.0); `app/` is only the sign-in, approval and consent page the cluster serves for it. | `com.calimero.mero-tag` |
+| [Sylence](apps/mero-sylence) | — | Sylence: a browser extension records a Google Meet, Zoom or Teams call, turns speech into text on the laptop (Whisper large-v3-turbo on WebGPU, a small model on any CPU) and saves the transcript and action items to a workspace; the audio never leaves the laptop. A component app (Calimero 1.0) on `calimero-sdk`; the served page signs the extension in. | `com.calimero.sylence` |
 
 ### Secrets, documents & governance
 

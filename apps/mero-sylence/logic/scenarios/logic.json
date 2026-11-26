@@ -1,0 +1,31 @@
+[
+  { "as": "bob", "op": "view", "method": "myAccount", "args": {}, "expect": { "ok": "@bob" } },
+  { "as": "bob", "op": "call", "method": "startMeeting",
+    "args": { "title": "Weekly sync", "platform": "meet", "url": "https://meet.google.com/abc-defg-hij", "model": "whisper-large-v3-turbo", "language": "en" },
+    "save": "meeting" },
+  { "as": "bob", "op": "call", "method": "appendSegments",
+    "args": { "meetingId": "$meeting", "segments": [
+      { "seq": 0, "startMs": 0, "endMs": 2400, "speaker": "you", "text": "Morning all" },
+      { "seq": 1, "startMs": 2600, "endMs": 5100, "speaker": "others", "text": "Cy will send the deck by Friday" } ] },
+    "expect": { "ok": { "added": 2, "skipped": 0, "nextSeq": 2 } } },
+  { "as": "bob", "op": "call", "method": "appendSegments",
+    "args": { "meetingId": "$meeting", "segments": [
+      { "seq": 1, "startMs": 2600, "endMs": 5100, "speaker": "others", "text": "Cy will send the deck by Friday" } ] },
+    "expect": { "ok": { "added": 0, "skipped": 1, "nextSeq": 2 } } },
+  { "as": "cy", "op": "call", "method": "appendSegments",
+    "args": { "meetingId": "$meeting", "segments": [] },
+    "expect": { "error": "Forbidden" } },
+  { "as": "cy", "op": "view", "method": "transcript",
+    "args": { "meetingId": "$meeting", "fromSeq": 1, "limit": 10 },
+    "expect": { "ok": { "segments": [ { "seq": 1, "startMs": 2600, "endMs": 5100, "speaker": "others", "name": "", "text": "Cy will send the deck by Friday", "edited": false } ], "next": null } } },
+  { "as": "cy", "op": "call", "method": "addAction",
+    "args": { "meetingId": "$meeting", "text": "Send the deck", "assignee": "Cy", "sourceSeq": 1 },
+    "save": "action" },
+  { "as": "bob", "op": "call", "method": "setActionDone",
+    "args": { "actionId": "$action", "done": true } },
+  { "as": "cy", "op": "view", "method": "openActions", "args": {}, "expect": { "ok": [] } },
+  { "as": "bob", "op": "call", "method": "endMeeting", "args": { "meetingId": "$meeting", "durationMs": 5100 } },
+  { "as": "bob", "op": "call", "method": "deleteMeeting", "args": { "meetingId": "$meeting" },
+    "expect": { "ok": { "remaining": 0 } } },
+  { "as": "bob", "op": "view", "method": "listMeetings", "args": {}, "expect": { "ok": [] } }
+]
