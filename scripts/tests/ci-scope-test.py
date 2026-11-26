@@ -47,8 +47,8 @@ def workspace(tmp: pathlib.Path) -> pathlib.Path:
     pj("apps/mero-pass/app", {"name": "mero-pass",
                               "devDependencies": {"@calimero-apps/join-sync": "workspace:*"}})
     pj("apps/mero-chat/app", {"name": "mero-chat", "dependencies": {"react": "catalog:"}})
-    pj("apps/mero-minutes/app", {"name": "mero-minutes"})
-    pj("apps/mero-minutes/extension", {"name": "mero-minutes-extension",
+    pj("apps/mero-sylence/app", {"name": "mero-sylence"})
+    pj("apps/mero-sylence/extension", {"name": "mero-sylence-extension",
                                        "devDependencies": {"@calimero-apps/invite": "workspace:*"}})
     return tmp
 
@@ -78,19 +78,19 @@ with tempfile.TemporaryDirectory() as t:
           {"app_paths": ["apps/mero-docs/"], "frontend_dirs": []})
 
     print("── a browser extension is a frontend member, not an app build")
-    check("an extension file", s("apps/mero-minutes/extension/src/popup.tsx"),
-          {"app_paths": [], "frontend_dirs": ["apps/mero-minutes/extension"]})
-    check("a contract change reaches the app and the extension's client", s("apps/mero-minutes/logic/res/abi.json"),
-          {"app_paths": ["apps/mero-minutes/"],
-           "frontend_dirs": ["apps/mero-minutes/app", "apps/mero-minutes/extension"]})
-    check("an extension README", s("apps/mero-minutes/extension/README.md"), none)
+    check("an extension file", s("apps/mero-sylence/extension/src/popup.tsx"),
+          {"app_paths": [], "frontend_dirs": ["apps/mero-sylence/extension"]})
+    check("a contract change reaches the app and the extension's client", s("apps/mero-sylence/logic/res/abi.json"),
+          {"app_paths": ["apps/mero-sylence/"],
+           "frontend_dirs": ["apps/mero-sylence/app", "apps/mero-sylence/extension"]})
+    check("an extension README", s("apps/mero-sylence/extension/README.md"), none)
 
     print("── shared packages reach their dependents, transitively")
     check("invite → forum and the extension that tests with it", s("packages/invite/src/index.ts"),
           {"app_paths": ["apps/mero-forum/"],
-           "frontend_dirs": ["apps/mero-forum/app", "apps/mero-minutes/extension", "packages/invite"]})
+           "frontend_dirs": ["apps/mero-forum/app", "apps/mero-sylence/extension", "packages/invite"]})
     check("join-sync → invite → forum, and pass via devDependencies", s("packages/join-sync/src/a.ts"),
-          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "frontend_dirs": ["apps/mero-forum/app", "apps/mero-minutes/extension",
+          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "frontend_dirs": ["apps/mero-forum/app", "apps/mero-sylence/extension",
                              "apps/mero-pass/app", "packages/invite", "packages/join-sync"]})
     check("an app that imports no package is not reached", "apps/mero-chat/" in s("packages/invite/x.ts")["app_paths"], False)
 
