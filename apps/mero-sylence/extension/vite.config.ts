@@ -25,7 +25,7 @@ function extension(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "manifest.json",
-        source: `${JSON.stringify(buildManifest({ key, version: pkg.version, store: process.env.SYLENCE_STORE === "1" }), null, 2)}\n`,
+        source: `${JSON.stringify(buildManifest({ key, version: pkg.version, store: process.env.SYLENCE_STORE === "1", e2e: process.env.SYLENCE_E2E === "1" }), null, 2)}\n`,
       });
     },
   };

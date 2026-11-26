@@ -39,6 +39,18 @@ What covers the rest:
 
 Note: the reader tests use page snapshots written by hand. Meet, Zoom and Teams change their page code without notice. When a live call stops naming people, save that page's markup (DevTools → Elements → Copy outerHTML of the call area) as a new case in `src/content/speakers.test.ts`, then fix the reader.
 
+## Fake call (watch it)
+
+```bash
+apps/mero-sylence/fake-call.sh            # Meet; or: meet-captions | zoom | teams | all
+```
+
+- **The call:** four macOS voices (Ana, Marko, Sandi, and "you" on the mic, with the call leaking into it) talk through a short launch meeting. Each platform gets a stand-in page that shows who is talking the way that platform does.
+- **What records it:** the real extension, with its own speech model, speaker reader, service worker and second pass, saving to the local node.
+- **What you see:** the call in one window and Sylence's live transcript in another. After Stop, the saved meeting opens on the Sylence page, where you sign in with the passkey already in that browser.
+- **Reports:** each run writes `extension/e2e/.fake-call/report-<platform>.md` listing every saved line, who said it and who Sylence named.
+- **`all`:** runs every platform without windows and checks that most lines are heard, named right, and that the echo isn't saved as "you".
+
 ## 2. Manual, on real calls
 
 ### Setup

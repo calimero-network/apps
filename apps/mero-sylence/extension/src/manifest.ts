@@ -18,7 +18,14 @@ export const ICON_SIZES = [16, 32, 48, 128] as const;
 /** Hosts for a local development cluster: only in a development build (`store: false`). */
 export const DEV_HOSTS = ["http://localhost/*", "http://127.0.0.1/*"];
 
-export function buildManifest(options: { key: string; version: string; store?: boolean }): chrome.runtime.ManifestV3 {
+/**
+ * The call sites, as hosts: only in the fake-call test build (`e2e: true`,
+ * `pnpm e2e:call`), where automation can't click the toolbar to give the
+ * speaker reader its activeTab grant. Never in a store build.
+ */
+export const CALL_HOSTS = ["https://meet.google.com/*", "https://*.zoom.us/*", "https://teams.microsoft.com/*", "https://teams.live.com/*"];
+
+export function buildManifest(options: { key: string; version: string; store?: boolean; e2e?: boolean }): chrome.runtime.ManifestV3 {
   const icons = Object.fromEntries(ICON_SIZES.map((s) => [String(s), `icons/icon-${s}.png`]));
   return {
     manifest_version: 3,
@@ -34,7 +41,11 @@ export function buildManifest(options: { key: string; version: string; store?: b
     background: { service_worker: "background.js", type: "module" },
     side_panel: { default_path: "sidepanel.html" },
     permissions: ["tabCapture", "offscreen", "activeTab", "tabs", "storage", "sidePanel", "scripting"],
-    host_permissions: ["https://*.calimero.network/*", ...(options.store ? [] : DEV_HOSTS)],
+    host_permissions: [
+      "https://*.calimero.network/*",
+      ...(options.store ? [] : DEV_HOSTS),
+      ...(options.e2e && !options.store ? CALL_HOSTS : []),
+    ],
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

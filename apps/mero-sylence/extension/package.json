@@ -13,7 +13,9 @@
     "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-sylence -o src/generated",
     "zip": "node scripts/zip.mjs",
     "build:store": "SYLENCE_STORE=1 pnpm build && node scripts/zip.mjs",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:call": "SYLENCE_E2E=1 pnpm build && SYLENCE_FAKE_CALL=1 playwright test fake-call; pnpm build",
+    "e2e:call:watch": "SYLENCE_E2E=1 pnpm build && SYLENCE_FAKE_CALL=1 SYLENCE_CALL_WATCH=1 SYLENCE_CALL_PLATFORMS=${SYLENCE_CALL_PLATFORMS:-meet} playwright test fake-call --timeout=0; pnpm build"
   },
   "dependencies": {
     "@calimero-network/mero-js": "catalog:component",

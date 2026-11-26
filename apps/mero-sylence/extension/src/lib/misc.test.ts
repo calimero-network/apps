@@ -162,6 +162,12 @@ describe("manifest", () => {
     expect(m.background).toEqual({ service_worker: "background.js", type: "module" });
   });
 
+  it("adds the call sites only to the fake-call test build, never to the store build", () => {
+    expect(buildManifest({ key, version: "0.1.0" }).host_permissions).not.toContain("https://meet.google.com/*");
+    expect(buildManifest({ key, version: "0.1.0", e2e: true }).host_permissions).toContain("https://meet.google.com/*");
+    expect(buildManifest({ key, version: "0.1.0", e2e: true, store: true }).host_permissions).toEqual(["https://*.calimero.network/*"]);
+  });
+
   it("leaves the development hosts out of the store build", () => {
     const m = buildManifest({ key, version: "0.1.0", store: true });
     expect(m.host_permissions).toEqual(["https://*.calimero.network/*"]);
