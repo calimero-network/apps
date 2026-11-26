@@ -11,6 +11,7 @@ Chrome and Brave (and other Chromium browsers, 116+) run the same build.
 extension/
 ├── src/background/     the service worker: sign-in, start/stop, the upload queue
 ├── src/offscreen/      captures the tab + microphone, cuts speech, drives the model
+├── src/content/        the speaker reader, run in the recorded call tab (speaker names)
 ├── src/transcribe/     the speech worker (transformers.js + the bundled ONNX runtime)
 ├── src/audio/          the AudioWorklet tap (mono blocks off the audio thread)
 ├── src/lib/            pure logic, unit-tested: handoff, tiers, segmenter, queue, …
@@ -42,15 +43,42 @@ model sheet says why Whisper large-v3 turbo is unavailable.
 ## Using it
 
 1. Click the Sylence button → **Sign in with Calimero**. A window opens on
-   Sylence' page on Calimero Cloud; sign in there with your passkey. The
+   Sylence's page on Calimero Cloud; sign in there with your passkey. The
    window closes and the extension is signed in.
 2. Choose a workspace (or create one on the page).
 3. Join your call, click Sylence → **Record meeting**. The call stays audible.
-   Your microphone is transcribed as **You**, the call as **Others**
-   (allow the microphone once when asked).
+   Your microphone is transcribed as **You**, the call under the name of
+   whoever was talking (allow the microphone once when asked).
 4. **Live transcript** opens the side panel. **Stop** finishes the last lines,
    saves the meeting and links to it on the page, where the team reads it and
    adds action items.
+
+## Speaker names
+
+On Record, the service worker injects `speakers.js` (`src/content/speakers.ts`)
+into the recorded tab only, through the popup's `activeTab` grant and the
+`scripting` permission, so there is no host permission for the call sites. It
+reads who is talking a few times a second (`src/lib/speakers.ts`), in order:
+
+1. captions, when they are on (Meet, Teams): the caption that is growing names its speaker;
+2. the platform's speaking marker on a tile (Zoom's active frame, Teams' voice-level outline);
+3. Meet's tiles: the tile whose audio bars animate (a burst of class changes).
+
+The service worker keeps the changes as a timeline and names each line after
+whoever talked for most of it; your microphone gets your name from the call
+page when it shows it. A call with one other person names that person even
+when the page shows nothing. Lines nobody can be named for stay **Others**.
+Settings → **Speaker names** turns it off. Call pages change their markup
+without notice: when names stop appearing, Settings → Advanced → Copy
+diagnostics shows which reader matched (`speakers:` lines), and the selectors
+live in `src/lib/speakers.ts` (tested against page fixtures in
+`speakers.test.ts`).
+
+## Store build
+
+```bash
+pnpm -F mero-sylence-extension build:store   # no localhost hosts, zipped without the dev key
+```
 
 ## Speech models
 

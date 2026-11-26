@@ -90,8 +90,8 @@ with tempfile.TemporaryDirectory() as t:
           {"app_paths": ["apps/mero-forum/"],
            "frontend_dirs": ["apps/mero-forum/app", "apps/mero-sylence/extension", "packages/invite"]})
     check("join-sync → invite → forum, and pass via devDependencies", s("packages/join-sync/src/a.ts"),
-          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "frontend_dirs": ["apps/mero-forum/app", "apps/mero-sylence/extension",
-                             "apps/mero-pass/app", "packages/invite", "packages/join-sync"]})
+          {"app_paths": ["apps/mero-forum/", "apps/mero-pass/"], "frontend_dirs": ["apps/mero-forum/app", "apps/mero-pass/app",
+                             "apps/mero-sylence/extension", "packages/invite", "packages/join-sync"]})
     check("an app that imports no package is not reached", "apps/mero-chat/" in s("packages/invite/x.ts")["app_paths"], False)
 
 # ════════════════════════════════════════════════════════════════════════════
