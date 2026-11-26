@@ -22,7 +22,7 @@ export const SESSION: CalimeroSession = {
 };
 export const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
 
-export const instance = (appId: string, name: string, org: string | null): AppInfo => ({
+export const instance = (appId: string, name: string, org: string): AppInfo => ({
   appId,
   name,
   owner: ME,
@@ -30,10 +30,11 @@ export const instance = (appId: string, name: string, org: string | null): AppIn
   bundle: 'bundle-hash',
   package: null,
   version: null,
+  deployment: null,
 });
 
 export const AGREEMENT = instance('agr-1', 'Series A', 'org-1');
-export const LIBRARY = instance('lib-1', LIBRARY_NAME, null);
+export const LIBRARY = instance('lib-1', LIBRARY_NAME, '');
 
 export const DETAILS = {
   contextId: 'agr-1',

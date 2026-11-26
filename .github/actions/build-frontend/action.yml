@@ -39,6 +39,15 @@ inputs:
       production directory. Required when the floor is derived.
     required: false
     default: ""
+  cloud-env:
+    description: >
+      VITE_CALIMERO_ENV for the build (scripts/frontend-target.sh's `cloud_env`):
+      the Calimero Cloud the frontend links to (console, deploy page, apps
+      domain, registry), asks and trusts. Empty for production: the build then
+      sets neither it nor VITE_CALIMERO_DIRECTORY, exactly as before. `staging`
+      also passes `directory` as VITE_CALIMERO_DIRECTORY.
+    required: false
+    default: ""
 
 outputs:
   dir:
@@ -104,6 +113,17 @@ runs:
         APP: ${{ inputs.app }}
         VITE_CALIMERO_MIN_RELEASE: ${{ steps.floor.outputs.min-release }}
         VITE_CALIMERO_CLUSTER: ${{ inputs.cluster }}
+        # Not VITE_-prefixed, so Vite never sees them unless exported below.
+        CLOUD_ENV: ${{ inputs.cloud-env }}
+        CLOUD_DIRECTORY: ${{ inputs.directory }}
       run: |
+        # Production sets no VITE_CALIMERO_ENV or VITE_CALIMERO_DIRECTORY at
+        # all (not even empty), so its build inputs are unchanged. Another
+        # Calimero Cloud gets both: links, directory and trust all follow it.
+        if [ -n "$CLOUD_ENV" ]; then
+          [ -n "$CLOUD_DIRECTORY" ] || { echo "::error::cloud-env $CLOUD_ENV needs its node directory (input directory)"; exit 1; }
+          export VITE_CALIMERO_ENV="$CLOUD_ENV" VITE_CALIMERO_DIRECTORY="$CLOUD_DIRECTORY"
+          echo "::notice::$APP's frontend is built for Calimero Cloud $CLOUD_ENV (VITE_CALIMERO_DIRECTORY=$CLOUD_DIRECTORY)"
+        fi
         pnpm install --frozen-lockfile
         pnpm -F "$APP" build

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { APPS_DOMAIN, appLabel, appUrl, sha256 } from "./appHost";
+import { appLabel, appUrl, sha256 } from "./appHost";
+import { CLOUD_LINKS } from "./cloud";
 
 describe("appLabel", () => {
   // Computed with mdma's `mdma_common.app_host.label` (Python hashlib + base64);
@@ -23,11 +24,23 @@ describe("appLabel", () => {
   });
 
   it("builds the node-served URL on the shared apps domain", () => {
-    expect(APPS_DOMAIN).toBe("apps.calimero.network");
+    expect(CLOUD_LINKS.production.appsDomain).toBe("apps.calimero.network");
     expect(appUrl("com.calimero.kv-store")).toBe(
       "https://2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq.apps.calimero.network/",
     );
     expect(appUrl("com.calimero.kv", ".Apps.Example.")).toBe(`https://${vectors["com.calimero.kv"]}.apps.example/`);
+  });
+
+  it("defaults to the apps domain of the Calimero Cloud the build names", () => {
+    vi.stubEnv("VITE_CALIMERO_ENV", "staging");
+    try {
+      expect(appUrl("com.calimero.kv-store")).toBe(
+        "https://2g7omgwwdshuse6hygzvhssf4w3ute5zc3vjlpor7zknkoyrwxdq.apps.relay.staging.cloud.calimero.network/",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(appUrl("com.calimero.kv-store")).toContain(".apps.calimero.network/");
   });
 });
 

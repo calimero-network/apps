@@ -8,10 +8,10 @@ import {
   type FrontendManifest,
   type CalimeroSession,
 } from "@calimero-network/mero-js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import {
-  CLOUD_CONSOLE,
+  CLOUD_LINKS,
   ConfigError,
   DEPLOY_NOT_GRANTED_MESSAGE,
   LOCAL_NODES,
@@ -226,6 +226,32 @@ describe("staging", () => {
     );
     expect(target).toMatchObject({ cluster: "staging-1", environment: "staging" });
     expect(policyFor(target).release?.allowDebugProfile).toBe(true);
+  });
+
+  it("sends a staging listing page to staging's console, never production's", async () => {
+    const nowhere = vi.fn(async () => new Response("{}", { status: 404 })) as unknown as typeof globalThis.fetch;
+    const production = await connectTarget(FLOOR, { servedNodes: async () => null }).catch((e: unknown) => e);
+    expect((production as NotServedError).console).toBe("https://cloud.calimero.network");
+    // The build's own environment (import.meta.env), which the app passes as `env` too.
+    vi.stubEnv("VITE_CALIMERO_ENV", "staging");
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    for (const failure of [
+      // No package to look up.
+      connectTarget({ ...FLOOR, VITE_CALIMERO_ENV: "staging" }, { servedNodes: async () => null, app: "kv-store" }),
+      // The staging directory runs it nowhere.
+      connectTarget(
+        { ...FLOOR, VITE_CALIMERO_ENV: "staging" },
+        { servedNodes: async () => null, app: "kv-store", package: "com.calimero.kv-store", fetch: nowhere },
+      ),
+    ]) {
+      const error = await failure.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NotServedError);
+      expect((error as NotServedError).console).toBe("https://staging.cloud.calimero.network");
+      expect((error as Error).message).toContain("open the app from Calimero Cloud: https://staging.cloud.calimero.network ");
+      expect((error as Error).message).not.toContain("https://cloud.calimero.network");
+    }
   });
 });
 
@@ -454,9 +480,9 @@ describe("connectTarget", () => {
     await expect(failure).rejects.toBeInstanceOf(NotServedError);
     await expect(failure).rejects.toBeInstanceOf(ConfigError);
     await expect(failure).rejects.toThrow(/kv-store's listing page; open the app from Calimero Cloud/);
-    await expect(failure).rejects.toThrow(CLOUD_CONSOLE);
+    await expect(failure).rejects.toThrow(CLOUD_LINKS.production.console);
     await expect(failure).rejects.toThrow(/VITE_CALIMERO_CLUSTER is not set/);
-    expect(CLOUD_CONSOLE).toBe("https://cloud.calimero.network");
+    expect(CLOUD_LINKS.production.console).toBe("https://cloud.calimero.network");
   });
 
   it("keeps every other path as resolveTarget and withServedNodes had it", async () => {
@@ -544,7 +570,7 @@ describe("connectTarget, by package", () => {
     const failure = connectTarget(FLOOR, { servedNodes: notServed, package: PKG, app: "kv-store", fetch: answer({}, 404) });
     await expect(failure).rejects.toBeInstanceOf(NotServedError);
     await expect(failure).rejects.toThrow(/no Calimero Cloud cluster runs com\.calimero\.kv-store/);
-    await expect(failure).rejects.toThrow(CLOUD_CONSOLE);
+    await expect(failure).rejects.toThrow(CLOUD_LINKS.production.console);
   });
 
   it("does not look the package up without the attestation floor, and lets VITE_CALIMERO_CLUSTER override it", async () => {

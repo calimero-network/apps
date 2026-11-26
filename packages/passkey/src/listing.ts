@@ -2,12 +2,13 @@
  * The listing page: what a copy of an app no Calimero Cloud cluster serves
  * (a static host such as Vercel, built without `VITE_CALIMERO_CLUSTER`) shows
  * instead of signing in. A Cloud node signs people in only on the copy it
- * serves from the app's bundle, at `https://{label}.apps.calimero.network/`
- * (`appUrl`), so the page sends people there, and offers deploying the app on
- * Calimero Cloud. Framework-free: `renderListing` builds it into an element
+ * serves from the app's bundle, at `https://{label}.{apps domain}/` on the
+ * Calimero Cloud the build names (`VITE_CALIMERO_ENV`; `appUrl`), so the page
+ * sends people there, and offers deploying the app on that Cloud's console
+ * (`cloudLinks`). Framework-free: `renderListing` builds it into an element
  * for an app that is not React; `<AppListing>` is the React form.
  */
-import { CLOUD_DEPLOY, appUrl } from "@calimero-apps/connect";
+import { appUrl, cloudLinks } from "@calimero-apps/connect";
 
 export interface ListingProps {
   /** The app's display name ("KV Store"). */
@@ -23,7 +24,7 @@ export interface ListingProps {
   dev?: boolean;
   /** The app's directory under `apps/`, for the dev hint (default: `name`). */
   dir?: string;
-  /** Another apps domain than Calimero Cloud's. */
+  /** Another apps domain than the build's Calimero Cloud's ({@link cloudLinks}). */
   appsDomain?: string;
 }
 
@@ -49,7 +50,7 @@ export function listingCopy(props: ListingProps): ListingCopy {
     openUrl: appUrl(props.package, appsDomain),
     note: `This link works once ${name} runs on Calimero Cloud.`,
     deployLabel: "Deploy your own on Calimero Cloud",
-    deployUrl: CLOUD_DEPLOY,
+    deployUrl: cloudLinks().deploy,
     devCommand: dev ? `pnpm dev:local ${dir ?? name}` : null,
   };
 }

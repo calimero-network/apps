@@ -67,7 +67,7 @@ export function StorePicker({
       // Best effort: the store exists either way.
       if (org && selfName) await setOrgName(client, org, accountId, selfName).catch(() => {});
       const created = (await listStores(client, source)).find((a) => a.appId === appId);
-      onOpen(created ?? { appId, name, owner: "", org: org ?? null, bundle: "", package: null, version: null });
+      onOpen(created ?? { appId, name, owner: "", org: org ?? "", bundle: "", package: null, version: null, deployment: null });
     } catch (e) {
       setError(describeError(e));
     } finally {

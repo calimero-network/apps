@@ -17,6 +17,7 @@ import {
   type NodePolicy,
 } from "@calimero-network/mero-js";
 
+import { cloudLinks } from "./cloud";
 import type { KeyValueStorage } from "./client";
 
 /** Where the tab keeps the deployment its page was opened for ({@link pageOffer}). */
@@ -77,7 +78,10 @@ export type Target =
  * - `VITE_CALIMERO_ENV` `production` (default) | `staging`: which Calimero Cloud
  *   a build that is not served by a cluster (Vercel, a dev server) reaches;
  *   `staging` asks staging's directory and trusts its debug node images. A
- *   page a cluster serves reads it from its own hostname instead.
+ *   page a cluster serves reads it from its own hostname instead. It also
+ *   picks the console, deploy page, apps domain and registry every build links
+ *   to ({@link cloudLinks}), served or not; a staging bundle is built with it
+ *   (scripts/frontend-target.sh).
  */
 export interface ConnectEnv {
   DEV?: boolean;
@@ -127,24 +131,22 @@ function urls(list: string): string[] {
   return nodes;
 }
 
-/** Where Calimero Cloud's console is: where a person deploys and opens an app. */
-export const CLOUD_CONSOLE = "https://cloud.calimero.network";
-
 /**
  * A production build with no cluster, on a page no cluster serves: a static
  * copy of the app (its listing page), not the app. A Cloud node trusts passkey
  * ceremonies only from the frontends it serves, so the app is opened from the
- * console, at the cluster's own copy.
+ * console, at the cluster's own copy: the console of the Calimero Cloud the
+ * build names (`VITE_CALIMERO_ENV`, {@link cloudLinks}).
  */
 export class NotServedError extends ConfigError {
-  readonly console = CLOUD_CONSOLE;
-
   constructor(
     readonly app?: string,
     reason = "VITE_CALIMERO_CLUSTER is not set and no Calimero Cloud cluster serves this page",
+    /** Where to open the app: the build's Calimero Cloud console. */
+    readonly console: string = cloudLinks().console,
   ) {
     super(
-      `This is ${app ? `${app}'s` : "the app's"} listing page; open the app from Calimero Cloud: ${CLOUD_CONSOLE}` +
+      `This is ${app ? `${app}'s` : "the app's"} listing page; open the app from Calimero Cloud: ${console}` +
         ` (${reason})`,
     );
     this.name = "NotServedError";

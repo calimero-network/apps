@@ -280,8 +280,8 @@ catalog:
 # depends on mero-js 1.0.0-rc.32 exactly.
 catalogs:
   component:
-    "@calimero-network/mero-js": 1.0.0-rc.37
-    "@calimero-network/mero-react": 1.0.0-rc.37
+    "@calimero-network/mero-js": 1.0.0-rc.38
+    "@calimero-network/mero-react": 1.0.0-rc.38
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.

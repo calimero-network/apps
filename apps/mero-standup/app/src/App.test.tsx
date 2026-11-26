@@ -197,7 +197,7 @@ function fakeClient(apps: AppInfo[] = []) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: team.call,
@@ -228,7 +228,7 @@ describe("App", () => {
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-standup")`.
     expect(open.getAttribute("href")).toBe("https://qhccatngyvytjdczbj4ffuikquvmcffnf7kwju6uyr3cmp652uxa.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });
@@ -271,7 +271,7 @@ describe("App", () => {
 
   it("restores the session and the team opened last time, and invites into the team's org", async () => {
     const { client, team } = fakeClient([
-      { appId: "app-1", name: "Infra", owner: "acct-alice", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Infra", owner: "acct-alice", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     team.state.teamName = "Infra";
     team.state.names["acct-alice"] = "Alice";
@@ -303,7 +303,7 @@ describe("App", () => {
 
   it("closes a team that no longer admits the account, back to the picker", async () => {
     const { client } = fakeClient([
-      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     client.events = vi.fn(() => ({
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new NotFound("not found")) }),
@@ -319,7 +319,7 @@ describe("App", () => {
 
   it("never asks in a team whose org has your name, and feeds it to the team's contract", async () => {
     const { client, team, orgs } = fakeClient([
-      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     orgs["org-9"] = { "acct-alice": { name: "Alice" } };
     const storage = new Memory();
@@ -333,7 +333,7 @@ describe("App", () => {
 
   it("asks once in a team whose org has no name for you, and saves it on the org", async () => {
     const { client, team, orgs } = fakeClient([
-      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Infra", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
@@ -456,8 +456,8 @@ describe("App", () => {
   describe("invitations land in the invited org", () => {
     /** Two shared teams in two orgs: the one opened last, and the one an invite is for. */
     const TWO_ORGS: AppInfo[] = [
-      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ];
     const selected = (storage: KeyValueStorage) =>
       (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;

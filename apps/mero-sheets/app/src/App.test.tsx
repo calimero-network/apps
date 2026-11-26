@@ -141,6 +141,7 @@ const BUDGET: AppInfo = {
   bundle: 'bundle-hash',
   package: null,
   version: null,
+  deployment: null,
 };
 
 /** What the workbook's views answer: v1's shapes, 64-bit integers as strings. */
@@ -193,7 +194,7 @@ function fakeClient(
     }),
     setCapabilities: vi.fn(async () => undefined),
     createApp: vi.fn(async (name: string, _source: unknown, opts: { org?: string }) => {
-      apps = [...apps, { ...BUDGET, appId: 'sheet-new', name, org: opts.org ?? null }];
+      apps = [...apps, { ...BUDGET, appId: 'sheet-new', name, org: opts.org ?? '' }];
       return 'sheet-new';
     }),
     call: vi.fn(async (_app: string, method: string) => ({ index: 1, result: method === 'createSheet' ? 'sheet-a' : null, events: [] })),
@@ -284,6 +285,7 @@ describe('App', () => {
       bundle: 'blocks-bundle',
       package: 'com.calimero.mero-blocks',
       version: null,
+      deployment: null,
     };
 
     it('is not the workspace: none is shown and creating makes a new org', async () => {

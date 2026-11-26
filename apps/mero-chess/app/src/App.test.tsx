@@ -133,7 +133,7 @@ function fakeClient(apps: AppInfo[] = [], view: WireTableView = tableView()) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: vi.fn(async (_app: string, _method: string, _args?: unknown) => ({ index: 2, result: null as unknown, events: [] })),
@@ -161,7 +161,7 @@ function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { 
 }
 
 /** A table in someone else's organization, out of reach until joined. */
-const THEIRS: AppInfo = { appId: "app-9", name: "Their table", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null };
+const THEIRS: AppInfo = { appId: "app-9", name: "Their table", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null };
 
 function at(path: string) {
   window.history.replaceState(null, "", path);
@@ -182,7 +182,7 @@ describe("App", () => {
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-chess")`.
     expect(open.getAttribute("href")).toBe("https://3ivxhznpoikah6ubhlzsco4mvjdbfckcjcotgzps3fokcpjpynjq.apps.calimero.network/");
     expect(screen.getByRole("link", { name: "Deploy your own on Calimero Cloud" }).getAttribute("href")).toBe(
-      "https://cloud.calimero.network/v2",
+      "https://cloud.calimero.network/deploy",
     );
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });

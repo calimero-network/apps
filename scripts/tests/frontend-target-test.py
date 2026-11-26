@@ -74,17 +74,17 @@ REPO = {"OUTSIDE_CLUSTER": "", "OUTSIDE_DIRECTORY": "", "OUTSIDE_MIN_RELEASE": "
 print("production (no environment): today's values")
 resolves(
     "repository floor, no cluster",
-    {"cluster": "", "floor_cluster": "eu-shared-1", "directory": PROD_DIRECTORY, "min_release": "2.3.137"},
+    {"cluster": "", "floor_cluster": "eu-shared-1", "directory": PROD_DIRECTORY, "min_release": "2.3.137", "cloud_env": ""},
     ENVIRONMENT="", CLUSTER="", DIRECTORY="", MIN_RELEASE="2.3.137", **REPO,
 )
 resolves(
     "repository cluster set",
-    {"cluster": "eu-shared-2", "floor_cluster": "eu-shared-2", "directory": PROD_DIRECTORY, "min_release": ""},
+    {"cluster": "eu-shared-2", "floor_cluster": "eu-shared-2", "directory": PROD_DIRECTORY, "min_release": "", "cloud_env": ""},
     ENVIRONMENT="", CLUSTER="eu-shared-2", OUTSIDE_CLUSTER="eu-shared-2",
 )
 resolves(
     "a CALIMERO_DIRECTORY variable does not move production",
-    {"cluster": "", "floor_cluster": "eu-shared-1", "directory": PROD_DIRECTORY, "min_release": ""},
+    {"cluster": "", "floor_cluster": "eu-shared-1", "directory": PROD_DIRECTORY, "min_release": "", "cloud_env": ""},
     ENVIRONMENT="", DIRECTORY=STAGING_DIRECTORY, OUTSIDE_DIRECTORY=STAGING_DIRECTORY,
 )
 refuses("production floor not X.Y.Z", "not X.Y.Z", ENVIRONMENT="", MIN_RELEASE="latest")
@@ -93,22 +93,22 @@ print("staging environment: its own variables")
 STAGING = dict(ENVIRONMENT="staging", CLUSTER="staging-shared-2", DIRECTORY=STAGING_DIRECTORY, **REPO)
 resolves(
     "own cluster and directory; repository floor not inherited",
-    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": ""},
+    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": "", "cloud_env": "staging"},
     **{**STAGING, "MIN_RELEASE": "2.3.137"},
 )
 resolves(
     "own floor",
-    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": "2.3.140"},
+    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": "2.3.140", "cloud_env": "staging"},
     **{**STAGING, "MIN_RELEASE": "2.3.140"},
 )
 resolves(
     "no floor: derived later",
-    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": ""},
+    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": "", "cloud_env": "staging"},
     **{**STAGING, "MIN_RELEASE": "", "OUTSIDE_MIN_RELEASE": ""},
 )
 resolves(
     "trailing slash on the directory is dropped",
-    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": ""},
+    {"cluster": "staging-shared-2", "floor_cluster": "staging-shared-2", "directory": STAGING_DIRECTORY, "min_release": "", "cloud_env": "staging"},
     **{**STAGING, "DIRECTORY": STAGING_DIRECTORY + "/"},
 )
 
@@ -131,6 +131,10 @@ refuses(
 refuses("directory not https", "not an https URL", **{**STAGING, "DIRECTORY": "http://manager.staging.cloud.calimero.network/api/directory"})
 refuses("cluster not a name", "not a cluster name", **{**STAGING, "CLUSTER": "Staging Shared"})
 refuses("own floor not X.Y.Z", "not X.Y.Z", **{**STAGING, "MIN_RELEASE": "2.3"})
+
+print("an environment that names no Calimero Cloud fails closed")
+# Its frontend would get no VITE_CALIMERO_ENV, and link to and trust production.
+refuses("unknown environment", "names no Calimero Cloud", **{**STAGING, "ENVIRONMENT": "preview"})
 
 if FAILURES:
     print(f"\n{len(FAILURES)} failure(s)")

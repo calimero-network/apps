@@ -73,6 +73,7 @@ const LOBBY: AppInfo = {
   bundle: 'bundle-hash',
   package: null,
   version: null,
+  deployment: null,
 };
 
 const STATE = {
@@ -200,7 +201,7 @@ describe('App', () => {
     // The node-served copy: mdma's `app_host.app_url('com.calimero.battleships')`.
     expect(open.getAttribute('href')).toBe('https://3dcycf7rhh63uk7zb4bsaic6omvmcxbjuvihojnbfnsfqdaocjfa.apps.calimero.network/');
     expect(screen.getByRole('link', { name: 'Deploy your own on Calimero Cloud' }).getAttribute('href')).toBe(
-      'https://cloud.calimero.network/v2',
+      'https://cloud.calimero.network/deploy',
     );
     expect(screen.queryByText(/VITE_CALIMERO_CLUSTER/)).toBeNull();
   });

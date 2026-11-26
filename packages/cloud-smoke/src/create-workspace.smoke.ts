@@ -19,7 +19,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
-import { appUrl } from "@calimero-apps/connect";
+import { CLOUD_LINKS, appUrl } from "@calimero-apps/connect";
 import { copyPasskey, serveLocally, virtualAuthenticator } from "./smoke-kit";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -297,7 +297,7 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
     page.on("pageerror", (e) => consoleLines.push(`pageerror: ${e.message}`));
     page.on("requestfailed", (r) => consoleLines.push(`request failed: ${r.url()} ${r.failure()?.errorText}`));
 
-    const origin = new URL(appUrl(app.package)).origin;
+    const origin = new URL(appUrl(app.package, CLOUD_LINKS.production.appsDomain)).origin;
     const manifest = (await (await page.request.get(`${origin}/.well-known/calimero.json`)).json()) as { versions: string[] };
     const version = manifest.versions[0]!;
     expect(existsSync(join(app.dist, "index.html")), `no production build at ${app.dist}`).toBe(true);

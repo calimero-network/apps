@@ -273,8 +273,18 @@ jobs:
           VITE_CALIMERO_TARGET: cloud
           VITE_CALIMERO_CLUSTER: ${{ steps.target.outputs.floor_cluster }}
           VITE_CALIMERO_MIN_RELEASE: ${{ steps.floor.outputs.min-release }}
+          # Not VITE_-prefixed, so Vite never sees them unless exported below.
+          CLOUD_ENV: ${{ steps.target.outputs.cloud_env }}
+          CLOUD_DIRECTORY: ${{ steps.target.outputs.directory }}
         run: |
           set -euo pipefail
+          # Production sets no VITE_CALIMERO_ENV or VITE_CALIMERO_DIRECTORY at
+          # all (not even empty), so its build inputs are unchanged. Staging
+          # gets both: links, directory and trust all follow it.
+          if [ -n "$CLOUD_ENV" ]; then
+            export VITE_CALIMERO_ENV="$CLOUD_ENV" VITE_CALIMERO_DIRECTORY="$CLOUD_DIRECTORY"
+            echo "::notice::the frontend is built for Calimero Cloud $CLOUD_ENV (VITE_CALIMERO_DIRECTORY=$CLOUD_DIRECTORY)"
+          fi
           dir=$(python3 scripts/frontend-dir.py "$APP")
           if [ -z "$dir" ]; then
             echo "::notice::$APP sets no frontend-dir — publishing the contract only"

@@ -1,3 +1,5 @@
+import { cloudLinks } from "@calimero-apps/connect";
+
 import { nodeBasename } from "./served";
 
 /**
@@ -70,8 +72,8 @@ const iconFor = (key: string): string | undefined => (ICONS[key] ? `${nodeBasena
 /** The apps the controls list even before anything has happened in them (the demo's keys). */
 export const DEFAULT_APPS = ["chat", "calendar", "sheets", "issues", "docs", "crm", "sign", "pass"];
 
-/** Where apps are published: what Install on a core app installs from. */
-export const REGISTRY = "https://apps.calimero.network";
+/** Where apps are published: what Install on a core app installs from (the build's Calimero Cloud's registry). */
+export const REGISTRY = cloudLinks().registry;
 
 /**
  * The apps Controls offers on your node, by marketplace package: one you have

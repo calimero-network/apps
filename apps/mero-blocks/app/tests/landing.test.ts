@@ -85,7 +85,7 @@ vi.mock("@calimero-apps/passkey/nodeShield", () => ({ bindNodeShield: () => () =
 const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const ENV = { DEV: true, VITE_CALIMERO_TARGET: "local", VITE_CALIMERO_BUNDLE: "bundle-1" };
 
-const world = (appId: string, name: string, org: string | null): AppInfo => ({
+const world = (appId: string, name: string, org: string): AppInfo => ({
   appId,
   name,
   org,
@@ -93,6 +93,7 @@ const world = (appId: string, name: string, org: string | null): AppInfo => ({
   bundle: "bundle-1",
   package: null,
   version: null,
+  deployment: null,
 });
 
 function fakeClient(worlds: AppInfo[]) {
@@ -545,7 +546,7 @@ describe("launcher", () => {
     expect(open?.textContent).toBe("Open Hyperfeed Blocks");
     // The node-served copy: mdma's `app_host.app_url("com.calimero.mero-blocks")`.
     expect(open?.getAttribute("href")).toBe("https://k3fyuodnomq2d2i3woo47t6blm42ur6mfy4icg4rsaxtkujph2vq.apps.calimero.network/");
-    expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/v2");
+    expect(q("[data-testid=listing-deploy]")?.getAttribute("href")).toBe("https://cloud.calimero.network/deploy");
     expect(q("#mbl-play")?.textContent).not.toContain("VITE_CALIMERO_CLUSTER");
   });
 

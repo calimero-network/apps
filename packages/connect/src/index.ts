@@ -1,5 +1,4 @@
 export {
-  CLOUD_CONSOLE,
   ConfigError,
   DEPLOYMENT_KEY,
   LOCAL_NODES,
@@ -19,7 +18,8 @@ export {
   type Target,
 } from "./target";
 export type { ClientRoutes } from "./routes";
-export { APPS_DOMAIN, CLOUD_DEPLOY, appClusterLabel, appLabel, appUrl } from "./appHost";
+export { appClusterLabel, appLabel, appUrl } from "./appHost";
+export { CLOUD_LINKS, cloudLinks, type CloudLinks } from "./cloud";
 export {
   SessionStore,
   createClient,

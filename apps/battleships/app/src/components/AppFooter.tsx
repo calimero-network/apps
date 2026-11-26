@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 
+import { cloudLinks } from '@calimero-apps/connect';
+
 /**
  * Resource footer for the in-app screens.
  *
@@ -13,7 +15,8 @@ import { Link } from 'react-router-dom';
 const LINKS = {
   site: 'https://calimero.network',
   docs: 'https://docs.calimero.network',
-  registry: 'https://apps.calimero.network',
+  // The build's Calimero Cloud's registry (VITE_CALIMERO_ENV): staging's on a staging build.
+  registry: cloudLinks().registry,
   core: 'https://github.com/calimero-network/core',
   apps: 'https://github.com/calimero-network/apps',
   source: 'https://github.com/calimero-network/apps/tree/main/apps/battleships',

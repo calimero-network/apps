@@ -147,6 +147,7 @@ const BOARD: AppInfo = {
   bundle: "bundle-hash",
   package: null,
   version: null,
+  deployment: null,
 };
 const ELSEWHERE: AppInfo = { ...BOARD, appId: "board-2", name: "Another team's board", org: "org-2" };
 
