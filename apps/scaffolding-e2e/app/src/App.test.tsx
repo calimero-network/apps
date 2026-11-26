@@ -58,7 +58,7 @@ function fakeClient(apps: AppInfo[] = []) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
@@ -116,7 +116,7 @@ describe("App", () => {
 
   it("calls the opened instance with the ABI's names and kinds", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "bench", owner: "acct-alice", org: null, bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "bench", owner: "acct-alice", org: "", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     storage.setItem("calimero-active-tab", "kv");
@@ -170,8 +170,8 @@ describe("App", () => {
   describe("invitations land in the invited org", () => {
     /** Two shared instances in two orgs: the one opened last, and the one an invite is for. */
     const TWO_ORGS: AppInfo[] = [
-      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ];
     const selected = (storage: KeyValueStorage) =>
       (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;

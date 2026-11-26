@@ -73,6 +73,7 @@ const LOBBY: AppInfo = {
   bundle: 'bundle-hash',
   package: null,
   version: null,
+  deployment: null,
 };
 
 const STATE = {
