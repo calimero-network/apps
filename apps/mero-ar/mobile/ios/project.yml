@@ -20,7 +20,7 @@ options:
 packages:
   core:
     url: https://github.com/calimero-network/core
-    exactVersion: 1.0.0-rc.35
+    exactVersion: 1.0.0-rc.38
   # The non-UI layer (the generated contract client, models, the room service
   # and the scene store), tested on macOS with `swift test --package-path
   # MeroARCore`. Keep its MeroKit pin equal to the one above.
