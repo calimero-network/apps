@@ -1,5 +1,5 @@
 /**
- * Sylence' icon set: one 24-unit grid, 1.75 stroke, round caps.
+ * Sylence's icon set: one 24-unit grid, 1.75 stroke, round caps.
  */
 import type { SVGProps } from "react";
 
@@ -156,5 +156,12 @@ export const DownloadIcon = (p: P) => (
 export const RefreshIcon = (p: P) => (
   <Svg {...p}>
     <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" />
+  </Svg>
+);
+
+export const UsersIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.5A6.5 6.5 0 0 1 21.5 20" />
   </Svg>
 );

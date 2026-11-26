@@ -68,7 +68,7 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
         <div className="row" style={{ cursor: "default" }}>
           <span className="grow">
             <span className="name">Transcribe my microphone</span>
-            <span className="meta">Your words are labelled “You”.</span>
+            <span className="meta">Your words are labelled with your name, or “You”.</span>
           </span>
           <button
             className="switch"
@@ -76,6 +76,19 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
             aria-checked={settings.mic}
             aria-label="Transcribe my microphone"
             onClick={() => void save({ mic: !settings.mic })}
+          />
+        </div>
+        <div className="row" style={{ cursor: "default" }}>
+          <span className="grow">
+            <span className="name">Speaker names</span>
+            <span className="meta">Names each line after who was talking in Meet, Zoom or Teams.</span>
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={settings.speakerNames}
+            aria-label="Speaker names"
+            onClick={() => void save({ speakerNames: !settings.speakerNames })}
           />
         </div>
         <div className="row" style={{ cursor: "default" }}>

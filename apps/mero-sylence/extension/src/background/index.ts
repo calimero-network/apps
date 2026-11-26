@@ -23,6 +23,7 @@ import {
   type Reply,
   type Request,
   type Settings,
+  type SpeakersEvent,
   type Workspace,
 } from "../lib/messages";
 import { detectPlatform, meetingTitle, meetingUrl } from "../lib/platform";
@@ -31,6 +32,7 @@ import { describe, isSignedOut, withClient } from "../lib/session";
 import { read, write } from "../lib/storage";
 import { log } from "../lib/diagnostics";
 import { resolveTier, TIERS, type Capabilities } from "../lib/tiers";
+import { nameFor, pushChange, type SpeakerChange } from "../lib/speakers";
 
 const OFFSCREEN = "offscreen.html";
 const TRANSCRIPT_LIMIT = 5_000;
@@ -127,6 +129,80 @@ async function closeOffscreen(): Promise<void> {
 
 function toOffscreen<T = unknown>(command: OffscreenCommand): Promise<T> {
   return chrome.runtime.sendMessage(command) as Promise<T>;
+}
+
+// ── speaker names ────────────────────────────────────────────────────────────
+
+/** Who talked when in the recording, from the call page's reader (src/content/speakers.ts). */
+interface SpeakerState {
+  tab: number | null;
+  timeline: SpeakerChange[];
+  participants: string[];
+  self: string | null;
+}
+const NO_SPEAKERS: SpeakerState = { tab: null, timeline: [], participants: [], self: null };
+/** Changes kept: lines are named within minutes of being spoken, even when transcription lags. */
+const TIMELINE_LIMIT = 5_000;
+let speakerState: SpeakerState | null = null;
+
+async function speakers(): Promise<SpeakerState> {
+  speakerState ??= (await read<SpeakerState>("session", KEYS.speakers)) ?? { ...NO_SPEAKERS };
+  return speakerState;
+}
+
+async function saveSpeakers(next: SpeakerState): Promise<void> {
+  speakerState = next;
+  await write("session", KEYS.speakers, next);
+}
+
+/** Starts the reader in the recorded tab. Without it (another site, a refused injection) lines stay You / Others. */
+async function startSpeakerReader(tabId: number): Promise<void> {
+  await saveSpeakers({ ...NO_SPEAKERS, tab: tabId });
+  try {
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["speakers.js"] });
+    await log("speakers: reader started");
+  } catch (e) {
+    await log(`speakers: reader not started: ${describe(e)}`);
+  }
+}
+
+async function stopSpeakerReader(): Promise<void> {
+  const st = await speakers();
+  if (st.tab === null) return;
+  try {
+    await chrome.tabs.sendMessage(st.tab, { target: "speakers", type: "stop" });
+  } catch {
+    // The tab closed or the reader never started: nothing to stop.
+  }
+}
+
+async function onSpeakers(e: SpeakersEvent, tabId: number | undefined): Promise<void> {
+  const st = await speakers();
+  if (st.tab === null || tabId !== st.tab) return;
+  const names = [...e.speaking].sort();
+  const self = e.self ?? st.self;
+  const participants = e.participants.length ? e.participants : st.participants;
+  const timeline = pushChange(st.timeline, { at: e.at, names }, TIMELINE_LIMIT);
+  if (timeline === st.timeline && self === st.self && participants.join("|") === st.participants.join("|")) return;
+  await saveSpeakers({ ...st, timeline, self, participants });
+  const via = e.via;
+  await setStatus((s) =>
+    s.phase === "recording" || s.phase === "loading-model"
+      ? {
+          ...s,
+          speakers: { via: via ?? s.speakers?.via ?? null, participants: participants.length, self },
+        }
+      : s,
+  );
+}
+
+/** The name for a line: the recorder's own name for the microphone, whoever the page showed talking for the call. */
+async function lineName(speaker: "you" | "others", startedAt: number | undefined, startMs: number, endMs: number): Promise<string> {
+  if (!(await settings()).speakerNames) return "";
+  const st = await speakers();
+  if (speaker === "you") return st.self ?? "";
+  if (startedAt === undefined) return "";
+  return nameFor(st.timeline, startedAt + startMs, startedAt + endMs, { exclude: st.self, participants: st.participants });
 }
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
@@ -252,6 +328,8 @@ async function start(tabId: number): Promise<void> {
     }
     await log("tab stream id taken, capturing");
     await toOffscreen({ target: "offscreen", type: "capture", streamId, mic: s.mic, tier, language: s.language });
+    if (s.speakerNames && platform !== "other") await startSpeakerReader(tabId);
+    else await saveSpeakers({ ...NO_SPEAKERS });
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
     // No audio can come: drop the empty meeting rather than leave it behind.
@@ -301,6 +379,7 @@ async function abandon(message: string): Promise<void> {
   if (q) await q.clear();
   queue = null;
   recordingTab = null;
+  await stopSpeakerReader();
   await closeOffscreen().catch(() => undefined);
   await setStatus((st) => ({ ...st, phase: "error", error: message, meeting: null, link: null }));
 }
@@ -358,7 +437,7 @@ async function writeMeetingNotes(
   const timer = setTimeout(() => notesWait?.reject(new Error("the notes took too long")), NOTES_TIMEOUT_MS);
   let notes: Notes;
   try {
-    await toOffscreen({ target: "offscreen", type: "notes", model, lines: lines.map((l) => ({ seq: l.seq, speaker: l.speaker, text: l.text })) });
+    await toOffscreen({ target: "offscreen", type: "notes", model, lines: lines.map((l) => ({ seq: l.seq, speaker: l.speaker, name: l.name, text: l.text })) });
     notes = await result;
   } finally {
     clearTimeout(timer);
@@ -386,6 +465,7 @@ async function writeMeetingNotes(
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
 function finish(durationMs: number): Promise<void> {
   stopping ??= (async () => {
+    await stopSpeakerReader();
     const s = await status();
     const q = await currentQueue();
     const all = q ? await q.drain() : true;
@@ -408,13 +488,14 @@ function finish(durationMs: number): Promise<void> {
       link = meetingLink(a.page, meeting.appId, meeting.id);
       const s = await settings();
       if (all && !error && s.autoActions) {
-        const model = lastCaps ? notesModelFor(s.notesModel, lastCaps) : null;
+        // Smart notes are experimental: they run only when turned on in Settings.
+        const model = s.smartNotes && lastCaps ? notesModelFor(s.notesModel, lastCaps) : null;
         let written = false;
         notesBy = {
           kind: "phrases",
           why:
-            s.notesModel === "off"
-              ? "Smart notes are off."
+            !s.smartNotes || s.notesModel === "off"
+              ? ""
               : lastCaps && !lastCaps.webgpu
                 ? "This browser doesn't offer WebGPU, which Smart notes need."
                 : "Smart notes didn't run.",
@@ -474,8 +555,9 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
     case "segment": {
       const q = await currentQueue();
       if (!q) return;
-      await q.add({ speaker: event.speaker, startMs: event.startMs, endMs: event.endMs, text: event.text });
-      const line: Line = { speaker: event.speaker, text: event.text.trim(), startMs: event.startMs };
+      const name = await lineName(event.speaker, event.startedAt, event.startMs, event.endMs);
+      await q.add({ speaker: event.speaker, name, startMs: event.startMs, endMs: event.endMs, text: event.text });
+      const line: Line = { speaker: event.speaker, name, text: event.text.trim(), startMs: event.startMs };
       const lines = (await read<Line[]>("session", KEYS.transcript)) ?? [];
       lines.push(line);
       await write("session", KEYS.transcript, lines.slice(-TRANSCRIPT_LIMIT));
@@ -568,7 +650,12 @@ async function handle(req: Request): Promise<unknown> {
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   const m = message as Partial<OffscreenEvent> & Partial<OffscreenCommand> & { type?: string };
-  if (m.target === "offscreen") return false;
+  if (m.target === "offscreen" || (m.target as string | undefined) === "speakers") return false;
+  if ((m.source as string | undefined) === "speakers") {
+    const e = message as SpeakersEvent;
+    offscreenEvents = offscreenEvents.then(() => onSpeakers(e, sender.tab?.id)).catch((err: unknown) => log(`speakers failed: ${describe(err)}`));
+    return false;
+  }
   if (m.source === "offscreen") {
     const e = message as OffscreenEvent;
     // Levels are for the popup. Everything else is handled in the order it was

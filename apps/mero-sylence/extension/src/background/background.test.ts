@@ -120,7 +120,7 @@ vi.mock("../lib/session", () => ({
 
 // ── a fake chrome ────────────────────────────────────────────────────────────
 
-type Listener = (message: unknown, sender: { id?: string }, respond: (r: unknown) => void) => boolean | void;
+type Listener = (message: unknown, sender: { id?: string; tab?: { id: number } }, respond: (r: unknown) => void) => boolean | void;
 
 interface Harness {
   local: Map<string, unknown>;
@@ -136,6 +136,9 @@ interface Harness {
   removedListeners: ((tabId: number) => void)[];
   startupListeners: (() => void)[];
   listener: Listener | null;
+  /** Tabs the speaker reader was injected into, and messages sent to tabs. */
+  injected: number[];
+  tabMessages: { tabId: number; message: unknown }[];
 }
 
 function installChrome(): Harness {
@@ -155,6 +158,8 @@ function installChrome(): Harness {
     removedListeners: [],
     startupListeners: [],
     listener: null,
+    injected: [],
+    tabMessages: [],
   };
   const area = (map: Map<string, unknown>) => ({
     get: async (key: string) => (map.has(key) ? { [key]: structuredClone(map.get(key)) } : {}),
@@ -201,6 +206,15 @@ function installChrome(): Harness {
     tabs: {
       get: async (id: number) => ({ id, url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" }),
       onRemoved: { addListener: (l: (tabId: number) => void) => h.removedListeners.push(l) },
+      sendMessage: async (tabId: number, message: unknown) => {
+        h.tabMessages.push({ tabId, message });
+      },
+    },
+    scripting: {
+      executeScript: async ({ target }: { target: { tabId: number } }) => {
+        h.injected.push(target.tabId);
+        return [];
+      },
     },
   };
   (globalThis as unknown as { chrome: unknown }).chrome = chromeLike;
@@ -249,8 +263,18 @@ async function boot(): Promise<void> {
   await import("./index");
 }
 
-const segment = (speaker: "you" | "others", startMs: number, text: string) =>
-  ({ type: "segment", speaker, startMs, endMs: startMs + 2_000, text }) as const;
+const segment = (speaker: "you" | "others", startMs: number, text: string, startedAt?: number) =>
+  ({ type: "segment", speaker, startMs, endMs: startMs + 2_000, text, startedAt }) as const;
+
+/** The call page's reader reporting who is talking, from tab `tab`. */
+async function speakers(at: number, speaking: string[], extra: { participants?: string[]; self?: string | null; tab?: number } = {}): Promise<void> {
+  h.listener!(
+    { source: "speakers", type: "speakers", at, platform: "meet", speaking, participants: extra.participants ?? [], self: extra.self ?? null, via: "meet-tiles" },
+    { tab: { id: extra.tab ?? 7 } },
+    () => undefined,
+  );
+  await settle();
+}
 
 beforeEach(async () => {
   vi.useRealTimers();
@@ -583,6 +607,11 @@ describe("service worker: when recording goes wrong", () => {
   });
 
   describe("notes written by the model on this laptop", () => {
+    // Smart notes are experimental and off by default: these turn them on.
+    beforeEach(() => {
+      h.local.set("sylence:settings", { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true, smartNotes: true, notesModel: "auto" });
+    });
+
     const gpu = (answer: (lines: { text: string }[]) => Event) => {
       h.offscreen = async (c) => {
         if (c.type === "caps") return { webgpu: true, deviceMemoryGb: 8, cores: 8, cached: ["light"] };
@@ -662,5 +691,48 @@ describe("service worker: when recording goes wrong", () => {
       expect(node.actions).toHaveLength(1);
       expect(status().notesBy).toEqual({ kind: "phrases", why: "This browser doesn't offer WebGPU, which Smart notes need." });
     });
+  });
+});
+
+describe("service worker: speaker names", () => {
+  const T0 = 1_000_000;
+
+  it("names each line after who the call page showed talking", async () => {
+    await request({ type: "start", tabId: 7 });
+    expect(h.injected).toEqual([7]);
+    await event({ type: "model", tier: "light", state: "ready" });
+    await speakers(T0, ["Ana"], { participants: ["Ana", "Marko", "Fran"], self: "Fran" });
+    await speakers(T0 + 3_000, []);
+    await speakers(T0 + 4_000, ["Marko"]);
+    await speakers(T0 + 7_000, ["Fran"]);
+    await event(segment("others", 0, "Hi, Ana here", T0));
+    await event(segment("others", 4_100, "Marko speaking", T0));
+    await event(segment("you", 7_200, "And me", T0));
+    const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
+    expect(lines.map((l) => l.name)).toEqual(["Ana", "Marko", "Fran"]);
+    expect(status().lines.map((l) => l.name)).toEqual(["Ana", "Marko", "Fran"]);
+    expect(status().speakers).toMatchObject({ via: "meet-tiles", participants: 3, self: "Fran" });
+
+    await request({ type: "stop" });
+    await event({ type: "drained", durationMs: 9_000 });
+    expect(h.tabMessages).toContainEqual({ tabId: 7, message: { target: "speakers", type: "stop" } });
+  });
+
+  it("ignores a reader in another tab, and leaves lines unnamed without one", async () => {
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    await speakers(T0, ["Eve"], { tab: 8 });
+    await event(segment("others", 0, "Who am I", T0));
+    expect([...node.meetings.get("m1")!.segments.values()][0]!.name).toBe("");
+  });
+
+  it("names nobody when speaker names are turned off", async () => {
+    h.local.set("sylence:settings", { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true, speakerNames: false });
+    await request({ type: "start", tabId: 7 });
+    expect(h.injected).toEqual([]);
+    await event({ type: "model", tier: "light", state: "ready" });
+    await speakers(T0, ["Ana"]);
+    await event(segment("others", 0, "Hello", T0));
+    expect([...node.meetings.get("m1")!.segments.values()][0]!.name).toBe("");
   });
 });

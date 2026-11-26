@@ -15,6 +15,8 @@
 export interface TranscriptLine {
   seq: number;
   speaker: string;
+  /** Who said it, from the call page; "" or missing when unknown. */
+  name?: string;
   text: string;
   startMs?: number;
   endMs?: number;
@@ -112,8 +114,8 @@ export function isTask(text: string): boolean {
  * than `gapMs` apart are joined, then split at sentence ends; each sentence
  * remembers the line it starts in.
  */
-export function utterances(lines: readonly TranscriptLine[], gapMs = 1_500): { seq: number; speaker: string; text: string }[] {
-  const out: { seq: number; speaker: string; text: string }[] = [];
+export function utterances(lines: readonly TranscriptLine[], gapMs = 1_500): { seq: number; speaker: string; name: string; text: string }[] {
+  const out: { seq: number; speaker: string; name: string; text: string }[] = [];
   let group: TranscriptLine[] = [];
   const flush = () => {
     if (group.length === 0) return;
@@ -132,7 +134,7 @@ export function utterances(lines: readonly TranscriptLine[], gapMs = 1_500): { s
       const at = text.indexOf(sentence, from);
       from = at + sentence.length;
       const seq = [...starts].reverse().find((st) => st.at <= at)?.seq ?? group[0]!.seq;
-      out.push({ seq, speaker: group[0]!.speaker, text: sentence });
+      out.push({ seq, speaker: group[0]!.speaker, name: group[0]!.name ?? "", text: sentence });
     }
     group = [];
   };
@@ -141,6 +143,7 @@ export function utterances(lines: readonly TranscriptLine[], gapMs = 1_500): { s
     const near =
       prev !== undefined &&
       prev.speaker === line.speaker &&
+      (prev.name ?? "") === (line.name ?? "") &&
       (prev.endMs === undefined || line.startMs === undefined || line.startMs - prev.endMs <= gapMs);
     if (!near) flush();
     group.push(line);
@@ -184,7 +187,7 @@ function key(s: string): string {
 }
 
 /** The action in one sentence, or null. */
-export function actionIn(sentence: string, speaker: string): Omit<FoundAction, "sourceSeq"> | null {
+export function actionIn(sentence: string, speaker: string, name = ""): Omit<FoundAction, "sourceSeq"> | null {
   const s = sentence.trim().replace(LEAD, "");
   if (SMALL_TALK.test(s)) return null;
 
@@ -216,8 +219,10 @@ export function actionIn(sentence: string, speaker: string): Omit<FoundAction, "
     if (/^i can\s/i.test(s) && !/\b(by|today|tomorrow|tonight|this week|next week|monday|tuesday|wednesday|thursday|friday|later|after)\b/i.test(s)) {
       return null;
     }
-    // Who "I" is depends on who reads it; the page shows who recorded it.
+    // "I" is whoever said it: their name when the call page showed it; without
+    // one, who "I" is depends on who reads it (the page shows who recorded it).
     void speaker;
+    assignee = name;
     task = commit[1]!.replace(/^take care of\s+/i, "");
   } else if (team) {
     task = team[1]!;
@@ -237,7 +242,7 @@ export function findActions(lines: TranscriptLine[], existing: string[] = []): F
   const seen = new Set(existing.map(key));
   const out: FoundAction[] = [];
   for (const sentence of utterances(lines)) {
-    const found = actionIn(sentence.text, sentence.speaker);
+    const found = actionIn(sentence.text, sentence.speaker, sentence.name);
     if (!found) continue;
     const k = key(found.text);
     if (!k || seen.has(k)) continue;

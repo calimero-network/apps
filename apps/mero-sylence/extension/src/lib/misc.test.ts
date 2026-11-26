@@ -73,9 +73,9 @@ describe("transcript text", () => {
         { speaker: "others", text: "d", startMs: 100_000 },
       ]),
     ).toEqual([
-      { speaker: "you", startMs: 1_000, text: "a b" },
-      { speaker: "others", startMs: 3_000, text: "c" },
-      { speaker: "others", startMs: 100_000, text: "d" },
+      { speaker: "you", name: "", startMs: 1_000, text: "a b" },
+      { speaker: "others", name: "", startMs: 3_000, text: "c" },
+      { speaker: "others", name: "", startMs: 100_000, text: "d" },
     ]);
     expect(sizeLabel(1467)).toBe("1.5 GB");
     expect(sizeLabel(63)).toBe("63 MB");
@@ -148,9 +148,17 @@ describe("manifest", () => {
   it("asks only for what it uses", () => {
     const m = buildManifest({ key, version: "0.1.0" });
     expect(m.manifest_version).toBe(3);
-    expect(m.permissions).toEqual(["tabCapture", "offscreen", "activeTab", "tabs", "storage", "sidePanel"]);
+    expect(m.permissions).toEqual(["tabCapture", "offscreen", "activeTab", "tabs", "storage", "sidePanel", "scripting"]);
     expect(m.host_permissions).not.toContain("<all_urls>");
+    // No host access to the call sites: the speaker reader runs through activeTab.
+    expect(m.host_permissions?.some((h) => /meet|zoom|teams/.test(h))).toBe(false);
+    expect(m.host_permissions).toContain("http://localhost/*");
     expect(m.content_security_policy?.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
     expect(m.background).toEqual({ service_worker: "background.js", type: "module" });
+  });
+
+  it("leaves the development hosts out of the store build", () => {
+    const m = buildManifest({ key, version: "0.1.0", store: true });
+    expect(m.host_permissions).toEqual(["https://*.calimero.network/*"]);
   });
 });

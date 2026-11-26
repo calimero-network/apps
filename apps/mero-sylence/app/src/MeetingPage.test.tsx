@@ -6,9 +6,9 @@ import { fakeWorkspace, meeting } from "./test/workspace";
 
 afterEach(cleanup);
 
-const seg = (seq: number, text: string, speaker = "others"): SegmentView => ({
+const seg = (seq: number, text: string, speaker = "others", name = ""): SegmentView => ({
   seq,
-  name: "",
+  name,
   startMs: seq * 65_000,
   endMs: seq * 65_000 + 2_500,
   speaker,
@@ -89,6 +89,28 @@ describe("MeetingPage", () => {
     expect(lines[0]!.querySelector(".speaker-chip")!.textContent).toBe("bob");
     expect(lines[1]!.querySelector(".speaker-chip")!.textContent).toBe("Others");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Weekly sync");
+  });
+
+  it("names each line after who said it, and narrows the transcript to one speaker", async () => {
+    setup({
+      me: "cy",
+      pages: [[seg(0, "Morning all", "you", "Bob Smith"), seg(1, "Hi Bob", "others", "Ana"), seg(2, "Hello", "others", "Marko"), seg(3, "Agenda?", "others", "Ana")]],
+    });
+    const lines = await screen.findAllByTestId("segment");
+    expect(lines.map((l) => l.querySelector(".speaker-chip")!.textContent)).toEqual(["Bob Smith", "Ana", "Marko", "Ana"]);
+    const filter = screen.getByRole("group", { name: "Speakers" });
+    expect(within(filter).getAllByRole("button").map((b) => b.textContent)).toEqual(["Everyone", "Bob Smith1", "Ana2", "Marko1"]);
+    fireEvent.click(within(filter).getByRole("button", { name: /^Ana/ }));
+    expect(screen.getAllByTestId("segment").map((l) => l.querySelector(".segment-text")?.textContent ?? l.textContent)).toHaveLength(2);
+    expect(screen.getByTestId("line-count").textContent).toMatch(/^2 of/);
+    fireEvent.click(within(filter).getByRole("button", { name: "Everyone" }));
+    expect(screen.getAllByTestId("segment")).toHaveLength(4);
+  });
+
+  it("shows no speaker filter with one speaker", async () => {
+    setup({ me: "cy", pages: [[seg(0, "a"), seg(1, "b")]] });
+    await screen.findAllByTestId("segment");
+    expect(screen.queryByRole("group", { name: "Speakers" })).toBeNull();
   });
 
   it("gives the recorder the edit controls and nobody else", async () => {

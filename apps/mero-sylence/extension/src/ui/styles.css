@@ -604,7 +604,7 @@ button.row:hover:not(:disabled) {
 }
 .line {
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 72px 1fr;
   gap: 12px;
   font-size: 13px;
   line-height: 1.5;
@@ -780,4 +780,18 @@ body.panel {
 .by-line svg {
   flex: none;
   margin-top: 2px;
+}
+
+/* A small label beside a setting's name ("Beta"). */
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  vertical-align: 1px;
 }

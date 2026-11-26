@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { IDLE, KEYS, type AuthState, type RecorderStatus } from "../../lib/messages";
+import { DEFAULT_SETTINGS, IDLE, KEYS, type AuthState, type RecorderStatus } from "../../lib/messages";
 import { installFakeChrome, type FakeChrome } from "../../test/fakeChrome";
 import { App } from "./App";
 
@@ -197,8 +197,21 @@ describe("popup", () => {
     expect(screen.getByText("A summary and 2 action items added from the transcript.")).toBeTruthy();
   });
 
+  it("smart notes are an experimental setting, off until turned on", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    expect(await screen.findByText("Experimental")).toBeTruthy();
+    const toggle = screen.getByRole("switch", { name: "Smart notes and summary" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("radiogroup", { name: "Smart notes model" })).toBeNull();
+    fireEvent.click(toggle);
+    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { smartNotes: boolean }).smartNotes).toBe(true));
+  });
+
   it("smart notes settings: lists the models and says why they can't run without WebGPU", async () => {
     chrome.areas.local.set(KEYS.auth, AUTH);
+    chrome.areas.local.set(KEYS.settings, { ...DEFAULT_SETTINGS, smartNotes: true });
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     const group = await screen.findByRole("radiogroup", { name: "Smart notes model" });
@@ -206,13 +219,10 @@ describe("popup", () => {
       "Automatic",
       "Qwen2.5 1.5B",
       "Qwen2.5 0.5B",
-      "Off",
     ]);
-    // jsdom has no WebGPU: the models can't run here, it says so, and only Off is offered.
+    // jsdom has no WebGPU: the models can't run here and it says so.
     expect(await screen.findByText(/doesn't offer WebGPU/)).toBeTruthy();
     expect((within(group).getByRole("radio", { name: /Qwen2.5 0.5B/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId("notes-download")).toBeNull();
-    fireEvent.click(within(group).getByRole("radio", { name: /^Off/ }));
-    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { notesModel: string }).notesModel).toBe("off"));
   });
 });

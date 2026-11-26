@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
-    "build": "tsc -b && vite build && vite build -c vite.background.config.ts",
+    "build": "tsc -b && vite build && vite build -c vite.background.config.ts && vite build -c vite.content.config.ts",
     "typecheck": "tsc -b && tsc -p e2e",
     "test": "vitest run",
     "lint": "eslint .",
     "codegen": "meroctl app codegen --abi ../logic/res/abi.json --lang ts --name mero-sylence -o src/generated",
     "zip": "node scripts/zip.mjs",
+    "build:store": "SYLENCE_STORE=1 pnpm build && node scripts/zip.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {

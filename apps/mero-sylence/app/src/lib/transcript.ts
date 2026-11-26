@@ -77,9 +77,26 @@ export function platformName(value: string): string {
   return PLATFORM_NAMES[asPlatform(value)];
 }
 
-/** Who spoke a segment, as the transcript labels it. */
-export function speakerLabel(speaker: string, recorderName: string): string {
-  return speaker === "you" ? recorderName : "Others";
+/**
+ * Who spoke a segment, as the transcript labels it: the name the call page
+ * showed when the extension read one, else the recorder for their microphone
+ * and "Others" for the call.
+ */
+export function speakerLabel(speaker: string, recorderName: string, name = ""): string {
+  return name.trim() || (speaker === "you" ? recorderName : "Others");
+}
+
+/** The speakers in `segments`, in the order they first spoke, with their line counts. */
+export function speakersIn(
+  segments: readonly Pick<SegmentView, "speaker" | "name">[],
+  recorderName: string,
+): { label: string; lines: number }[] {
+  const counts = new Map<string, number>();
+  for (const s of segments) {
+    const label = speakerLabel(s.speaker, recorderName, s.name);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, lines]) => ({ label, lines }));
 }
 
 /** Meetings whose title holds every word of `query` (any case, any order). */
@@ -144,7 +161,7 @@ export function toMarkdown(
   lines.push("## Transcript", "");
   if (segments.length === 0) lines.push("_No transcript yet._");
   for (const s of segments) {
-    lines.push(`**${formatClock(s.startMs)} ${speakerLabel(s.speaker, recorderName)}:** ${s.text}`, "");
+    lines.push(`**${formatClock(s.startMs)} ${speakerLabel(s.speaker, recorderName, s.name)}:** ${s.text}`, "");
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }

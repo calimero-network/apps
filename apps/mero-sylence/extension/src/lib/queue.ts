@@ -12,6 +12,8 @@ export interface QueuedSegment {
   startMs: number;
   endMs: number;
   speaker: Speaker;
+  /** Who said it, from the call page; "" or missing when unknown. */
+  name?: string;
   text: string;
 }
 

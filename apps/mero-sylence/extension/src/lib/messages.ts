@@ -13,11 +13,28 @@ export interface Settings {
   pageOverride: string;
   /** Add the action items found in the transcript when a meeting ends. */
   autoActions: boolean;
-  /** Write a summary and action items with a small model on this laptop (WebGPU); `off`, or with no GPU, phrase matching. */
+  /**
+   * Experimental: a small model on this laptop (WebGPU) writes a summary and the
+   * action items. Off by default; off, or with no GPU, action items come from
+   * phrase matching and there is no summary.
+   */
+  smartNotes: boolean;
+  /** Which model Smart notes use (when on). */
   notesModel: NotesSetting;
+  /** Name each line after who was talking, read from the call page. */
+  speakerNames: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true, notesModel: "auto" };
+export const DEFAULT_SETTINGS: Settings = {
+  tier: "auto",
+  language: "en",
+  mic: true,
+  pageOverride: "",
+  autoActions: true,
+  smartNotes: false,
+  notesModel: "auto",
+  speakerNames: true,
+};
 
 export interface Workspace {
   appId: string;
@@ -36,6 +53,8 @@ export interface AuthState {
 
 export interface Line {
   speaker: Speaker;
+  /** Who said it, from the call page; "" when unknown. */
+  name?: string;
   text: string;
   startMs: number;
 }
@@ -68,6 +87,8 @@ export interface RecorderStatus {
   notes?: { model: NotesModelId; fraction: number; step: "download" | "write" } | null;
   /** The notes model wrote the summary (and the action items). */
   wroteSummary?: boolean;
+  /** Where speaker names come from while recording: the reader that found one, and how many people the page shows. */
+  speakers?: { via: string | null; participants: number; self: string | null } | null;
   /** Who found the action items: the notes model, or phrase matching (with why). */
   notesBy?: { kind: "model"; model: NotesModelId } | { kind: "phrases"; why: string } | null;
 }
@@ -95,6 +116,8 @@ export const KEYS = {
   micGranted: "sylence:mic-granted",
   /** Why the extension signed itself out, for the signed-out screen. */
   signedOutReason: "sylence:signed-out-reason",
+  /** Who talked when, during the recording (lib/speakers.ts). */
+  speakers: "sylence:speakers",
 } as const;
 
 /** Popup / side panel → service worker. */
@@ -119,11 +142,11 @@ export type OffscreenCommand =
   | { target: "offscreen"; type: "preload"; tier: TierId }
   | { target: "offscreen"; type: "caps" }
   | { target: "offscreen"; type: "preloadNotes"; model: NotesModelId }
-  | { target: "offscreen"; type: "notes"; model: NotesModelId; lines: { seq: number; speaker: string; text: string }[] };
+  | { target: "offscreen"; type: "notes"; model: NotesModelId; lines: { seq: number; speaker: string; name?: string; text: string }[] };
 
 /** Offscreen page → service worker (and the popup, for levels). */
 export type OffscreenEvent =
-  | { source: "offscreen"; type: "segment"; speaker: Speaker; startMs: number; endMs: number; text: string }
+  | { source: "offscreen"; type: "segment"; speaker: Speaker; startMs: number; endMs: number; text: string; startedAt?: number }
   | { source: "offscreen"; type: "model"; tier: TierId; state: "loading" | "ready" | "error"; progress?: ModelProgress; error?: string }
   | { source: "offscreen"; type: "levels"; you: number; others: number }
   | { source: "offscreen"; type: "stepDown"; from: TierId; to: TierId }
@@ -137,3 +160,15 @@ export type OffscreenEvent =
   | { source: "offscreen"; type: "notesError"; error: string };
 
 export type { Capabilities };
+
+/** The call page's speaker reader (src/content/speakers.ts) → service worker. */
+export interface SpeakersEvent {
+  source: "speakers";
+  type: "speakers";
+  at: number;
+  platform: Platform;
+  speaking: string[];
+  participants: string[];
+  self: string | null;
+  via: string | null;
+}

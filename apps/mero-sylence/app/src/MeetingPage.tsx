@@ -17,6 +17,7 @@ import {
   platformName,
   queryWords,
   speakerLabel,
+  speakersIn,
   toMarkdown,
 } from "./lib/transcript";
 import { useTranscript } from "./useTranscript";
@@ -121,9 +122,17 @@ export function MeetingBody({
   const recorder = m.recorder === me;
   const [find, setFind] = useState("");
   const findWords = useMemo(() => queryWords(find), [find]);
+  /** The speaker the transcript is narrowed to, or null for everyone. */
+  const [who, setWho] = useState<string | null>(null);
+  const speakers = useMemo(() => speakersIn(segments, recorderName), [segments, recorderName]);
   const shownSegments = useMemo(
-    () => (findWords.length ? segments.filter((s) => matchesAll(s.text, findWords)) : segments),
-    [segments, findWords],
+    () =>
+      segments.filter(
+        (s) =>
+          (!findWords.length || matchesAll(s.text, findWords)) &&
+          (who === null || speakerLabel(s.speaker, recorderName, s.name) === who),
+      ),
+    [segments, findWords, who, recorderName],
   );
   const lastSeq = segments.length ? segments[segments.length - 1]!.seq : -1;
   // Finding reads the whole transcript; a linked line reads up to it.
@@ -232,7 +241,7 @@ export function MeetingBody({
           <div className="card-head">
             <h2 id="transcript-title">Transcript</h2>
             <span className="dim" data-testid="line-count">
-              {findWords.length
+              {findWords.length || who !== null
                 ? `${shownSegments.length.toLocaleString()} of ${m.segments.toLocaleString()} lines`
                 : `${m.segments.toLocaleString()} lines`}
             </span>
@@ -247,6 +256,25 @@ export function MeetingBody({
               />
             </div>
           </div>
+          {speakers.length > 1 && (
+            <div className="speaker-filter" role="group" aria-label="Speakers">
+              <button type="button" className={`chip${who === null ? " active" : ""}`} aria-pressed={who === null} onClick={() => setWho(null)}>
+                Everyone
+              </button>
+              {speakers.map((sp) => (
+                <button
+                  type="button"
+                  key={sp.label}
+                  className={`chip${who === sp.label ? " active" : ""}`}
+                  aria-pressed={who === sp.label}
+                  onClick={() => setWho(who === sp.label ? null : sp.label)}
+                >
+                  {sp.label}
+                  <span className="chip-count">{sp.lines.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {findWords.length > 0 && shownSegments.length === 0 && !loadingMore && (
             <p className="empty">No line contains &ldquo;{find.trim()}&rdquo;.</p>
           )}
@@ -261,7 +289,7 @@ export function MeetingBody({
                 focused={s.seq === focusSeq}
                 highlight={findWords}
                 segment={s}
-                speaker={speakerLabel(s.speaker, recorderName)}
+                speaker={speakerLabel(s.speaker, recorderName, s.name)}
                 editable={recorder}
                 onSave={(text) =>
                   run(async () => {

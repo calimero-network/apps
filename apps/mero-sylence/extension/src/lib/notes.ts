@@ -81,8 +81,13 @@ const SYSTEM = [
   "If there are no tasks, write one line: - none",
 ].join("\n");
 
-/** "You" is the recorder's microphone; everyone else in the call is "Others". */
-function speakerName(speaker: string): string {
+/**
+ * The line's speaker for the model: the name the call page showed, else "Me"
+ * (the recorder's microphone) or "Others" (everyone else in the call).
+ */
+function speakerName(speaker: string, name?: string): string {
+  const n = name?.replace(/[:\n]/g, " ").trim();
+  if (n) return n;
   return speaker === "you" ? "Me" : "Others";
 }
 
@@ -93,7 +98,7 @@ export function chunkTranscript(lines: readonly TranscriptLine[], max = CHUNK_CH
   for (const line of lines) {
     const text = line.text.replace(/\s+/g, " ").trim();
     if (!text) continue;
-    const row = `${speakerName(line.speaker)}: ${text.slice(0, max)}\n`;
+    const row = `${speakerName(line.speaker, line.name)}: ${text.slice(0, max)}\n`;
     if (current && current.length + row.length > max) {
       chunks.push(current.trimEnd());
       current = "";

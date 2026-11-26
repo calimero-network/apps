@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { group } from "../../lib/format";
+import { group, whoLabel } from "../../lib/format";
 import { IDLE, KEYS, type Line, type RecorderStatus } from "../../lib/messages";
 import { clock, useStored } from "../hooks";
 import { ExternalIcon, Mark, WaveIcon } from "../icons";
@@ -43,7 +43,7 @@ export function App() {
           utterances.map((u, i) => (
             <div className="utterance" key={`${u.startMs}-${i}`}>
               <span className="head">
-                <span className={`who ${u.speaker}`}>{u.speaker === "you" ? "You" : "Others"}</span>
+                <span className={`who ${u.speaker}`}>{whoLabel(u)}</span>
                 <span className="stamp">{clock(Math.floor(u.startMs / 1000))}</span>
               </span>
               <span>{u.text}</span>

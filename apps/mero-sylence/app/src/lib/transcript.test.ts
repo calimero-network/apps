@@ -74,6 +74,8 @@ describe("formatting", () => {
     expect(platformName("webex")).toBe("Call");
     expect(speakerLabel("you", "Ana")).toBe("Ana");
     expect(speakerLabel("others", "Ana")).toBe("Others");
+    expect(speakerLabel("others", "Ana", "Marko")).toBe("Marko");
+    expect(speakerLabel("you", "Ana", " ")).toBe("Ana");
   });
   it("makes a file name from a title", () => {
     expect(markdownFileName("Q1 Roadmap: review / sign-off!")).toBe("q1-roadmap-review-sign-off.md");

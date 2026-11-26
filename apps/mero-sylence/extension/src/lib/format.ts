@@ -17,12 +17,18 @@ export function validOverride(value: string): boolean {
 }
 
 /** Consecutive lines of one speaker within a minute read as one utterance. */
-export function group(lines: Line[]): { speaker: Line["speaker"]; startMs: number; text: string }[] {
-  const out: { speaker: Line["speaker"]; startMs: number; text: string }[] = [];
+/** What a line is labelled with: the name the call page showed, else You / Others. */
+export function whoLabel(line: { speaker: Line["speaker"]; name?: string }): string {
+  return line.name?.trim() || (line.speaker === "you" ? "You" : "Others");
+}
+
+export function group(lines: Line[]): { speaker: Line["speaker"]; name: string; startMs: number; text: string }[] {
+  const out: { speaker: Line["speaker"]; name: string; startMs: number; text: string }[] = [];
   for (const l of [...lines].sort((a, b) => a.startMs - b.startMs)) {
     const last = out[out.length - 1];
-    if (last && last.speaker === l.speaker && l.startMs - last.startMs < 60_000) last.text += ` ${l.text}`;
-    else out.push({ speaker: l.speaker, startMs: l.startMs, text: l.text });
+    const name = l.name ?? "";
+    if (last && last.speaker === l.speaker && last.name === name && l.startMs - last.startMs < 60_000) last.text += ` ${l.text}`;
+    else out.push({ speaker: l.speaker, name, startMs: l.startMs, text: l.text });
   }
   return out;
 }

@@ -2,7 +2,9 @@ import type { RecorderStatus } from "../../lib/messages";
 import { TIERS } from "../../lib/tiers";
 import { NOTES_MODELS } from "../../lib/notes";
 import { clock, useElapsed, useLevels } from "../hooks";
-import { PanelIcon, Spinner, StopIcon } from "../icons";
+import { PanelIcon, Spinner, StopIcon, UsersIcon } from "../icons";
+import { whoLabel } from "../../lib/format";
+import { PLATFORM_NAMES } from "../../lib/platform";
 import { ask } from "../rpc";
 
 function Meter({ value, who }: { value: number; who: "you" | "others" }) {
@@ -56,6 +58,12 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
           <span className="who">Others</span>
           <Meter value={levels.others} who="others" />
         </div>
+        {status.speakers?.via && (
+          <span className="small muted hstack" style={{ gap: 6 }} data-testid="speaker-source">
+            <UsersIcon size={13} /> Names from {status.meeting ? PLATFORM_NAMES[status.meeting.platform] : "the call"}
+            {status.speakers.participants > 1 ? ` · ${status.speakers.participants} people` : ""}
+          </span>
+        )}
         {status.model && (
           <div className="stack" style={{ gap: 6 }}>
             <span className="small muted">
@@ -76,7 +84,9 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
           <div className="lines">
             {status.lines.slice(-3).map((l, i) => (
               <div className="line" key={`${l.startMs}-${i}`}>
-                <span className={`who ${l.speaker}`}>{l.speaker === "you" ? "You" : "Others"}</span>
+                <span className={`who ${l.speaker} truncate`} title={whoLabel(l)}>
+                  {whoLabel(l)}
+                </span>
                 <span>{l.text}</span>
               </div>
             ))}

@@ -176,7 +176,7 @@ function onWorker(m: FromWorker): void {
     case "text": {
       const job = r?.scheduler.done(m.id, m.ms);
       const text = cleanTranscript(m.text);
-      if (job && text) void emit({ type: "segment", speaker: job.speaker, startMs: job.startMs, endMs: job.endMs, text });
+      if (job && text) void emit({ type: "segment", speaker: job.speaker, startMs: job.startMs, endMs: job.endMs, text, startedAt: r?.startedAt });
       pump();
       return;
     }

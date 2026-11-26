@@ -166,7 +166,7 @@ function TranscriptHits({
                     <span className="dot" aria-hidden="true" />
                     <span className="mono">{formatClock(h.startMs ?? 0)}</span>
                     <span className="dot" aria-hidden="true" />
-                    <span>{h.speaker === "you" ? "Recorder" : "Others"}</span>
+                    <span>{h.name?.trim() || (h.speaker === "you" ? "Recorder" : "Others")}</span>
                   </span>
                 </span>
               </button>

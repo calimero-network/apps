@@ -1381,7 +1381,7 @@ dialog.dialog[open] {
 }
 .segment {
   display: grid;
-  grid-template-columns: 44px 56px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(56px, 128px) minmax(0, 1fr) auto;
   gap: 2px 12px;
   align-items: baseline;
   padding: 6px 8px;
@@ -1399,6 +1399,26 @@ dialog.dialog[open] {
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.speaker-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.speaker-filter .chip {
+  cursor: pointer;
+  gap: 6px;
+}
+.speaker-filter .chip:hover:not(.active) {
+  background: var(--hover);
+}
+.chip-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
 }
 .speaker-chip.you {
   color: var(--text);

@@ -30,7 +30,7 @@ export function Saved({ status }: { status: RecorderStatus }) {
         <p className="by-line" data-testid="notes-by">
           {status.notesBy.kind === "model"
             ? `Written by ${NOTES_MODELS[status.notesBy.model].name} on this laptop.`
-            : `Found from phrases said in the call. ${status.notesBy.why}`}
+            : `Found from phrases said in the call.${status.notesBy.why ? ` ${status.notesBy.why}` : ""}`}
         </p>
       )}
       {status.error && (

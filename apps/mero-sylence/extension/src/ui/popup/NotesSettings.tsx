@@ -18,12 +18,12 @@ const CHOICES: { id: NotesSetting; name: string; meta: (caps: Capabilities | nul
   },
   { id: "better", name: NOTES_MODELS.better.name, meta: () => NOTES_MODELS.better.blurb, size: NOTES_MODELS.better.sizeMb },
   { id: "small", name: NOTES_MODELS.small.name, meta: () => NOTES_MODELS.small.blurb, size: NOTES_MODELS.small.sizeMb },
-  { id: "off", name: "Off", meta: () => "Action items from phrases said in the call, no summary" },
 ];
 
 /**
- * Smart notes: which model writes the summary and action items, whether this
- * browser can run one (WebGPU), and the one-time download.
+ * Experimental: Smart notes. Off by default; when turned on, which model
+ * writes the summary and action items, whether this browser can run one
+ * (WebGPU), and the one-time download.
  */
 export function NotesSettings({ settings, caps }: { settings: Settings; caps: Capabilities | null }) {
   const status = useStored<RecorderStatus>("session", KEYS.status);
@@ -33,33 +33,51 @@ export function NotesSettings({ settings, caps }: { settings: Settings; caps: Ca
   const progress = status?.phase !== "notes" && status?.notes && status.notes.model === model ? status.notes : null;
   const downloaded = !!model && ((caps?.cachedNotes ?? []).includes(model) || (progress?.fraction ?? 0) >= 1);
   const downloading = !!progress && progress.fraction < 1;
+  const on = settings.smartNotes;
   const disabled = !settings.autoActions;
 
   return (
     <section className="stack" aria-labelledby="notes-title" style={{ gap: 8 }}>
       <div className="section-head">
         <h2 id="notes-title" className="label">
-          Smart notes
+          Experimental
         </h2>
       </div>
-      <p className="small muted" style={{ padding: "0 2px" }}>
-        After each meeting a small AI model on this laptop writes the summary and action items. The transcript stays on
-        the laptop.
-      </p>
+      <div className="list">
+        <div className="row" style={{ cursor: "default" }}>
+          <span className="grow">
+            <span className="name">
+              Smart notes and summary <span className="tag">Beta</span>
+            </span>
+            <span className="meta">
+              After each meeting a small AI model on this laptop writes a summary and the action items. It can get
+              things wrong; check them on the meeting page.
+            </span>
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={on}
+            aria-label="Smart notes and summary"
+            onClick={() => void save({ smartNotes: !on, notesModel: settings.notesModel === "off" ? "auto" : settings.notesModel })}
+          />
+        </div>
+      </div>
 
-      {noGpu && (
+      {on && noGpu && (
         <div className="banner" role="status">
           <AlertIcon size={14} />
           <span className="grow">This browser doesn't offer WebGPU, so action items come from phrases said in the call.</span>
         </div>
       )}
-      {disabled && (
+      {on && disabled && (
         <div className="banner" role="status">
           <AlertIcon size={14} />
           <span className="grow">Turn on Find action items above to use Smart notes.</span>
         </div>
       )}
 
+      {on && (
       <div className="list" role="radiogroup" aria-label="Smart notes model">
         {CHOICES.map((c) => {
           const unavailable = disabled || (noGpu && c.id !== "off");
@@ -83,8 +101,9 @@ export function NotesSettings({ settings, caps }: { settings: Settings; caps: Ca
           );
         })}
       </div>
+      )}
 
-      {model && !disabled && (
+      {on && model && !disabled && (
         <div className="card notes-download" data-testid="notes-download">
           {downloaded ? (
             <span className="hstack small">
