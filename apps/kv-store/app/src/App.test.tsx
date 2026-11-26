@@ -61,7 +61,7 @@ function fakeClient(apps: AppInfo[] = []) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
@@ -153,8 +153,8 @@ function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { 
 
 /** Two shared stores in two orgs: the one opened last, and the one an invite is for. */
 const TWO_ORGS: AppInfo[] = [
-  { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-  { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+  { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+  { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
 ];
 
 describe("App", () => {
@@ -165,7 +165,7 @@ describe("App", () => {
 
   it("tells the node shield which store is open, so its popover checks the node's code", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "mine", owner: "acct-alice", org: null, bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "mine", owner: "acct-alice", org: "", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     // A node that passes its check and binds the dev bundle's hash to the open instance.
     const attestApp = vi.fn(async () => ({ url: "https://n1.example", mock: false, appHash: "bundle-hash", checkedAt: Date.now() }));
@@ -177,7 +177,7 @@ describe("App", () => {
     });
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "mine", org: null }));
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "mine", org: "" }));
     render(<App deps={deps(client)} storage={storage} />);
     await screen.findByText("mine");
     await waitFor(() => expect(screen.getByTestId("node-shield").getAttribute("aria-label")).toBe("Verified node"));
@@ -270,11 +270,11 @@ describe("App", () => {
 
   it("restores the session and the store opened last time", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "mine", owner: "acct-alice", org: null, bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "mine", owner: "acct-alice", org: "", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "mine", org: null }));
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "mine", org: "" }));
     render(<App deps={deps(client)} storage={storage} />);
 
     await screen.findByText("mine");

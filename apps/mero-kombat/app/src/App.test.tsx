@@ -156,7 +156,7 @@ function fakeClient(apps: AppInfo[] = [], view: ArenaView = arenaView()) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: "acct-alice", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: vi.fn(async () => ({ index: 2, result: null, events: [] })),
@@ -278,7 +278,7 @@ describe("App", () => {
     const client = fakeClient([], arenaView({ p1: corner("p1", "acct-bob", "Fighter") }));
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
-    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Ring", org: null }));
+    storage.setItem(selectionKey(LOCAL, "acct-alice"), JSON.stringify({ appId: "app-1", name: "Ring", org: "" }));
     render(<App deps={deps(client)} storage={storage} />);
 
     // A corner filed under the contract's default name shows a short account id.
@@ -341,7 +341,7 @@ describe("App", () => {
   it("asks to join an invitation opened before signing in, then opens the arena it names", async () => {
     at("/play");
     const client = fakeClient([
-      { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     const invites = pendingIn(storage, { token: "tok-9", extra: { arena: "app-9" } });
@@ -371,7 +371,7 @@ describe("App", () => {
   it("an invited newcomer creates the account and joins in one click, and the arena opens", async () => {
     at("/play");
     const client = fakeClient([
-      { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-9", name: "Their ring", owner: "acct-bob", org: "org-9", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     // The session reads the invite from the page's storage, as in the browser.
     const invites = pendingIn(localStorage, { token: "tok-9", extra: { arena: "app-9" } });
@@ -432,8 +432,8 @@ describe("App", () => {
   describe("invitations land in the invited org", () => {
     /** Two shared arenas in two orgs: the one opened last, and the one an invite is for. */
     const TWO_ORGS: AppInfo[] = [
-      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ];
     const selected = (storage: KeyValueStorage) =>
       (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;

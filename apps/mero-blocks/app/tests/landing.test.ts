@@ -85,7 +85,7 @@ vi.mock("@calimero-apps/passkey/nodeShield", () => ({ bindNodeShield: () => () =
 const SESSION: CalimeroSession = { accountId: "acc-1", sessionToken: "s", refreshToken: "r", expiresAt: 9e12 };
 const ENV = { DEV: true, VITE_CALIMERO_TARGET: "local", VITE_CALIMERO_BUNDLE: "bundle-1" };
 
-const world = (appId: string, name: string, org: string | null): AppInfo => ({
+const world = (appId: string, name: string, org: string): AppInfo => ({
   appId,
   name,
   org,
@@ -93,6 +93,7 @@ const world = (appId: string, name: string, org: string | null): AppInfo => ({
   bundle: "bundle-1",
   package: null,
   version: null,
+  deployment: null,
 });
 
 function fakeClient(worlds: AppInfo[]) {

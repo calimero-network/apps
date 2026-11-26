@@ -98,8 +98,8 @@ function pendingIn(storage: KeyValueStorage, invite: Partial<PendingInvite> & { 
   return invites;
 }
 
-function scene(appId: string, name: string, org: string | null = "org-1"): AppInfo {
-  return { appId, name, owner: ME, org, bundle: "bundle-hash", package: null, version: null };
+function scene(appId: string, name: string, org: string = "org-1"): AppInfo {
+  return { appId, name, owner: ME, org, bundle: "bundle-hash", package: null, version: null, deployment: null };
 }
 
 function fakeClient(apps: AppInfo[] = []) {
@@ -320,8 +320,8 @@ describe("the studio's front door", () => {
   describe("invitations land in the invited studio", () => {
     /** Two shared scenes in two orgs: the one opened last, and the one an invite is for. */
     const TWO_ORGS: AppInfo[] = [
-      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ];
     const selected = (storage: KeyValueStorage) =>
       (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;

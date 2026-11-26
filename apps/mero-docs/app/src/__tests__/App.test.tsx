@@ -85,7 +85,7 @@ const ME = 'acct-alice';
 const SESSION: CalimeroSession = { accountId: ME, sessionToken: 's', refreshToken: 'r', expiresAt: 9e12 } as CalimeroSession;
 const DEV_ENV = { DEV: true, VITE_CALIMERO_BUNDLE: 'bundle-hash' };
 
-const REGISTRY: AppInfo = { appId: 'reg-1', name: 'Registry', owner: ME, org: 'org-1', bundle: 'bundle-hash', package: null, version: null };
+const REGISTRY: AppInfo = { appId: 'reg-1', name: 'Registry', owner: ME, org: 'org-1', bundle: 'bundle-hash', package: null, version: null, deployment: null };
 const ORG = {
   orgId: 'org-1',
   name: 'Acme',
