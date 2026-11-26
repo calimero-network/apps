@@ -45,7 +45,7 @@ Note: the reader tests use page snapshots written by hand. Meet, Zoom and Teams 
 apps/mero-sylence/fake-call.sh            # every platform; or one: meet | meet-captions | zoom | teams; or all (no windows)
 ```
 
-- **The call:** four macOS voices (Ana, Marko, Sandi, and "you" on the mic, with the call leaking into it) talk through a short launch meeting. Each platform gets a stand-in page that shows who is talking the way that platform does.
+- **The call:** four macOS voices (Eve, John, Sam, and "you" on the mic, with the call leaking into it) talk through a short launch meeting. Each platform gets a stand-in page that shows who is talking the way that platform does.
 - **What records it:** the real extension, with its own speech model, speaker reader, service worker and second pass, saving to the local node.
 - **What you see:** the call in one window and Sylence's live transcript in another. After Stop, the saved meeting opens on the Sylence page, where you sign in with the passkey already in that browser.
 - **Reports:** each run writes `extension/e2e/.fake-call/report-<platform>.md` listing every saved line, who said it and who Sylence named.
@@ -81,12 +81,12 @@ Run this list on each:
 |---|---|---|
 | 1 | Open the popup on the call tab | Meet / Zoom / Teams: the meeting's title and "· in a call", button **Record meeting**. Other site: "Not a meeting tab — you can still record it", button **Record this tab** |
 | 2 | Record, both people talk in turns for 2 minutes | Lines appear within a few seconds. The call stays audible |
-| 3 | Look at the names (popup, side panel) | Meet / Zoom / Teams: the other person's real name, once (not "Sandi FaticSandi Fatic"). Your lines: your name, or "You". Other site: "Others" / "You" |
+| 3 | Look at the names (popup, side panel) | Meet / Zoom / Teams: the other person's real name, once (not "Sam TaylorSam Taylor"). Your lines: your name, or "You". Other site: "Others" / "You" |
 | 4 | Turn captions on (Meet: CC, Teams: More → Captions) and talk again | Names still right; the popup says "Names from Meet · N people" |
 | 5 | Speakers, no headphones: stay silent while the other person talks for 30 s | **No lines under your name.** In diagnostics: "follows the call: echo, skipped" |
 | 6 | Talk over the other person | Your line stays yours. Their line gets their name (not plain "Others") |
 | 7 | Stay silent, breathe, type for 20 s | No "Thank you." / "Okay." lines under your name ("phantom, skipped" in diagnostics) |
-| 8 | Say "Ana, can you send the deck by Friday?" and "I'll test Brave today" | With **Find action items** on: 2 action items after Stop |
+| 8 | Say "Eve, can you send the deck by Friday?" and "I'll test Brave today" | With **Find action items** on: 2 action items after Stop |
 | 9 | Stop | With **Improve the transcript after the call** on and WebGPU available: "Improving the transcript" with a progress bar; first time, a 1.5 GB download. Then "Meeting saved" and "Transcript improved after the call…" |
 | 10 | Open the meeting on the page | Lines read as whole sentences, with names, in order. Details → Speech model says "whisper-large-v3-turbo, after the call". The speaker chips and filter work |
 | 11 | Close the call tab while recording | The recording stops and is saved |

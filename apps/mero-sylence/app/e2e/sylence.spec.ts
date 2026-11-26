@@ -42,7 +42,7 @@ test("signs up with a passkey and makes a workspace", async () => {
   // Signed in with no workspace: the picker.
   await page.getByRole("button", { name: "Start a new workspace" }).click();
   await page.getByPlaceholder("e.g. Product team").fill("Launch team");
-  await page.getByPlaceholder("e.g. Alice").fill("Ana");
+  await page.getByPlaceholder("e.g. Alice").fill("Eve");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByTestId("empty-meetings")).toBeVisible({ timeout: 60_000 });
@@ -59,10 +59,10 @@ test("lists every meeting of the workspace, newest first, with live badge and co
       lines: [
         { speaker: "you", text: "Morning, let's look at the pricing page." },
         { speaker: "others", text: "The table needs one more column for teams." },
-        { speaker: "you", text: "Ana, can you send the deck by Friday?" },
+        { speaker: "you", text: "Eve, can you send the deck by Friday?" },
         { speaker: "others", text: "Yes, and I'll ask the pelican team for numbers." },
       ],
-      actions: [{ text: "Send the deck", assignee: "Ana", seq: 2 }],
+      actions: [{ text: "Send the deck", assignee: "Eve", seq: 2 }],
     },
     {
       title: "Design sync",

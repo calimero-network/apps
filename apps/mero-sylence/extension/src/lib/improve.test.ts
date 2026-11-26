@@ -94,13 +94,13 @@ describe("lines from the model's sentences", () => {
       window,
       [
         { start: 0, end: 4.2, text: " Let's ship it on Thursday." },
-        { start: 4.5, end: 9, text: "Ana writes the notes." },
+        { start: 4.5, end: 9, text: "Eve writes the notes." },
       ],
       "",
     );
     expect(lines).toEqual([
       { speaker: "others", startMs: 10_000, endMs: 14_200, text: "Let's ship it on Thursday." },
-      { speaker: "others", startMs: 14_500, endMs: 19_000, text: "Ana writes the notes." },
+      { speaker: "others", startMs: 14_500, endMs: 19_000, text: "Eve writes the notes." },
     ]);
   });
 

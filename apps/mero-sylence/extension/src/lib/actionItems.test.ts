@@ -5,9 +5,9 @@ const call = [
   ["you", "Morning everyone, thanks for joining. Let's go through the launch plan for Sylence."],
   ["others", "Morning! I pulled the numbers from the beta, about forty teams tried it last week."],
   ["you", "Great. The big question from the beta was the model download on older laptops."],
-  ["you", "Okay. Ana, can you write the release notes for the store listing by Thursday?"],
+  ["you", "Okay. Eve, can you write the release notes for the store listing by Thursday?"],
   ["others", "Yes, I'll have a draft by Thursday and share it in the channel."],
-  ["you", "Marko, we still need the Brave check, the shields sometimes hide WebGPU."],
+  ["you", "John, we still need the Brave check, the shields sometimes hide WebGPU."],
   ["others", "I'll test Brave on my machine today and send screenshots of the fallback."],
   ["you", "Perfect. Last thing, we need a short demo video for the landing page."],
   ["others", "I can record it on Friday once the store build is up."],
@@ -18,7 +18,7 @@ describe("action items", () => {
   it("finds the requests, commitments and team tasks in a real call", () => {
     const found = findActions(call);
     expect(found).toEqual([
-      { text: "Write the release notes for the store listing by Thursday", assignee: "Ana", sourceSeq: 3 },
+      { text: "Write the release notes for the store listing by Thursday", assignee: "Eve", sourceSeq: 3 },
       { text: "Test Brave on my machine today and send screenshots of the fallback", assignee: "", sourceSeq: 6 },
       { text: "Record it on Friday once the store build is up", assignee: "", sourceSeq: 8 },
     ]);
@@ -29,7 +29,7 @@ describe("action items", () => {
   });
 
   it("reads names, explicit markers and team plans", () => {
-    expect(actionIn("Ana, please update the pricing page.", "you")).toEqual({ text: "Update the pricing page", assignee: "Ana" });
+    expect(actionIn("Eve, please update the pricing page.", "you")).toEqual({ text: "Update the pricing page", assignee: "Eve" });
     expect(actionIn("Action item: migrate the billing tables", "you")?.text).toBe("Migrate the billing tables");
     expect(actionIn("Don't forget to renew the domain.", "others")?.text).toBe("Renew the domain");
     expect(actionIn("We should book the venue for March.", "others")?.text).toBe("Book the venue for March");
@@ -69,7 +69,7 @@ describe("action items", () => {
   });
 
   it("splits sentences and tidies tasks", () => {
-    expect(sentences("Okay. Ana, can you do it?  Thanks!")).toEqual(["Okay.", "Ana, can you do it?", "Thanks!"]);
+    expect(sentences("Okay. Eve, can you do it?  Thanks!")).toEqual(["Okay.", "Eve, can you do it?", "Thanks!"]);
     expect(tidy("please send the notes too.")).toBe("Send the notes");
   });
 

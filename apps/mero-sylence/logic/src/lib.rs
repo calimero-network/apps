@@ -98,7 +98,7 @@ pub struct SegmentInput {
     pub end_ms: u32,
     /// `you` or `others`.
     pub speaker: String,
-    /// Who spoke, as the call page showed it ("Ana"); empty when unknown.
+    /// Who spoke, as the call page showed it ("Eve"); empty when unknown.
     #[serde(default)]
     pub name: String,
     pub text: String,
@@ -125,7 +125,7 @@ pub struct SegmentRow {
 pub struct ActionRow {
     pub meeting_id: String,
     pub text: String,
-    /// Who should do it, as free text ("Ana", "design team"); may be empty.
+    /// Who should do it, as free text ("Eve", "design team"); may be empty.
     pub assignee: String,
     pub done: bool,
     /// The segment it was taken from, if any.

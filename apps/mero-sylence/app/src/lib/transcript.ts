@@ -83,7 +83,7 @@ export function platformName(value: string): string {
  * and "Others" for the call.
  */
 export function speakerLabel(speaker: string, recorderName: string, name = ""): string {
-  // Early extension builds saved Meet's name twice ("Ana HorvatAna Horvat").
+  // Early extension builds saved Meet's name twice ("Eve ParkerEve Parker").
   const n = name.replace(/\s+/g, " ").trim().replace(/^(.{2,}?)\s*\1$/u, "$1");
   return n || (speaker === "you" ? recorderName : "Others");
 }

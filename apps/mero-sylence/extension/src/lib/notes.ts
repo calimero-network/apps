@@ -11,7 +11,7 @@
  *   SUMMARY:
  *   Two to four sentences.
  *   ACTION ITEMS:
- *   - Send the deck to the design team | Ana | Friday
+ *   - Send the deck to the design team | Eve | Friday
  *   - Book the venue | - | -
  */
 import { MAX_ACTIONS, isTask, type TranscriptLine } from "./actionItems";
@@ -184,7 +184,7 @@ export function parseNotes(answer: string): Notes {
       const [task, who, due] = body.split("|").map((p) => p.trim());
       const t = clean(task).replace(/[.;]+$/, "");
       if (!t) continue;
-      // "You (I)", "Ana (Guest)": the name without what the model or the call adds in brackets.
+      // "You (I)", "Eve (Guest)": the name without what the model or the call adds in brackets.
       const assignee = clean(who).replace(/\s*\([^)]*\)\s*/g, " ").trim();
       actions.push({ text: t, assignee: NOBODY_IN_PARTICULAR.test(assignee) ? "" : assignee, due: clean(due) });
     }

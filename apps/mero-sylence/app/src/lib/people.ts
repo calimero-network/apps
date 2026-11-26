@@ -17,7 +17,7 @@ export function displayName(
   return name?.trim() || spaceName?.trim() || shortAccount(account);
 }
 
-/** Up to two letters for an avatar: "Ana Lee" -> "AL", unnamed -> from the id. */
+/** Up to two letters for an avatar: "Eve Lee" -> "AL", unnamed -> from the id. */
 export function initials(
   account: string,
   name: string | null | undefined,

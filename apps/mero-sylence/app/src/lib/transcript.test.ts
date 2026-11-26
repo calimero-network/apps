@@ -72,11 +72,11 @@ describe("formatting", () => {
   it("names platforms and speakers", () => {
     expect(platformName("meet")).toBe("Google Meet");
     expect(platformName("webex")).toBe("Call");
-    expect(speakerLabel("you", "Ana")).toBe("Ana");
-    expect(speakerLabel("others", "Ana")).toBe("Others");
-    expect(speakerLabel("others", "Ana", "Marko")).toBe("Marko");
-    expect(speakerLabel("others", "Ana", "Sandi FaticSandi Fatic")).toBe("Sandi Fatic");
-    expect(speakerLabel("you", "Ana", " ")).toBe("Ana");
+    expect(speakerLabel("you", "Eve")).toBe("Eve");
+    expect(speakerLabel("others", "Eve")).toBe("Others");
+    expect(speakerLabel("others", "Eve", "John")).toBe("John");
+    expect(speakerLabel("others", "Eve", "Sam TaylorSam Taylor")).toBe("Sam Taylor");
+    expect(speakerLabel("you", "Eve", " ")).toBe("Eve");
   });
   it("makes a file name from a title", () => {
     expect(markdownFileName("Q1 Roadmap: review / sign-off!")).toBe("q1-roadmap-review-sign-off.md");
@@ -109,7 +109,7 @@ describe("toMarkdown", () => {
         { text: "Send the deck", assignee: "Cy", done: false },
         { text: "Book the room", assignee: "", done: true },
       ],
-      "Ana",
+      "Eve",
       "en-GB",
     );
     const when = new Intl.DateTimeFormat("en-GB", {
@@ -137,7 +137,7 @@ describe("toMarkdown", () => {
         "",
         "## Transcript",
         "",
-        "**0:00 Ana:** Morning all",
+        "**0:00 Eve:** Morning all",
         "",
         "**1:05 Others:** Cy will send the deck",
         "",

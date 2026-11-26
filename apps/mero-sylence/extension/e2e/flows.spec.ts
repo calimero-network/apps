@@ -195,7 +195,7 @@ test("a recording saves its lines to the node, ends the meeting and adds the act
   test.skip(!node, noNode ?? "");
   const workspace = node!.workspaces.length ? (await getStorage<Auth>(worker, "local", "sylence:auth")).workspace! : null;
   const popup = await record([
-    ["you", "Okay. Ana, can you send the deck to the design team by Friday?"],
+    ["you", "Okay. Eve, can you send the deck to the design team by Friday?"],
     ["others", "Sure. Can you hear me okay?"],
     ["others", "I'll update the pricing page tomorrow."],
   ]);
@@ -217,7 +217,7 @@ test("a recording saves its lines to the node, ends the meeting and adds the act
     limit: 50,
   });
   expect(page1.segments.map((s) => [s.seq, s.speaker, s.text])).toEqual([
-    [0, "you", "Okay. Ana, can you send the deck to the design team by Friday?"],
+    [0, "you", "Okay. Eve, can you send the deck to the design team by Friday?"],
     [1, "others", "Sure. Can you hear me okay?"],
     [2, "others", "I'll update the pricing page tomorrow."],
   ]);
@@ -228,7 +228,7 @@ test("a recording saves its lines to the node, ends the meeting and adds the act
     { meetingId: status.meeting.id },
   );
   expect(actions.map((a) => ({ text: a.text, assignee: a.assignee, sourceSeq: a.sourceSeq, done: a.done }))).toEqual([
-    { text: "Send the deck to the design team by Friday", assignee: "Ana", sourceSeq: 0, done: false },
+    { text: "Send the deck to the design team by Friday", assignee: "Eve", sourceSeq: 0, done: false },
     { text: "Update the pricing page tomorrow", assignee: "", sourceSeq: 2, done: false },
   ]);
 
@@ -270,7 +270,7 @@ test("turning action items off adds none", async () => {
   const workspace = (await getStorage<Auth>(worker, "local", "sylence:auth")).workspace!;
   const settings = await getStorage<Record<string, unknown>>(worker, "local", "sylence:settings");
   await setStorage(worker, "local", { "sylence:settings": { ...settings, autoActions: false } });
-  const popup = await record([["you", "Ana, can you book the room for Monday?"]]);
+  const popup = await record([["you", "Eve, can you book the room for Monday?"]]);
   await expect(popup.getByText(/action items? added/)).toHaveCount(0);
   const status = await getStorage<{ meeting: { id: string } }>(worker, "session", "sylence:status");
   expect(await node!.view<unknown[]>(workspace.appId, "listActions", { meetingId: status.meeting.id })).toEqual([]);
@@ -364,7 +364,7 @@ test("settings: styled selects, switches that stick, diagnostics, and Log out at
   await expect(popup.getByText(/^(Copied \d+ lines\.|Nothing logged yet in this browser session\.)$/)).toBeVisible();
   const copied = await popup.evaluate(() => (window as unknown as { __copied: string }).__copied);
   expect(copied).toMatch(/^Sylence \d+\.\d+\.\d+ on /);
-  expect(copied).not.toContain("Ana, can you send the deck");
+  expect(copied).not.toContain("Eve, can you send the deck");
   await popup.getByRole("button", { name: "Hide advanced" }).click();
 
   // Log out is the last control, with no account id beside it.

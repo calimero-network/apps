@@ -94,13 +94,13 @@ describe("MeetingPage", () => {
   it("names each line after who said it, and narrows the transcript to one speaker", async () => {
     setup({
       me: "cy",
-      pages: [[seg(0, "Morning all", "you", "Bob Smith"), seg(1, "Hi Bob", "others", "Ana"), seg(2, "Hello", "others", "Marko"), seg(3, "Agenda?", "others", "Ana")]],
+      pages: [[seg(0, "Morning all", "you", "Bob Smith"), seg(1, "Hi Bob", "others", "Eve"), seg(2, "Hello", "others", "John"), seg(3, "Agenda?", "others", "Eve")]],
     });
     const lines = await screen.findAllByTestId("segment");
-    expect(lines.map((l) => l.querySelector(".speaker-chip")!.textContent)).toEqual(["Bob Smith", "Ana", "Marko", "Ana"]);
+    expect(lines.map((l) => l.querySelector(".speaker-chip")!.textContent)).toEqual(["Bob Smith", "Eve", "John", "Eve"]);
     const filter = screen.getByRole("group", { name: "Speakers" });
-    expect(within(filter).getAllByRole("button").map((b) => b.textContent)).toEqual(["Everyone", "Bob Smith1", "Ana2", "Marko1"]);
-    fireEvent.click(within(filter).getByRole("button", { name: /^Ana/ }));
+    expect(within(filter).getAllByRole("button").map((b) => b.textContent)).toEqual(["Everyone", "Bob Smith1", "Eve2", "John1"]);
+    fireEvent.click(within(filter).getByRole("button", { name: /^Eve(?!ryone)/ }));
     expect(screen.getAllByTestId("segment").map((l) => l.querySelector(".segment-text")?.textContent ?? l.textContent)).toHaveLength(2);
     expect(screen.getByTestId("line-count").textContent).toMatch(/^2 of/);
     fireEvent.click(within(filter).getByRole("button", { name: "Everyone" }));

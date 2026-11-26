@@ -3,7 +3,7 @@
  * phrasings people use in calls when they ask for something, take something
  * on, or agree the team will do it.
  *
- *   "Ana, can you write the release notes by Thursday?"  → Ana: Write the release notes by Thursday
+ *   "Eve, can you write the release notes by Thursday?"  → Eve: Write the release notes by Thursday
  *   "I'll test Brave on my machine today."              → Test Brave on my machine today
  *   "We need to record a demo video."                    → Record a demo video
  *   "Action item: update the pricing page."              → Update the pricing page
@@ -24,7 +24,7 @@ export interface TranscriptLine {
 
 export interface FoundAction {
   text: string;
-  /** A name said in the line ("Ana, can you…"), or "". */
+  /** A name said in the line ("Eve, can you…"), or "". */
   assignee: string;
   sourceSeq: number;
 }
@@ -42,10 +42,10 @@ const SMALL_TALK =
 /** "I'll …", "I will …", "I'm going to …", "I can … by/today/…" */
 const COMMIT = /^i(?:'ll| will| am going to|'m going to| can)\s+(.+)$/i;
 
-/** "Ana, can you …", "can you …", "could you please …" */
+/** "Eve, can you …", "can you …", "could you please …" */
 const REQUEST = /^(?:([A-Z][a-z]+(?:\s[A-Z][a-z]+)?),\s+)?(?:[Cc]an|[Cc]ould|[Ww]ould|[Ww]ill)\s+you(?:\s+please)?\s+(.+?)\??$/;
 
-/** "Ana, please …" or "Ana, you'll …" */
+/** "Eve, please …" or "Eve, you'll …" */
 const NAMED_ASK = /^([A-Z][a-z]+),\s+(?:please\s+|you(?:'ll| will| need to| should)\s+)(.+)$/;
 
 /** "We need to …", "we should …", "let's …", "someone needs to …" */
@@ -194,7 +194,7 @@ export function actionIn(sentence: string, speaker: string, name = ""): Omit<Fou
   let task: string | null = null;
   let assignee = "";
 
-  // "Marko, we still need …": the name is who it is for.
+  // "John, we still need …": the name is who it is for.
   const addressed = /^([A-Z][a-z]+),\s+(?=[a-z])/.exec(s);
   const rest = addressed ? s.slice(addressed[0].length) : s;
   const explicit = EXPLICIT.exec(rest);

@@ -459,7 +459,7 @@ describe("service worker: when recording goes wrong", () => {
   it("adds the action items said in the meeting when it ends", async () => {
     await request({ type: "start", tabId: 7 });
     await event({ type: "model", tier: "light", state: "ready" });
-    await event(segment("you", 0, "Okay. Ana, can you send the deck to the design team by Friday?"));
+    await event(segment("you", 0, "Okay. Eve, can you send the deck to the design team by Friday?"));
     await event(segment("others", 3_000, "Sure. Can you hear me okay?"));
     await event(segment("others", 6_000, "I'll update the pricing page tomorrow."));
     await request({ type: "stop" });
@@ -467,7 +467,7 @@ describe("service worker: when recording goes wrong", () => {
     expect(status().phase).toBe("saved");
     expect(status().actions).toBe(2);
     expect(node.actions).toEqual([
-      { meetingId: "m1", text: "Send the deck to the design team by Friday", assignee: "Ana", sourceSeq: 0 },
+      { meetingId: "m1", text: "Send the deck to the design team by Friday", assignee: "Eve", sourceSeq: 0 },
       { meetingId: "m1", text: "Update the pricing page tomorrow", assignee: "", sourceSeq: 2 },
     ]);
   });
@@ -476,7 +476,7 @@ describe("service worker: when recording goes wrong", () => {
     h.local.set("sylence:settings", { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: false });
     await request({ type: "start", tabId: 7 });
     await event({ type: "model", tier: "light", state: "ready" });
-    await event(segment("you", 0, "Ana, can you send the deck by Friday?"));
+    await event(segment("you", 0, "Eve, can you send the deck by Friday?"));
     await request({ type: "stop" });
     await event({ type: "drained", durationMs: 3_000 });
     expect(status().phase).toBe("saved");
@@ -676,20 +676,20 @@ describe("service worker: when recording goes wrong", () => {
           notes: {
             summary: "The team reviewed the launch and agreed who writes the notes and tests Brave.",
             actions: [
-              { text: "Write the release notes", assignee: "Ana", due: "Thursday" },
-              { text: "Test Brave shields", assignee: "Marko", due: "today" },
+              { text: "Write the release notes", assignee: "Eve", due: "Thursday" },
+              { text: "Test Brave shields", assignee: "John", due: "today" },
             ],
           },
         } as Event;
       });
-      await record(["Let's go through the launch.", "Ana will write the notes by Thursday and Marko tests Brave today."]);
+      await record(["Let's go through the launch.", "Eve will write the notes by Thursday and John tests Brave today."]);
       const notesCmd = h.toOffscreen.find((c) => c.type === "notes") as Extract<OffscreenCommand, { type: "notes" }>;
       // Automatic picks the 1.5B model on an 8 GB laptop with WebGPU.
       expect(notesCmd.model).toBe("better");
       expect(asked.map((l) => l.text)).toHaveLength(2);
       expect(node.actions.map((a) => [a.text, a.assignee])).toEqual([
-        ["Write the release notes (by Thursday)", "Ana"],
-        ["Test Brave shields (by today)", "Marko"],
+        ["Write the release notes (by Thursday)", "Eve"],
+        ["Test Brave shields (by today)", "John"],
       ]);
       expect(node.meetings.get("m1")!.summary).toMatch(/reviewed the launch/);
       const st = status();
@@ -703,7 +703,7 @@ describe("service worker: when recording goes wrong", () => {
 
     it("falls back to phrase matching when the model fails", async () => {
       gpu(() => ({ type: "notesError", error: "WebGPU device lost" }) as Event);
-      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      await record(["Eve, can you send the deck by Friday?", "Sure."]);
       expect(status().phase).toBe("saved");
       expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
       expect(status().wroteSummary).toBe(false);
@@ -713,14 +713,14 @@ describe("service worker: when recording goes wrong", () => {
 
     it("lets phrase matching look when the model finds no task", async () => {
       gpu(() => ({ type: "notes", notes: { summary: "Short.", actions: [] } }) as Event);
-      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      await record(["Eve, can you send the deck by Friday?", "Sure."]);
       expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
       // One word is a title, not a summary.
       expect(node.meetings.get("m1")!.summary).toBe("");
     });
 
     it("never asks the model without WebGPU", async () => {
-      await record(["Ana, can you send the deck by Friday?", "Sure."]);
+      await record(["Eve, can you send the deck by Friday?", "Sure."]);
       expect(h.toOffscreen.some((c) => c.type === "notes")).toBe(false);
       expect(node.actions).toHaveLength(1);
       expect(status().notesBy).toEqual({ kind: "phrases", why: "This browser doesn't offer WebGPU, which Smart notes need." });
@@ -758,7 +758,7 @@ describe("service worker: the transcript redone after the call", () => {
             type: "improved",
             startedAt: 0,
             lines: [
-              { speaker: "others", startMs: 0, endMs: 2_000, text: "Ana, can you send the deck by Friday?" },
+              { speaker: "others", startMs: 0, endMs: 2_000, text: "Eve, can you send the deck by Friday?" },
               { speaker: "you", startMs: 2_500, endMs: 4_000, text: "Sure, I will." },
             ],
           } as Event)
@@ -766,7 +766,7 @@ describe("service worker: the transcript redone after the call", () => {
     );
     await record(["Anna can you sand the deck", "sure"]);
     expect(h.toOffscreen.find((c) => c.type === "improve")).toEqual({ target: "offscreen", type: "improve", language: "en" });
-    expect(node.texts("m1")).toEqual(["Ana, can you send the deck by Friday?", "Sure, I will."]);
+    expect(node.texts("m1")).toEqual(["Eve, can you send the deck by Friday?", "Sure, I will."]);
     expect(node.dropCalls).toEqual([[0, 2]]);
     expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
     const st = status();
@@ -777,8 +777,8 @@ describe("service worker: the transcript redone after the call", () => {
 
   it("keeps the live transcript when the second pass fails", async () => {
     redo((c) => (c.type === "improve" ? ({ type: "improveError", error: "WebGPU device lost" } as Event) : null));
-    await record(["Ana, can you send the deck by Friday?", "Sure."]);
-    expect(node.texts("m1")).toEqual(["Ana, can you send the deck by Friday?", "Sure."]);
+    await record(["Eve, can you send the deck by Friday?", "Sure."]);
+    expect(node.texts("m1")).toEqual(["Eve, can you send the deck by Friday?", "Sure."]);
     expect(node.dropCalls).toEqual([]);
     expect(status().improved).toEqual({ done: false, why: "The second pass failed: WebGPU device lost" });
     expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
@@ -852,12 +852,12 @@ describe("service worker: every kind of call", () => {
       // The speaker reader goes only into the call sites it knows.
       expect(h.injected).toEqual(call.reader ? [7] : []);
       await event({ type: "model", tier: "light", state: "ready" });
-      if (call.reader) await speakers(T0, ["Ana"], { participants: ["Ana", "Fran"], self: "Fran" });
+      if (call.reader) await speakers(T0, ["Eve"], { participants: ["Eve", "Alex"], self: "Alex" });
       await event(segment("others", 0, "We should ship on Thursday.", T0));
       await event(segment("you", 3_000, "Agreed.", T0));
       const lines = [...m.segments.values()].sort((a, b) => a.seq - b.seq);
       expect(lines.map((l) => l.text)).toEqual(["We should ship on Thursday.", "Agreed."]);
-      expect(lines.map((l) => l.name)).toEqual(call.reader ? ["Ana", "Fran"] : ["", ""]);
+      expect(lines.map((l) => l.name)).toEqual(call.reader ? ["Eve", "Alex"] : ["", ""]);
       await request({ type: "stop" });
       await event({ type: "drained", durationMs: 6_000 });
       await settle(40);
@@ -874,17 +874,17 @@ describe("service worker: speaker names", () => {
     await request({ type: "start", tabId: 7 });
     expect(h.injected).toEqual([7]);
     await event({ type: "model", tier: "light", state: "ready" });
-    await speakers(T0, ["Ana"], { participants: ["Ana", "Marko", "Fran"], self: "Fran" });
+    await speakers(T0, ["Eve"], { participants: ["Eve", "John", "Alex"], self: "Alex" });
     await speakers(T0 + 3_000, []);
-    await speakers(T0 + 4_000, ["Marko"]);
-    await speakers(T0 + 7_000, ["Fran"]);
-    await event(segment("others", 0, "Hi, Ana here", T0));
-    await event(segment("others", 4_100, "Marko speaking", T0));
+    await speakers(T0 + 4_000, ["John"]);
+    await speakers(T0 + 7_000, ["Alex"]);
+    await event(segment("others", 0, "Hi, Eve here", T0));
+    await event(segment("others", 4_100, "John speaking", T0));
     await event(segment("you", 7_200, "And me", T0));
     const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
-    expect(lines.map((l) => l.name)).toEqual(["Ana", "Marko", "Fran"]);
-    expect(status().lines.map((l) => l.name)).toEqual(["Ana", "Marko", "Fran"]);
-    expect(status().speakers).toMatchObject({ via: "meet-tiles", participants: 3, self: "Fran" });
+    expect(lines.map((l) => l.name)).toEqual(["Eve", "John", "Alex"]);
+    expect(status().lines.map((l) => l.name)).toEqual(["Eve", "John", "Alex"]);
+    expect(status().speakers).toMatchObject({ via: "meet-tiles", participants: 3, self: "Alex" });
 
     await request({ type: "stop" });
     await event({ type: "drained", durationMs: 9_000 });
@@ -893,16 +893,16 @@ describe("service worker: speaker names", () => {
 
   it("names the recorder's lines with their name in the org when the call page doesn't show it", async () => {
     node.apps = [{ appId: "app1", name: "Team", package: "com.calimero.sylence", org: "org1" } as never];
-    node.names = { [AUTH.accountId]: { name: "Fran" } };
+    node.names = { [AUTH.accountId]: { name: "Alex" } };
     h.tab = { url: "https://app.zoom.us/wc/81234567890/join", title: "Sync - Zoom" };
     await request({ type: "start", tabId: 7 });
     await event({ type: "model", tier: "light", state: "ready" });
     // Zoom says who is talking, never who "you" are; the recorder's own name in it is left out of the call's lines.
-    await speakers(T0, ["Fran", "Ana"], { participants: ["Ana", "Fran"] });
-    await event(segment("others", 0, "Hi from Ana", T0));
+    await speakers(T0, ["Alex", "Eve"], { participants: ["Eve", "Alex"] });
+    await event(segment("others", 0, "Hi from Eve", T0));
     await event(segment("you", 3_000, "And me", T0));
     const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
-    expect(lines.map((l) => l.name)).toEqual(["Ana", "Fran"]);
+    expect(lines.map((l) => l.name)).toEqual(["Eve", "Alex"]);
   });
 
   it("ignores a reader in another tab, and leaves lines unnamed without one", async () => {
@@ -918,7 +918,7 @@ describe("service worker: speaker names", () => {
     await request({ type: "start", tabId: 7 });
     expect(h.injected).toEqual([]);
     await event({ type: "model", tier: "light", state: "ready" });
-    await speakers(T0, ["Ana"]);
+    await speakers(T0, ["Eve"]);
     await event(segment("others", 0, "Hello", T0));
     expect([...node.meetings.get("m1")!.segments.values()][0]!.name).toBe("");
   });

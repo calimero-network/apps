@@ -596,7 +596,7 @@ fn open_actions_are_newest_first_across_meetings() {
         &mut t,
         "bob",
         "editAction",
-        json!({ "actionId": first, "text": "first, edited", "assignee": "Ana" }),
+        json!({ "actionId": first, "text": "first, edited", "assignee": "Eve" }),
     );
     call(
         &mut t,
@@ -620,7 +620,7 @@ fn open_actions_are_newest_first_across_meetings() {
     );
     let edited = &view(&mut t, "bob", "listActions", json!({ "meetingId": a }))[0];
     assert_eq!(edited["text"], "first, edited");
-    assert_eq!(edited["assignee"], "Ana");
+    assert_eq!(edited["assignee"], "Eve");
     assert_ne!(edited["updatedAt"], edited["createdAt"]);
 }
 
@@ -872,9 +872,9 @@ fn a_line_keeps_the_speaker_name_the_call_page_showed() {
         "bob",
         &id,
         vec![
-            json!({ "seq": 0, "startMs": 0, "endMs": 900, "speaker": "others", "name": "  Ana Kovač ", "text": "I'll send the deck." }),
+            json!({ "seq": 0, "startMs": 0, "endMs": 900, "speaker": "others", "name": "  Eve Kovač ", "text": "I'll send the deck." }),
             json!({ "seq": 1, "startMs": 1_000, "endMs": 1_900, "speaker": "others", "text": "Fine by me." }),
-            seg(2, "you", "Thanks Ana."),
+            seg(2, "you", "Thanks Eve."),
         ],
     );
     let page = view(
@@ -890,7 +890,7 @@ fn a_line_keeps_the_speaker_name_the_call_page_showed() {
         .map(|s| s["name"].as_str().unwrap())
         .collect();
     // Trimmed; a line sent without one (an older extension) has none.
-    assert_eq!(names, vec!["Ana Kovač", "", ""]);
+    assert_eq!(names, vec!["Eve Kovač", "", ""]);
     // Editing the text keeps the name.
     call(
         &mut t,
@@ -904,7 +904,7 @@ fn a_line_keeps_the_speaker_name_the_call_page_showed() {
         "transcript",
         json!({ "meetingId": id, "fromSeq": 0, "limit": 1 }),
     );
-    assert_eq!(page["segments"][0]["name"], "Ana Kovač");
+    assert_eq!(page["segments"][0]["name"], "Eve Kovač");
     // Search hits say who spoke.
     let r = view(
         &mut t,
@@ -912,7 +912,7 @@ fn a_line_keeps_the_speaker_name_the_call_page_showed() {
         "search",
         json!({ "query": "deck", "limit": 10 }),
     );
-    assert_eq!(r["hits"][0]["name"], "Ana Kovač");
+    assert_eq!(r["hits"][0]["name"], "Eve Kovač");
 }
 
 #[test]

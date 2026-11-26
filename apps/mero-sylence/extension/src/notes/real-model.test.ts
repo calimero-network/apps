@@ -14,10 +14,10 @@ const call = [
   ["others", "Morning! I pulled the numbers from the beta, about forty teams tried it last week, mostly on Google Meet."],
   ["you", "Great. The big question from the beta was the model download on older laptops."],
   ["others", "Right, the large turbo model is too much on a slow connection, so small laptops now get Moonshine."],
-  ["you", "Okay. Ana, can you write the release notes for the store listing by Thursday?"],
+  ["you", "Okay. Eve, can you write the release notes for the store listing by Thursday?"],
   ["others", "Yes, I'll have a draft by Thursday and share it in the channel."],
-  ["you", "Marko, we still need someone to test Brave, the shields sometimes hide WebGPU."],
-  ["others", "This is Marko, I'll test Brave on my machine today and send screenshots."],
+  ["you", "John, we still need someone to test Brave, the shields sometimes hide WebGPU."],
+  ["others", "This is John, I'll test Brave on my machine today and send screenshots."],
   ["you", "Perfect. We also need a short demo video for the landing page before launch."],
   ["others", "I can record the demo on Friday once the store build is up."],
   ["you", "Great, that's everything. Thanks all, talk on Monday."],
@@ -50,7 +50,7 @@ describe.skipIf(!which)("the real notes model", () => {
         // The model Automatic picks on most laptops: a real summary and the right owners.
         expect(notes.summary.split(/\s+/).length).toBeGreaterThan(15);
         const owners = actionsToAdd(notes.actions).map((a) => a.assignee);
-        expect(owners).toEqual(expect.arrayContaining(["Ana", "Marko"]));
+        expect(owners).toEqual(expect.arrayContaining(["Eve", "John"]));
       }
     },
     20 * 60_000,

@@ -22,24 +22,24 @@ describe("notes", () => {
         "Brave still needs testing.",
         "",
         "**ACTION ITEMS:**",
-        "1. Write release notes for the store listing | Ana | Thursday",
-        "- **Test Brave shields** | Marko | Today",
+        "1. Write release notes for the store listing | Eve | Thursday",
+        "- **Test Brave shields** | John | Today",
         "* Record the demo video | - | -",
         "- Celebrate | Others | not specified",
         "- Book the venue | Me | Before launch",
         "- Record the demo video for the page | You (I) | Friday",
-        "- Merge the release branch | Ana (Guest) | -",
+        "- Merge the release branch | Eve (Guest) | -",
       ].join("\n"),
     );
     expect(notes.summary).toBe("The team reviewed the launch. Brave still needs testing.");
     expect(notes.actions).toEqual([
-      { text: "Write release notes for the store listing", assignee: "Ana", due: "Thursday" },
-      { text: "Test Brave shields", assignee: "Marko", due: "Today" },
+      { text: "Write release notes for the store listing", assignee: "Eve", due: "Thursday" },
+      { text: "Test Brave shields", assignee: "John", due: "Today" },
       { text: "Record the demo video", assignee: "", due: "" },
       { text: "Celebrate", assignee: "", due: "" },
       { text: "Book the venue", assignee: "", due: "Before launch" },
       { text: "Record the demo video for the page", assignee: "", due: "Friday" },
-      { text: "Merge the release branch", assignee: "Ana", due: "" },
+      { text: "Merge the release branch", assignee: "Eve", due: "" },
     ]);
   });
 
@@ -51,8 +51,8 @@ describe("notes", () => {
   it("puts the due date in the task's words, once, and drops repeats and fragments", () => {
     const add = actionsToAdd(
       [
-        { text: "write the release notes", assignee: "Ana", due: "Thursday" },
-        { text: "Write the release notes", assignee: "Ana", due: "Thursday" },
+        { text: "write the release notes", assignee: "Eve", due: "Thursday" },
+        { text: "Write the release notes", assignee: "Eve", due: "Thursday" },
         { text: "Send the deck by Friday", assignee: "", due: "Friday" },
         { text: "Ship", assignee: "", due: "" },
         { text: "Book the venue", assignee: "", due: "Before launch" },
@@ -60,7 +60,7 @@ describe("notes", () => {
       ["Book the venue (before launch)"],
     );
     expect(add).toEqual([
-      { text: "Write the release notes (by Thursday)", assignee: "Ana" },
+      { text: "Write the release notes (by Thursday)", assignee: "Eve" },
       { text: "Send the deck by Friday", assignee: "" },
     ]);
     expect(dueWords("Today")).toBe("by today");
@@ -96,7 +96,7 @@ describe("notes", () => {
         generate: async (messages) => {
           asked.push(messages);
           if (messages[0]!.content.startsWith("You combine")) return "Summary: The whole meeting, combined.";
-          return `SUMMARY:\nPart ${asked.length}.\nACTION ITEMS:\n- Task from part ${asked.length} | Ana | -`;
+          return `SUMMARY:\nPart ${asked.length}.\nACTION ITEMS:\n- Task from part ${asked.length} | Eve | -`;
         },
       },
       (done, of) => parts.push(done / of),

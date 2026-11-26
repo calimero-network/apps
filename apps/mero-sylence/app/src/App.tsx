@@ -169,7 +169,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const [signingIn, setSigningIn] = useState(false);
   if (api.session.status === "connecting") {
     return (
-      <Shell>
+      <Shell shield={false}>
         <div className="card">
           <p className="empty">Connecting…</p>
         </div>
@@ -192,7 +192,7 @@ function SignedOutPages({ onSignIn }: { onSignIn: () => void }) {
   const [route, go] = useRoute();
   if (route.page === "install") {
     return (
-      <Shell right={<button type="button" className="btn small" onClick={onSignIn}>Sign in</button>}>
+      <Shell shield={false} right={<button type="button" className="btn small" onClick={onSignIn}>Sign in</button>}>
         <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Sylence" />
       </Shell>
     );
@@ -202,7 +202,7 @@ function SignedOutPages({ onSignIn }: { onSignIn: () => void }) {
 
 /** The front door when signed out. */
 export function Welcome({ onSignIn, onInstall }: { onSignIn: () => void; onInstall?: () => void }) {
-  return <Landing onSignIn={onSignIn} onInstall={onInstall} nodeShield={<NodeShield compactBelow={720} />} />;
+  return <Landing onSignIn={onSignIn} onInstall={onInstall} />;
 }
 
 /** Signed in: the workspace picker, or the open workspace. */
@@ -273,7 +273,8 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
   );
 }
 
-function Shell({ children, left, right }: { children: ReactNode; left?: ReactNode; right?: ReactNode }) {
+/** `shield`: the node badge, for signed-in pages; a visitor has no node to judge yet. */
+function Shell({ children, left, right, shield = true }: { children: ReactNode; left?: ReactNode; right?: ReactNode; shield?: boolean }) {
   return (
     <div className="wrap">
       <header className="topbar">
@@ -283,7 +284,7 @@ function Shell({ children, left, right }: { children: ReactNode; left?: ReactNod
           {left}
         </div>
         <div className="topbar-right">
-          <NodeShield compactBelow={720} />
+          {shield && <NodeShield compactBelow={720} />}
           <InstallAppIconButton />
           {right}
         </div>

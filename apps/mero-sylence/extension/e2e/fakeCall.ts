@@ -23,10 +23,10 @@ export interface Person {
 }
 
 export const PEOPLE: Person[] = [
-  { name: "Ana Horvat", voice: "Karen" },
-  { name: "Marko Petrovic", voice: "Daniel" },
-  { name: "Sandi Fatic", voice: "Moira" },
-  { name: "Fran", voice: "Ralph", me: true },
+  { name: "Eve Parker", voice: "Karen" },
+  { name: "John Miller", voice: "Daniel" },
+  { name: "Sam Taylor", voice: "Moira" },
+  { name: "Alex", voice: "Ralph", me: true },
 ];
 
 export interface ScriptLine {
@@ -37,18 +37,18 @@ export interface ScriptLine {
 }
 
 export const SCRIPT: ScriptLine[] = [
-  { who: "Ana Horvat", text: "Morning everyone. Let's go through the launch plan for the Sylence extension." },
-  { who: "Marko Petrovic", text: "Sure. The store listing is ready, but we still need the screenshots." },
-  { who: "Fran", text: "I can take the screenshots this afternoon." },
-  { who: "Sandi Fatic", text: "Great. I tested speaker names on Zoom yesterday and they looked correct." },
-  { who: "Ana Horvat", text: "Marko, can you send the deck to the design team by Friday?" },
-  { who: "Marko Petrovic", text: "Yes, I will send it on Thursday evening.", overlapMs: 900 },
-  { who: "Fran", text: "I'll test Brave with the shields turned on today." },
-  { who: "Sandi Fatic", text: "One more thing. The privacy policy needs a final review from legal." },
-  { who: "Ana Horvat", text: "Okay, I will ask legal tomorrow morning." },
-  { who: "Marko Petrovic", text: "Do we ship to the public store or unlisted first?" },
-  { who: "Fran", text: "Unlisted first, then public next week." },
-  { who: "Sandi Fatic", text: "Sounds good to me. Thanks everyone, talk soon." },
+  { who: "Eve Parker", text: "Morning everyone. Let's go through the launch plan for the Sylence extension." },
+  { who: "John Miller", text: "Sure. The store listing is ready, but we still need the screenshots." },
+  { who: "Alex", text: "I can take the screenshots this afternoon." },
+  { who: "Sam Taylor", text: "Great. I tested speaker names on Zoom yesterday and they looked correct." },
+  { who: "Eve Parker", text: "John, can you send the deck to the design team by Friday?" },
+  { who: "John Miller", text: "Yes, I will send it on Thursday evening.", overlapMs: 900 },
+  { who: "Alex", text: "I'll test Brave with the shields turned on today." },
+  { who: "Sam Taylor", text: "One more thing. The privacy policy needs a final review from legal." },
+  { who: "Eve Parker", text: "Okay, I will ask legal tomorrow morning." },
+  { who: "John Miller", text: "Do we ship to the public store or unlisted first?" },
+  { who: "Alex", text: "Unlisted first, then public next week." },
+  { who: "Sam Taylor", text: "Sounds good to me. Thanks everyone, talk soon." },
 ];
 
 /** A spoken line placed in the call. */

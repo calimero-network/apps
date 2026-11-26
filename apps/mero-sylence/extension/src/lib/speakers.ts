@@ -37,11 +37,11 @@ export interface SpeakerChange {
 const NOT_A_NAME =
   /^(you|me|pin|unpin|more|more options|more_vert|mic|mic_off|videocam|videocam_off|keep|keep_off|present_to_all|presentation|presenting|host|co-host|guest|external|muted|unmuted|speaking|raise hand|frame_person|visual_effects|close|\(you\)|\(host\)|\(guest\))$/i;
 
-/** A display name, tidied: "Ana Horvat (Guest)" → "Ana Horvat"; null when it is not one. */
+/** A display name, tidied: "Eve Parker (Guest)" → "Eve Parker"; null when it is not one. */
 export function cleanName(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let n = raw.replace(/\s+/g, " ").trim();
-  // Meet renders a tile's name twice (shown + for screen readers): "Ana HorvatAna Horvat".
+  // Meet renders a tile's name twice (shown + for screen readers): "Eve ParkerEve Parker".
   n = n.replace(/^(.{2,}?)\s*\1$/u, "$1");
   n = n.replace(/\s*\((you|host|co-host|guest|external|me|presenting|organi[sz]er)\)\s*$/i, "").trim();
   n = n.replace(/^(presentation|screen) (from|by)\s+/i, "").replace(/\s+is presenting$/i, "").trim();
