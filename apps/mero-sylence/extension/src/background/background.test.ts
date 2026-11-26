@@ -4,7 +4,7 @@
  * recording can go wrong on the way.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuthState, OffscreenCommand, OffscreenEvent, RecorderStatus, Reply } from "../lib/messages";
+import { DEFAULT_SETTINGS, type AuthState, type OffscreenCommand, type OffscreenEvent, type RecorderStatus, type Reply } from "../lib/messages";
 import type { QueuedSegment, QueueState } from "../lib/queue";
 
 // ── a fake node ──────────────────────────────────────────────────────────────
@@ -25,6 +25,7 @@ class FakeNode {
   meetings = new Map<string, Meeting>();
   deleted: string[] = [];
   appendCalls = 0;
+  dropCalls: [number, number][] = [];
   /** Calls to fail with "offline" before answering again. */
   offline = 0;
   /** Fail every append (the node is down for the whole recording). */
@@ -71,7 +72,23 @@ class FakeNode {
         const page = from.slice(0, a.limit);
         return { segments: page, next: from.length > a.limit ? page.at(-1)!.seq + 1 : null };
       },
-      getMeeting: async (a: { meetingId: string }) => ({ summary: this.meetings.get(a.meetingId)?.summary ?? "" }),
+      getMeeting: async (a: { meetingId: string }) => {
+        const m = this.meetings.get(a.meetingId);
+        const seqs = [...(m?.segments.keys() ?? [])];
+        return { summary: m?.summary ?? "", nextSeq: seqs.length ? Math.max(...seqs) + 1 : 0 };
+      },
+      dropSegments: async (a: { meetingId: string; fromSeq: number; beforeSeq: number }) => {
+        this.dropCalls.push([a.fromSeq, a.beforeSeq]);
+        const m = this.meetings.get(a.meetingId)!;
+        let removed = 0;
+        for (const seq of [...m.segments.keys()]) {
+          if (seq >= a.fromSeq && seq < a.beforeSeq) {
+            m.segments.delete(seq);
+            removed++;
+          }
+        }
+        return { removed, remaining: 0 };
+      },
       setSummary: async (a: { meetingId: string; summary: string }) => {
         this.meetings.get(a.meetingId)!.summary = a.summary;
         return {};
@@ -136,6 +153,8 @@ interface Harness {
   removedListeners: ((tabId: number) => void)[];
   startupListeners: (() => void)[];
   listener: Listener | null;
+  /** The tab Record is pressed on. */
+  tab: { url: string; title: string };
   /** Tabs the speaker reader was injected into, and messages sent to tabs. */
   injected: number[];
   tabMessages: { tabId: number; message: unknown }[];
@@ -158,6 +177,7 @@ function installChrome(): Harness {
     removedListeners: [],
     startupListeners: [],
     listener: null,
+    tab: { url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" },
     injected: [],
     tabMessages: [],
   };
@@ -204,7 +224,7 @@ function installChrome(): Harness {
       },
     },
     tabs: {
-      get: async (id: number) => ({ id, url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" }),
+      get: async (id: number) => ({ id, ...h.tab }),
       onRemoved: { addListener: (l: (tabId: number) => void) => h.removedListeners.push(l) },
       sendMessage: async (tabId: number, message: unknown) => {
         h.tabMessages.push({ tabId, message });
@@ -609,7 +629,16 @@ describe("service worker: when recording goes wrong", () => {
   describe("notes written by the model on this laptop", () => {
     // Smart notes are experimental and off by default: these turn them on.
     beforeEach(() => {
-      h.local.set("sylence:settings", { tier: "auto", language: "en", mic: true, pageOverride: "", autoActions: true, smartNotes: true, notesModel: "auto" });
+      h.local.set("sylence:settings", {
+        tier: "auto",
+        language: "en",
+        mic: true,
+        pageOverride: "",
+        autoActions: true,
+        smartNotes: true,
+        notesModel: "auto",
+        improveAfterCall: false,
+      });
     });
 
     const gpu = (answer: (lines: { text: string }[]) => Event) => {
@@ -692,6 +721,145 @@ describe("service worker: when recording goes wrong", () => {
       expect(status().notesBy).toEqual({ kind: "phrases", why: "This browser doesn't offer WebGPU, which Smart notes need." });
     });
   });
+});
+
+describe("service worker: the transcript redone after the call", () => {
+  const redo = (answer: (c: OffscreenCommand) => Event | null) => {
+    h.offscreen = async (c) => {
+      if (c.type === "caps") return { webgpu: true, deviceMemoryGb: 8, cores: 8, cached: ["best"] };
+      const e = answer(c);
+      if (e) {
+        setTimeout(() => {
+          void event({ type: "improveProgress", step: "transcribe", fraction: 0.5 });
+          void event(e);
+        }, 0);
+      }
+      return true;
+    };
+  };
+  const record = async (lines: string[]) => {
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "best", state: "ready" });
+    for (const [i, t] of lines.entries()) await event(segment(i % 2 ? "others" : "you", i * 3_000, t));
+    await request({ type: "stop" });
+    await event({ type: "drained", durationMs: 9_000 });
+    await settle(80);
+  };
+
+  it("replaces the live lines with the second pass, then finds action items in it", async () => {
+    redo((c) =>
+      c.type === "improve"
+        ? ({
+            type: "improved",
+            startedAt: 0,
+            lines: [
+              { speaker: "others", startMs: 0, endMs: 2_000, text: "Ana, can you send the deck by Friday?" },
+              { speaker: "you", startMs: 2_500, endMs: 4_000, text: "Sure, I will." },
+            ],
+          } as Event)
+        : null,
+    );
+    await record(["Anna can you sand the deck", "sure"]);
+    expect(h.toOffscreen.find((c) => c.type === "improve")).toEqual({ target: "offscreen", type: "improve", language: "en" });
+    expect(node.texts("m1")).toEqual(["Ana, can you send the deck by Friday?", "Sure, I will."]);
+    expect(node.dropCalls).toEqual([[0, 2]]);
+    expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
+    const st = status();
+    expect(st.phase).toBe("saved");
+    expect(st.improved).toEqual({ done: true });
+    expect(st.improve).toBeNull();
+  });
+
+  it("keeps the live transcript when the second pass fails", async () => {
+    redo((c) => (c.type === "improve" ? ({ type: "improveError", error: "WebGPU device lost" } as Event) : null));
+    await record(["Ana, can you send the deck by Friday?", "Sure."]);
+    expect(node.texts("m1")).toEqual(["Ana, can you send the deck by Friday?", "Sure."]);
+    expect(node.dropCalls).toEqual([]);
+    expect(status().improved).toEqual({ done: false, why: "The second pass failed: WebGPU device lost" });
+    expect(node.actions.map((a) => a.text)).toEqual(["Send the deck by Friday"]);
+  });
+
+  it("drops what it sent when the upload fails halfway, and keeps the live lines", async () => {
+    redo((c) => {
+      if (c.type !== "improve") return null;
+      const lines = Array.from({ length: 150 }, (_, i) => ({ speaker: "others", startMs: i * 1_000, endMs: i * 1_000 + 900, text: `line ${i}` }));
+      return { type: "improved", startedAt: 0, lines } as Event;
+    });
+    type Append = ReturnType<FakeNode["app"]>["appendSegments"];
+    let calls = 0;
+    const realApp = node.app.bind(node);
+    node.app = (id: string) => {
+      const a = realApp(id);
+      return {
+        ...a,
+        appendSegments: async (x: Parameters<Append>[0]) => {
+          calls++;
+          // The live upload and the first batch of the redo go through; the second batch never does.
+          if (x.segments.some((s) => s.seq >= 102)) throw new Error("offline");
+          return a.appendSegments(x);
+        },
+      };
+    };
+    await record(["one live line", "two live lines"]);
+    expect(calls).toBeGreaterThan(2);
+    expect(node.texts("m1")).toEqual(["one live line", "two live lines"]);
+    expect(node.dropCalls).toEqual([[2, 0xffffffff]]);
+    expect(status().improved).toEqual({ done: false, why: "The improved transcript couldn't be saved." });
+  });
+
+  it("does not try without WebGPU, or when turned off", async () => {
+    await record(["Hello there everyone."]);
+    expect(h.toOffscreen.some((c) => c.type === "improve")).toBe(false);
+    expect(status().improved).toEqual({ done: false, why: "This browser doesn't offer WebGPU, which the second pass needs." });
+  });
+
+  it("is skipped when turned off", async () => {
+    h.local.set("sylence:settings", { ...DEFAULT_SETTINGS, improveAfterCall: false });
+    redo(() => null);
+    await record(["Hello there everyone."]);
+    expect(h.toOffscreen.some((c) => c.type === "improve")).toBe(false);
+    expect(status().improved).toBeNull();
+  });
+});
+
+describe("service worker: every kind of call", () => {
+  const T0 = 2_000_000;
+  const CALLS = [
+    { url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync", platform: "meet", meeting: "Weekly sync", reader: true },
+    { url: "https://app.zoom.us/wc/81234567890/join", title: "Zoom Meeting", platform: "zoom", meeting: null, reader: true },
+    { url: "https://us02web.zoom.us/j/81234567890", title: "Design review - Zoom", platform: "zoom", meeting: "Design review", reader: true },
+    { url: "https://teams.microsoft.com/v2/#/meetup-join/19:abc", title: "Planning | Microsoft Teams", platform: "teams", meeting: "Planning", reader: true },
+    { url: "https://teams.live.com/meet/9381234", title: "Microsoft Teams", platform: "teams", meeting: null, reader: true },
+    { url: "https://meet.jit.si/SylenceStandup", title: "SylenceStandup | Jitsi Meet", platform: "other", meeting: "SylenceStandup | Jitsi Meet", reader: false },
+    { url: "https://acme.webex.com/meet/ana", title: "Cisco Webex", platform: "other", meeting: "Cisco Webex", reader: false },
+    { url: "https://whereby.com/acme-team", title: "acme-team | Whereby", platform: "other", meeting: "acme-team | Whereby", reader: false },
+    { url: "https://app.slack.com/huddle/T01/C02", title: "Huddle in #general - Slack", platform: "other", meeting: "Huddle in #general - Slack", reader: false },
+  ] as const;
+
+  for (const call of CALLS) {
+    it(`${call.platform}: ${new URL(call.url).hostname} records, names and saves`, async () => {
+      h.tab = { url: call.url, title: call.title };
+      await request({ type: "start", tabId: 7 });
+      const m = node.meetings.get("m1")!;
+      expect(m.platform).toBe(call.platform);
+      if (call.meeting) expect(m.title).toBe(call.meeting);
+      else expect(m.title.length).toBeGreaterThan(0);
+      // The speaker reader goes only into the call sites it knows.
+      expect(h.injected).toEqual(call.reader ? [7] : []);
+      await event({ type: "model", tier: "light", state: "ready" });
+      if (call.reader) await speakers(T0, ["Ana"], { participants: ["Ana", "Fran"], self: "Fran" });
+      await event(segment("others", 0, "We should ship on Thursday.", T0));
+      await event(segment("you", 3_000, "Agreed.", T0));
+      const lines = [...m.segments.values()].sort((a, b) => a.seq - b.seq);
+      expect(lines.map((l) => l.text)).toEqual(["We should ship on Thursday.", "Agreed."]);
+      expect(lines.map((l) => l.name)).toEqual(call.reader ? ["Ana", "Fran"] : ["", ""]);
+      await request({ type: "stop" });
+      await event({ type: "drained", durationMs: 6_000 });
+      await settle(40);
+      expect(status().phase).toBe("saved");
+      expect(m.ended).toBe(true);
+    });
+  }
 });
 
 describe("service worker: speaker names", () => {

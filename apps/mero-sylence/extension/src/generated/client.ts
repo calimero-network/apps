@@ -29,6 +29,12 @@ export interface DeleteResult {
   remaining: number;
 }
 
+/** The app type `DropResult`. */
+export interface DropResult {
+  removed: number;
+  remaining: number;
+}
+
 /** The app type `MeetingView`. */
 export interface MeetingView {
   id: string;
@@ -45,6 +51,7 @@ export interface MeetingView {
   segments: number;
   words: number;
   nextSeq: number;
+  revised: boolean;
   live: boolean;
   openActions: number;
 }
@@ -112,6 +119,13 @@ export interface AppendSegmentsArgs {
 /** The arguments of `deleteMeeting`. */
 export interface DeleteMeetingArgs {
   meetingId: string;
+}
+
+/** The arguments of `dropSegments`. */
+export interface DropSegmentsArgs {
+  meetingId: string;
+  fromSeq: number;
+  beforeSeq: number;
 }
 
 /** The arguments of `editAction`. */
@@ -313,6 +327,8 @@ export interface MeroSylenceApi {
   appendSegments(args: AppendSegmentsArgs, options?: CallOptions): Promise<AppendResult>;
   /** call `deleteMeeting`. */
   deleteMeeting(args: DeleteMeetingArgs, options?: CallOptions): Promise<DeleteResult>;
+  /** call `dropSegments`. */
+  dropSegments(args: DropSegmentsArgs, options?: CallOptions): Promise<DropResult>;
   /** call `editAction`. */
   editAction(args: EditActionArgs, options?: CallOptions): Promise<ActionView>;
   /** call `editSegment`. */
@@ -358,6 +374,8 @@ export interface MeroSylenceRawApi {
   appendSegments(args: AppendSegmentsArgs, options?: CallOptions): Promise<CallAnswer<AppendResult>>;
   /** call `deleteMeeting`. */
   deleteMeeting(args: DeleteMeetingArgs, options?: CallOptions): Promise<CallAnswer<DeleteResult>>;
+  /** call `dropSegments`. */
+  dropSegments(args: DropSegmentsArgs, options?: CallOptions): Promise<CallAnswer<DropResult>>;
   /** call `editAction`. */
   editAction(args: EditActionArgs, options?: CallOptions): Promise<CallAnswer<ActionView>>;
   /** call `editSegment`. */
@@ -412,6 +430,7 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
       addAction: (args, options = {}) => this.#call<string>('addAction', args, options),
       appendSegments: (args, options = {}) => this.#call<AppendResult>('appendSegments', args, options),
       deleteMeeting: (args, options = {}) => this.#call<DeleteResult>('deleteMeeting', args, options),
+      dropSegments: (args, options = {}) => this.#call<DropResult>('dropSegments', args, options),
       editAction: (args, options = {}) => this.#call<ActionView>('editAction', args, options),
       editSegment: (args, options = {}) => this.#call<SegmentView>('editSegment', args, options),
       endMeeting: (args, options = {}) => this.#call<MeetingView>('endMeeting', args, options),
@@ -471,6 +490,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
   /** call `deleteMeeting`. */
   async deleteMeeting(args: DeleteMeetingArgs, options: CallOptions = {}): Promise<DeleteResult> {
     return (await this.#call<DeleteResult>('deleteMeeting', args, options)).result;
+  }
+
+  /** call `dropSegments`. */
+  async dropSegments(args: DropSegmentsArgs, options: CallOptions = {}): Promise<DropResult> {
+    return (await this.#call<DropResult>('dropSegments', args, options)).result;
   }
 
   /** call `editAction`. */

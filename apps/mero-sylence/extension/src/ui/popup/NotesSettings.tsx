@@ -34,7 +34,6 @@ export function NotesSettings({ settings, caps }: { settings: Settings; caps: Ca
   const downloaded = !!model && ((caps?.cachedNotes ?? []).includes(model) || (progress?.fraction ?? 0) >= 1);
   const downloading = !!progress && progress.fraction < 1;
   const on = settings.smartNotes;
-  const disabled = !settings.autoActions;
 
   return (
     <section className="stack" aria-labelledby="notes-title" style={{ gap: 8 }}>
@@ -70,17 +69,11 @@ export function NotesSettings({ settings, caps }: { settings: Settings; caps: Ca
           <span className="grow">This browser doesn't offer WebGPU, so action items come from phrases said in the call.</span>
         </div>
       )}
-      {on && disabled && (
-        <div className="banner" role="status">
-          <AlertIcon size={14} />
-          <span className="grow">Turn on Find action items above to use Smart notes.</span>
-        </div>
-      )}
 
       {on && (
       <div className="list" role="radiogroup" aria-label="Smart notes model">
         {CHOICES.map((c) => {
-          const unavailable = disabled || (noGpu && c.id !== "off");
+          const unavailable = noGpu && c.id !== "off";
           return (
             <button
               key={c.id}
@@ -103,7 +96,7 @@ export function NotesSettings({ settings, caps }: { settings: Settings; caps: Ca
       </div>
       )}
 
-      {on && model && !disabled && (
+      {on && model && (
         <div className="card notes-download" data-testid="notes-download">
           {downloaded ? (
             <span className="hstack small">

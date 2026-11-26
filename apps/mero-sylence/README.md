@@ -87,3 +87,6 @@ pnpm merod-local e2e mero-sylence          # the scenarios on three real nodes
 
 After changing the contract: `scripts/component-build.sh apps/mero-sylence/logic` (writes
 `res/abi.json`), then `pnpm -F mero-sylence codegen`.
+
+[TESTING.md](TESTING.md): what the tests cover per call site (Meet, Zoom, Teams, any other tab) and
+the manual pass on real calls.

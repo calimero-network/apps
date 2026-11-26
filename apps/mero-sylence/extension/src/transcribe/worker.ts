@@ -8,6 +8,7 @@ import ortMjs from "@ort/ort-wasm-simd-threaded.asyncify.mjs?url";
 import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { aggregateProgress } from "../lib/text";
 import { TIERS, whisperLanguage, type TierId } from "../lib/tiers";
+import { timedChunks } from "../lib/improve";
 import type { FromWorker, ToWorker } from "./protocol";
 
 env.allowLocalModels = false;
@@ -55,7 +56,7 @@ async function load(tier: TierId): Promise<void> {
   }
 }
 
-async function transcribe(id: number, audio: Float32Array, language: string): Promise<void> {
+async function transcribe(id: number, audio: Float32Array, language: string, timestamps = false): Promise<void> {
   if (loading) await loading;
   if (!loaded) {
     post({ type: "transcribeError", id, error: "no model loaded" });
@@ -65,9 +66,15 @@ async function transcribe(id: number, audio: Float32Array, language: string): Pr
   try {
     const isWhisper = loaded.tier === "best" || loaded.tier === "balanced";
     const lang = whisperLanguage(language);
-    const out = await loaded.asr(audio, isWhisper ? { task: "transcribe", ...(lang ? { language: lang } : {}) } : {});
-    const text = Array.isArray(out) ? out.map((o) => o.text).join(" ") : out.text;
-    post({ type: "text", id, text, ms: performance.now() - started });
+    const timed = timestamps && isWhisper;
+    const out = await loaded.asr(
+      audio,
+      isWhisper ? { task: "transcribe", ...(lang ? { language: lang } : {}), ...(timed ? { return_timestamps: true } : {}) } : {},
+    );
+    const one = Array.isArray(out) ? out : [out];
+    const text = one.map((o) => o.text).join(" ");
+    const chunks = timed ? timedChunks(one, audio.length / 16_000) : undefined;
+    post({ type: "text", id, text, ms: performance.now() - started, ...(chunks ? { chunks } : {}) });
   } catch (e) {
     post({ type: "transcribeError", id, error: e instanceof Error ? e.message : String(e) });
   }
@@ -89,6 +96,6 @@ self.addEventListener("message", (event: MessageEvent<ToWorker>) => {
     });
     loading = next;
   } else {
-    void transcribe(m.id, m.audio, m.language);
+    void transcribe(m.id, m.audio, m.language, m.timestamps);
   }
 });

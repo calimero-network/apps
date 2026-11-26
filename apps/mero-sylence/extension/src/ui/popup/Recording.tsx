@@ -25,6 +25,7 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
     if (tabId !== null) void chrome.sidePanel.open({ tabId });
   };
   if (status.phase === "notes") return <WritingNotes status={status} />;
+  if (status.phase === "improving") return <Improving status={status} />;
   const label =
     status.phase === "starting"
       ? "Starting…"
@@ -115,6 +116,32 @@ export function Recording({ status, tabId }: { status: RecorderStatus; tabId: nu
           {status.pending > 0 ? ` · ${status.pending} lines saving` : ""}
         </p>
       </div>
+    </main>
+  );
+}
+
+/** After Stop: the best model goes over the whole recording again. */
+function Improving({ status }: { status: RecorderStatus }) {
+  const p = status.improve;
+  const pct = p ? Math.round(p.fraction * 100) : 0;
+  const best = TIERS.best;
+  return (
+    <main className="body">
+      <section className="card stack" style={{ gap: 12, padding: 16 }} aria-live="polite">
+        <span className="hstack small muted">
+          <Spinner size={12} />
+          {p?.step === "download" ? "Downloading the speech model" : "Improving the transcript"}
+        </span>
+        <span className="strong truncate">{status.meeting?.title}</span>
+        <div className="progress" role="progressbar" aria-valuenow={pct} aria-label="Improving the transcript">
+          <span style={{ width: `${pct}%` }} />
+        </div>
+        <span className="small muted">
+          {best.name} on this laptop
+          {p?.step === "download" ? ` · ${pct}% of ${Math.round(best.sizeMb)} MB, once` : ""}. The live transcript is saved;
+          keep the browser open until this finishes.
+        </span>
+      </section>
     </main>
   );
 }

@@ -39,7 +39,7 @@ export function App() {
   }
   const settings = { ...DEFAULT_SETTINGS, ...stored };
   const s = status ?? IDLE;
-  const busy = s.phase === "starting" || s.phase === "loading-model" || s.phase === "recording" || s.phase === "stopping" || s.phase === "notes";
+  const busy = s.phase === "starting" || s.phase === "loading-model" || s.phase === "recording" || s.phase === "stopping" || s.phase === "improving" || s.phase === "notes";
 
   let content;
   if (view === "settings") {

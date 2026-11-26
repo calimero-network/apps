@@ -363,6 +363,90 @@ fn the_recorder_corrects_a_segment() {
 }
 
 #[test]
+fn a_transcript_redone_after_the_call_replaces_the_live_one() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Redo");
+    let live: Vec<Value> = (0..3)
+        .map(|i| seg(i, "others", "live words here"))
+        .collect();
+    append(&mut t, "bob", &id, live);
+    let m = view(&mut t, "bob", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["revised"], false);
+    let next = m["nextSeq"].as_u64().unwrap() as u32;
+    assert_eq!(next, 3);
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            seg(next, "others", "the better words"),
+            seg(next + 1, "you", "mine"),
+        ],
+    );
+    let r = t.as_("cy").call(
+        "dropSegments",
+        json!({ "meetingId": id, "fromSeq": 0, "beforeSeq": next }),
+    );
+    assert_eq!(code(r), "Forbidden");
+    let d = call(
+        &mut t,
+        "bob",
+        "dropSegments",
+        json!({ "meetingId": id, "fromSeq": 0, "beforeSeq": next }),
+    );
+    assert_eq!(d["removed"], 3);
+    assert_eq!(d["remaining"], 0);
+    let page = view(
+        &mut t,
+        "bob",
+        "transcript",
+        json!({ "meetingId": id, "fromSeq": 0, "limit": 100 }),
+    );
+    let texts: Vec<&str> = page["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts, ["the better words", "mine"]);
+    let m = view(&mut t, "bob", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["revised"], true);
+    assert_eq!(m["segments"], 2);
+    assert_eq!(m["words"], 4);
+    // Again: nothing left before it.
+    let d = call(
+        &mut t,
+        "bob",
+        "dropSegments",
+        json!({ "meetingId": id, "fromSeq": 0, "beforeSeq": next }),
+    );
+    assert_eq!(d["removed"], 0);
+}
+
+#[test]
+fn a_failed_redo_is_rolled_back() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Rollback");
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![seg(0, "others", "live one"), seg(1, "you", "live two")],
+    );
+    append(&mut t, "bob", &id, vec![seg(2, "others", "half sent")]);
+    let d = call(
+        &mut t,
+        "bob",
+        "dropSegments",
+        json!({ "meetingId": id, "fromSeq": 2, "beforeSeq": u32::MAX }),
+    );
+    assert_eq!(d["removed"], 1);
+    let m = view(&mut t, "bob", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["revised"], false);
+    assert_eq!(m["segments"], 2);
+}
+
+#[test]
 fn rename_and_summary() {
     let mut t = app();
     let id = start(&mut t, "bob", "Untitled call");

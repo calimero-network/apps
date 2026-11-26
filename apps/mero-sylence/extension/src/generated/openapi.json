@@ -704,6 +704,98 @@
         "type": "object",
         "x-calimero-abi-type": "DeleteResult"
       },
+      "DropResult": {
+        "properties": {
+          "remaining": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "removed": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "removed",
+          "remaining"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "DropResult"
+      },
+      "DropSegmentsArgs": {
+        "description": "The arguments of `dropSegments`, by name.",
+        "properties": {
+          "beforeSeq": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "fromSeq": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId",
+          "fromSeq",
+          "beforeSeq"
+        ],
+        "type": "object"
+      },
+      "DropSegmentsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/DropSegmentsArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "DropSegmentsResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DropResult"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "EditActionArgs": {
         "description": "The arguments of `editAction`, by name.",
         "properties": {
@@ -1211,6 +1303,9 @@
           "recorder": {
             "type": "string"
           },
+          "revised": {
+            "type": "boolean"
+          },
           "segments": {
             "maximum": 4294967295,
             "minimum": 0,
@@ -1254,6 +1349,7 @@
           "segments",
           "words",
           "nextSeq",
+          "revised",
           "live",
           "openActions"
         ],
@@ -2402,6 +2498,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "Deletes a meeting, its action items and up to 1,000 of its segments,\nand returns how many segments remain. The meeting is gone from every\nlist at once; call again until `remaining` is 0. Its recorder or the\ninstance's owner."
+      }
+    },
+    "/apps/{app}/methods/dropSegments": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"dropSegments\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "dropSegments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DropSegmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DropSegmentsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `dropSegments`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Removes the segments numbered `fromSeq` up to (not including)\n`beforeSeq`, at most 1,000 a call. The extension appends a transcript\nredone after the call from `nextSeq` on, then drops the live one\n(`fromSeq` 0), which marks the meeting `revised`; if the upload fails\nhalfway it drops what it sent instead. The recorder only."
       }
     },
     "/apps/{app}/methods/editAction": {

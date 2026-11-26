@@ -87,6 +87,28 @@
       "public": false,
       "returns": "DeleteResult"
     },
+    "dropSegments": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Removes the segments numbered `fromSeq` up to (not including)\n`beforeSeq`, at most 1,000 a call. The extension appends a transcript\nredone after the call from `nextSeq` on, then drops the live one\n(`fromSeq` 0), which marks the meeting `revised`; if the upload fails\nhalfway it drops what it sent instead. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "fromSeq",
+          "u32"
+        ],
+        [
+          "beforeSeq",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "DropResult"
+    },
     "editAction": {
       "allowSystem": false,
       "confirm": false,
@@ -440,6 +462,19 @@
       ],
       "kind": "record"
     },
+    "DropResult": {
+      "fields": [
+        [
+          "removed",
+          "u32"
+        ],
+        [
+          "remaining",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
     "MeetingView": {
       "fields": [
         [
@@ -497,6 +532,10 @@
         [
           "nextSeq",
           "u32"
+        ],
+        [
+          "revised",
+          "bool"
         ],
         [
           "live",

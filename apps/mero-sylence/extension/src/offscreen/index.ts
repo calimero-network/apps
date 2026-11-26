@@ -7,6 +7,7 @@
 import tapUrl from "../audio/tap.worklet.ts?worker&url";
 import { detectCaps } from "../lib/caps";
 import { EchoGate, isMicPhantom, voicedMs } from "../lib/echo";
+import { AudioStore, echoOf, inOrder, linesOf, windowsOf, type RedoneLine } from "../lib/improve";
 import type { OffscreenCommand, OffscreenEvent } from "../lib/messages";
 import { Resampler, rms } from "../lib/resample";
 import { Scheduler } from "../lib/scheduler";
@@ -48,7 +49,12 @@ interface Recording {
   /** How long each mic stretch sent to the model was clearly voiced, ms, by job id. */
   voiced: Map<number, number>;
   dropped: { echo: number; phantom: number };
+  /** Each source's audio, for the transcript redone after the call. */
+  stores: Map<Speaker, AudioStore>;
 }
+
+/** The last recording's audio, kept after it drained for `improve`; gone with this page. */
+let kept: { startedAt: number; stores: Map<Speaker, AudioStore> } | null = null;
 
 let rec: Recording | null = null;
 
@@ -68,6 +74,7 @@ async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, aud
     const block = resampler.push(e.data);
     r.levels[speaker] = Math.max(rms(block), r.levels[speaker] * 0.6);
     if (speaker === "others") r.echo.pushReference(block);
+    if (!r.stopping) r.stores.get(speaker)?.push(block);
     const seg = r.segmenters.get(speaker);
     if (!seg || r.stopping) return;
     for (const chunk of seg.push(block)) enqueue(chunk, speaker);
@@ -110,7 +117,9 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
     echo: new EchoGate(),
     voiced: new Map(),
     dropped: { echo: 0, phantom: 0 },
+    stores: new Map([["others", new AudioStore(0)]]),
   };
+  kept = null;
   await tap(ctx, tab, "others", true);
   if (c.mic) {
     try {
@@ -119,7 +128,9 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
       });
       rec.streams.push(mic);
       // The mic starts a little after the tab: its times count from the recording's start.
-      rec.segmenters.set("you", new Segmenter({ offsetMs: Date.now() - rec.startedAt }));
+      const micOffset = Date.now() - rec.startedAt;
+      rec.segmenters.set("you", new Segmenter({ offsetMs: micOffset }));
+      rec.stores.set("you", new AudioStore(micOffset));
       await tap(ctx, mic, "you", false);
     } catch {
       void emit({
@@ -168,6 +179,7 @@ function pump(): void {
 }
 
 function onWorker(m: FromWorker): void {
+  if (redo && onRedoWorker(m)) return;
   const r = rec;
   switch (m.type) {
     case "progress":
@@ -244,8 +256,83 @@ async function drained(): Promise<void> {
   for (const t of r.timers) clearInterval(t);
   await r.ctx.close().catch(() => undefined);
   rec = null;
+  kept = { startedAt: r.startedAt, stores: r.stores };
   finishing = false;
   void emit({ type: "drained", durationMs: Date.now() - r.startedAt });
+}
+
+// ── the transcript redone after the call (lib/improve.ts) ──────────────────
+
+/** The best model: the only one with sentence times, and the one worth the second pass. */
+const REDO_TIER: TierId = "best";
+let redo: {
+  ready: { resolve: () => void; reject: (e: Error) => void } | null;
+  jobs: Map<number, { resolve: (m: Extract<FromWorker, { type: "text" }>) => void; reject: (e: Error) => void }>;
+} | null = null;
+let redoNext = 1_000_000_000;
+
+/** Worker messages for the redo; false when they are the live recording's. */
+function onRedoWorker(m: FromWorker): boolean {
+  const d = redo!;
+  switch (m.type) {
+    case "progress":
+      if (!d.ready || m.tier !== REDO_TIER) return false;
+      void emit({ type: "improveProgress", step: "download", fraction: m.fraction });
+      return true;
+    case "ready":
+      if (!d.ready || m.tier !== REDO_TIER) return false;
+      d.ready.resolve();
+      d.ready = null;
+      return true;
+    case "loadError":
+      if (!d.ready || m.tier !== REDO_TIER) return false;
+      d.ready.reject(new Error(m.error));
+      d.ready = null;
+      return true;
+    case "text":
+    case "transcribeError": {
+      const job = d.jobs.get(m.id);
+      if (!job) return false;
+      d.jobs.delete(m.id);
+      if (m.type === "text") job.resolve(m);
+      else job.reject(new Error(m.error));
+      return true;
+    }
+  }
+}
+
+async function improve(language: string): Promise<void> {
+  const k = kept;
+  if (!k) throw new Error("nothing was recorded");
+  for (const store of k.stores.values()) if (store.full) throw new Error("the recording is longer than Sylence keeps for a second pass");
+  redo = { ready: null, jobs: new Map() };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      redo!.ready = { resolve, reject };
+      toWorker({ type: "load", tier: REDO_TIER });
+    });
+    const call = k.stores.get("others");
+    const echo = call && k.stores.has("you") ? echoOf(call) : null;
+    const windows = [...k.stores].flatMap(([speaker, store]) => windowsOf(store, speaker, speaker === "you" ? echo : null));
+    const total = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0) || 1;
+    let done = 0;
+    const lines: RedoneLine[] = [];
+    void emit({ type: "improveProgress", step: "transcribe", fraction: 0 });
+    for (const w of windows) {
+      const id = redoNext++;
+      const copy = w.audio.slice();
+      const answer = await new Promise<Extract<FromWorker, { type: "text" }>>((resolve, reject) => {
+        redo!.jobs.set(id, { resolve, reject });
+        toWorker({ type: "transcribe", id, audio: copy, language, timestamps: true }, [copy.buffer]);
+      });
+      lines.push(...linesOf(w, answer.chunks, answer.text));
+      done += w.endMs - w.startMs;
+      void emit({ type: "improveProgress", step: "transcribe", fraction: done / total });
+    }
+    void emit({ type: "improved", startedAt: k.startedAt, lines: inOrder(lines) });
+  } finally {
+    redo = null;
+  }
 }
 
 // ── notes: a small language model writes the summary and action items ──────
@@ -349,6 +436,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
       return false;
     case "notes":
       void runNotes(m.model, m.lines);
+      respond(true);
+      return false;
+    case "improve":
+      void improve(m.language).catch((e: unknown) => emit({ type: "improveError", error: e instanceof Error ? e.message : String(e) }));
       respond(true);
       return false;
   }

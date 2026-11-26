@@ -24,7 +24,7 @@ export function App() {
           <span className="brand truncate">{status.meeting?.title ?? "Live transcript"}</span>
           <span className="small muted hstack" style={{ gap: 6 }}>
             {live && <span className="rec-dot" aria-hidden="true" />}
-            {live ? "Recording" : status.phase === "saved" ? "Saved" : status.phase === "stopping" ? "Finishing…" : "Not recording"}
+            {live ? "Recording" : status.phase === "saved" ? "Saved" : status.phase === "stopping" ? "Finishing…" : status.phase === "improving" ? "Improving the transcript…" : "Not recording"}
           </span>
         </span>
         {status.link && (

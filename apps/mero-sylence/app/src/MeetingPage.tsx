@@ -329,7 +329,7 @@ export function MeetingBody({
             <summary>Details</summary>
             <dl>
               <dt>Speech model</dt>
-              <dd>{m.model || "—"}</dd>
+              <dd>{m.revised ? "whisper-large-v3-turbo, after the call" : m.model || "—"}</dd>
               <dt>Language</dt>
               <dd>{m.language || "Detected"}</dd>
               {m.url && (

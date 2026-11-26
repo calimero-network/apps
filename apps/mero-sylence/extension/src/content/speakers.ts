@@ -16,8 +16,9 @@ declare global {
 const SAMPLE_MS = 250;
 const HEARTBEAT_MS = 10_000;
 
-function start(): { stop: () => void } {
-  const platform = detectPlatform(location.href);
+/** Starts reading; `href` is the call's address (tests pass one, the page uses its own). */
+export function start(href: string = location.href): { stop: () => void } {
+  const platform = detectPlatform(href);
   const state = newReaderState();
   const observer = new MutationObserver((records) => {
     const now = Date.now();

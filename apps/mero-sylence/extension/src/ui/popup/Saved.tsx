@@ -26,6 +26,13 @@ export function Saved({ status }: { status: RecorderStatus }) {
           </span>
         </div>
       )}
+      {status.improved && (
+        <p className="by-line" data-testid="improved">
+          {status.improved.done
+            ? "Transcript improved after the call with Whisper large-v3 turbo."
+            : `The live transcript was kept. ${status.improved.why}`}
+        </p>
+      )}
       {status.notesBy && (
         <p className="by-line" data-testid="notes-by">
           {status.notesBy.kind === "model"

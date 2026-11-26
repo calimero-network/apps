@@ -377,3 +377,67 @@ describe("offscreen pipeline", () => {
     }
   });
 });
+
+describe("the transcript redone after the call", () => {
+  /** Records `tab` (and silence on the mic), stops and drains. */
+  const recordAndStop = async (tab: Float32Array[]) => {
+    await capture(true, "best");
+    worker().reply({ type: "ready", tier: "best", device: "webgpu" });
+    for (const part of tab) {
+      tabNode().feed(part);
+      micNode().feed(silence(Math.round((part.length / RATE) * 1000)));
+    }
+    for (const job of worker().transcribes) worker().reply({ type: "text", id: job.id, text: "live", ms: 10 });
+    await command({ type: "stop" });
+    for (const job of worker().transcribes.slice(-2)) worker().reply({ type: "text", id: job.id, text: "live", ms: 10 });
+    await flushMicrotasks();
+  };
+
+  it("goes over the whole recording in long windows and answers with timed lines", async () => {
+    await recordAndStop([silence(700), tone(6_000), silence(500), tone(5_000), silence(3_000)]);
+    expect(ofType("drained")).toHaveLength(1);
+    const before = worker().transcribes.length;
+    await command({ type: "improve", language: "en" } as Omit<OffscreenCommand, "target"> & { type: "improve" });
+    // The best model again: already loaded, so it answers ready at once.
+    expect(worker().loads.at(-1)).toBe("best");
+    worker().reply({ type: "ready", tier: "best", device: "webgpu" });
+    await flushMicrotasks();
+    const redo = worker().transcribes.slice(before);
+    // Both live stretches, with the short pause between them, are one window.
+    expect(redo).toHaveLength(1);
+    expect(redo[0]!.timestamps).toBe(true);
+    expect(redo[0]!.audio.length).toBeGreaterThan(RATE * 11);
+    worker().reply({
+      type: "text",
+      id: redo[0]!.id,
+      text: "First part. Second part.",
+      ms: 500,
+      chunks: [
+        { start: 0, end: 6, text: "First part." },
+        { start: 6.5, end: 11.5, text: "Second part." },
+      ],
+    });
+    await flushMicrotasks();
+    const [done] = ofType("improved");
+    expect(done!.lines.map((l) => [l.speaker, l.text])).toEqual([
+      ["others", "First part."],
+      ["others", "Second part."],
+    ]);
+    expect(done!.lines[1]!.startMs - done!.lines[0]!.startMs).toBe(6_500);
+    expect(ofType("improveProgress").at(-1)).toMatchObject({ step: "transcribe", fraction: 1 });
+  });
+
+  it("fails clearly when the best model can't load", async () => {
+    await recordAndStop([silence(700), tone(3_000), silence(3_000)]);
+    await command({ type: "improve", language: "en" } as Omit<OffscreenCommand, "target"> & { type: "improve" });
+    worker().reply({ type: "loadError", tier: "best", error: "no WebGPU adapter" });
+    await flushMicrotasks();
+    expect(ofType("improveError")[0]).toMatchObject({ error: "no WebGPU adapter" });
+  });
+
+  it("has nothing to redo before anything was recorded", async () => {
+    await command({ type: "improve", language: "en" } as Omit<OffscreenCommand, "target"> & { type: "improve" });
+    await flushMicrotasks();
+    expect(ofType("improveError")[0]).toMatchObject({ error: "nothing was recorded" });
+  });
+});

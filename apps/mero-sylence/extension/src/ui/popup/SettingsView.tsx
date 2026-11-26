@@ -93,6 +93,23 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
         </div>
         <div className="row" style={{ cursor: "default" }}>
           <span className="grow">
+            <span className="name">Improve the transcript after the call</span>
+            <span className="meta">
+              {caps && !caps.webgpu
+                ? "Needs a graphics chip (WebGPU), which this browser doesn't offer. The live transcript is kept."
+                : "When you stop, Whisper large-v3 turbo goes over the whole recording again and replaces the live lines. The audio stays on this laptop and is deleted after."}
+            </span>
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={settings.improveAfterCall}
+            aria-label="Improve the transcript after the call"
+            onClick={() => void save({ improveAfterCall: !settings.improveAfterCall })}
+          />
+        </div>
+        <div className="row" style={{ cursor: "default" }}>
+          <span className="grow">
             <span className="name">Find action items</span>
             <span className="meta">From phrases like “I’ll…”, “can you…”, “we need to…”, added when the meeting ends. Smart notes (Experimental) finds more.</span>
           </span>

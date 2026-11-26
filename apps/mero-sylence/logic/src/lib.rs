@@ -83,6 +83,9 @@ pub struct MeetingRow {
     pub words: u32,
     /// The highest segment number appended plus one: where the next starts.
     pub next_seq: u32,
+    /// The transcript was redone after the call (`dropSegments` from 0).
+    #[serde(default)]
+    pub revised: bool,
 }
 
 /// One stretch of speech, as the extension sends it.
@@ -151,6 +154,8 @@ pub struct MeetingView {
     pub segments: u32,
     pub words: u32,
     pub next_seq: u32,
+    /// The transcript was redone from the recording after the call.
+    pub revised: bool,
     pub live: bool,
     pub open_actions: u32,
 }
@@ -232,6 +237,14 @@ pub struct AppendResult {
 #[serde(rename_all = "camelCase")]
 pub struct DeleteResult {
     /// Segments still to remove; call `deleteMeeting` again until 0.
+    pub remaining: u32,
+}
+
+#[derive(Clone, Debug, Serialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct DropResult {
+    pub removed: u32,
+    /// Segments before `beforeSeq` still to remove; call again until 0.
     pub remaining: u32,
 }
 
@@ -425,6 +438,7 @@ impl Sylence {
             segments: 0,
             words: 0,
             next_seq: 0,
+            revised: false,
         };
         let _ = self.meetings.insert(&id, &row)?;
         let _ = self.by_time.insert(&(now, id.clone()))?;
@@ -538,6 +552,63 @@ impl Sylence {
             Audience::All,
         )?;
         Ok(segment_view(seq, segment))
+    }
+
+    /// Removes the segments numbered `fromSeq` up to (not including)
+    /// `beforeSeq`, at most 1,000 a call. The extension appends a transcript
+    /// redone after the call from `nextSeq` on, then drops the live one
+    /// (`fromSeq` 0), which marks the meeting `revised`; if the upload fails
+    /// halfway it drops what it sent instead. The recorder only.
+    pub fn drop_segments(
+        &mut self,
+        meeting_id: String,
+        from_seq: u32,
+        before_seq: u32,
+    ) -> app::Result<DropResult> {
+        let mut row = self.recorders(&meeting_id)?;
+        let range = || {
+            FindOpts::default()
+                .limit(DELETE_BATCH)
+                .from(vec![KeyPart::Int(i128::from(from_seq))])
+        };
+        let page = self
+            .segments
+            .prefix(&[KeyPart::Str(meeting_id.clone())], range())?;
+        let mut removed = 0u32;
+        let (mut low, mut high) = (u32::MAX, 0u32);
+        for ((_, seq), segment) in page.items {
+            if seq >= before_seq {
+                break;
+            }
+            let _ = self.segments.remove(&(meeting_id.clone(), seq))?;
+            row.segments = row.segments.saturating_sub(1);
+            row.words = row.words.saturating_sub(word_count(&segment.text));
+            low = low.min(seq);
+            high = high.max(seq);
+            removed += 1;
+        }
+        let remaining = self
+            .segments
+            .prefix(&[KeyPart::Str(meeting_id.clone())], range())?
+            .items
+            .into_iter()
+            .take_while(|((_, seq), _)| *seq < before_seq)
+            .count() as u32;
+        if from_seq == 0 && removed > 0 {
+            row.revised = true;
+        }
+        let _ = self.meetings.insert(&meeting_id, &row)?;
+        if removed > 0 {
+            env::emit(
+                Event::TranscriptChanged {
+                    meeting_id,
+                    from: low,
+                    to: high + 1,
+                },
+                Audience::All,
+            )?;
+        }
+        Ok(DropResult { removed, remaining })
     }
 
     /// Ends the recording. `durationMs` is the length the extension measured.
@@ -1010,6 +1081,7 @@ impl Sylence {
             segments: row.segments,
             words: row.words,
             next_seq: row.next_seq,
+            revised: row.revised,
             open_actions: open,
         })
     }

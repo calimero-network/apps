@@ -23,6 +23,11 @@ export interface Settings {
   notesModel: NotesSetting;
   /** Name each line after who was talking, read from the call page. */
   speakerNames: boolean;
+  /**
+   * After Stop, the best speech model goes over the whole recording again and
+   * its transcript replaces the live one (lib/improve.ts). Needs WebGPU.
+   */
+  improveAfterCall: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   smartNotes: false,
   notesModel: "auto",
   speakerNames: true,
+  improveAfterCall: true,
 };
 
 export interface Workspace {
@@ -59,7 +65,7 @@ export interface Line {
   startMs: number;
 }
 
-export type Phase = "idle" | "starting" | "loading-model" | "recording" | "stopping" | "notes" | "saved" | "error";
+export type Phase = "idle" | "starting" | "loading-model" | "recording" | "stopping" | "improving" | "notes" | "saved" | "error";
 
 export interface ModelProgress {
   /** 0–1 over every file. */
@@ -89,6 +95,10 @@ export interface RecorderStatus {
   wroteSummary?: boolean;
   /** Where speaker names come from while recording: the reader that found one, and how many people the page shows. */
   speakers?: { via: string | null; participants: number; self: string | null } | null;
+  /** While the transcript is redone after the call: the model's download, then the share of the recording done. */
+  improve?: { step: "download" | "transcribe"; fraction: number } | null;
+  /** The transcript was redone after the call; or why it was not, when it was tried. */
+  improved?: { done: true } | { done: false; why: string } | null;
   /** Who found the action items: the notes model, or phrase matching (with why). */
   notesBy?: { kind: "model"; model: NotesModelId } | { kind: "phrases"; why: string } | null;
 }
@@ -142,7 +152,8 @@ export type OffscreenCommand =
   | { target: "offscreen"; type: "preload"; tier: TierId }
   | { target: "offscreen"; type: "caps" }
   | { target: "offscreen"; type: "preloadNotes"; model: NotesModelId }
-  | { target: "offscreen"; type: "notes"; model: NotesModelId; lines: { seq: number; speaker: string; name?: string; text: string }[] };
+  | { target: "offscreen"; type: "notes"; model: NotesModelId; lines: { seq: number; speaker: string; name?: string; text: string }[] }
+  | { target: "offscreen"; type: "improve"; language: string };
 
 /** Offscreen page → service worker (and the popup, for levels). */
 export type OffscreenEvent =
@@ -157,7 +168,10 @@ export type OffscreenEvent =
   | { source: "offscreen"; type: "tick" }
   | { source: "offscreen"; type: "notesProgress"; model: NotesModelId; fraction: number; step: "download" | "write" }
   | { source: "offscreen"; type: "notes"; notes: Notes }
-  | { source: "offscreen"; type: "notesError"; error: string };
+  | { source: "offscreen"; type: "notesError"; error: string }
+  | { source: "offscreen"; type: "improveProgress"; step: "download" | "transcribe"; fraction: number }
+  | { source: "offscreen"; type: "improved"; startedAt: number; lines: { speaker: Speaker; startMs: number; endMs: number; text: string }[] }
+  | { source: "offscreen"; type: "improveError"; error: string };
 
 export type { Capabilities };
 

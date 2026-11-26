@@ -352,6 +352,10 @@ let stopping: Promise<void> | null = null;
 let lastCaps: Capabilities | null = null;
 /** The notes the offscreen page is writing (`notes` / `notesError` settle it). */
 let notesWait: { resolve: (n: Notes) => void; reject: (e: Error) => void } | null = null;
+/** The transcript the offscreen page is redoing (`improved` / `improveError` settle it). */
+let improveWait: { resolve: (e: Extract<OffscreenEvent, { type: "improved" }>) => void; reject: (e: Error) => void } | null = null;
+/** Longest the second pass may take: the call's length, and at least this. */
+export const IMPROVE_MIN_TIMEOUT_MS = 20 * 60_000;
 /** Longest a meeting's notes may take before phrase matching stands in. */
 export const NOTES_TIMEOUT_MS = 10 * 60_000;
 
@@ -427,6 +431,7 @@ async function addFoundActions(meeting: { id: string; appId: string }, read?: Tr
 async function writeMeetingNotes(
   meeting: { id: string; appId: string },
   model: NotesModelId,
+  phrases = true,
 ): Promise<{ actions: number; wroteSummary: boolean; byModel: boolean }> {
   const lines = await savedTranscript(meeting);
   if (lines.length === 0) return { actions: 0, wroteSummary: false, byModel: true };
@@ -449,7 +454,7 @@ async function writeMeetingNotes(
   for (const a of add) {
     await onNode((_c, app) => app.addAction({ meetingId: meeting.id, text: a.text, assignee: a.assignee, sourceSeq: null }), meeting.appId);
   }
-  const actions = add.length > 0 ? add.length : await addFoundActions(meeting, lines);
+  const actions = add.length > 0 || !phrases ? add.length : await addFoundActions(meeting, lines);
   let wroteSummary = false;
   // A title is not a summary: the small model sometimes writes only one.
   if (notes.summary.split(/\s+/).length >= 8) {
@@ -460,6 +465,76 @@ async function writeMeetingNotes(
     }
   }
   return { actions, wroteSummary, byModel: add.length > 0 || wroteSummary };
+}
+
+/** How many times a batch of the redone transcript is sent before giving up. */
+const IMPROVE_TRIES = 3;
+
+async function withTries<T>(work: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < IMPROVE_TRIES; i++) {
+    try {
+      return await work();
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last;
+}
+
+/** Drops segments `fromSeq`..`beforeSeq`, batch by batch. */
+async function dropSegments(meeting: { id: string; appId: string }, fromSeq: number, beforeSeq: number): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const r = await withTries(() => onNode((_c, app) => app.dropSegments({ meetingId: meeting.id, fromSeq, beforeSeq }), meeting.appId));
+    if (r.remaining === 0) return;
+  }
+}
+
+/**
+ * The second pass (lib/improve.ts): the offscreen page transcribes the whole
+ * recording again with the best model; its lines, named from the speaker
+ * timeline, are appended after the live ones, then the live ones are dropped.
+ * If the upload fails halfway, what was sent is dropped and the live
+ * transcript stays. Returns why it did not replace the transcript, or null.
+ */
+async function improveTranscript(meeting: { id: string; appId: string }, language: string, durationMs: number): Promise<string | null> {
+  await setStatus((st) => ({ ...st, phase: "improving", improve: { step: "transcribe", fraction: 0 } }));
+  const result = new Promise<Extract<OffscreenEvent, { type: "improved" }>>((resolve, reject) => {
+    improveWait = { resolve, reject };
+  });
+  const timer = setTimeout(
+    () => improveWait?.reject(new Error("the second pass took too long")),
+    Math.max(IMPROVE_MIN_TIMEOUT_MS, durationMs),
+  );
+  let done: Extract<OffscreenEvent, { type: "improved" }>;
+  try {
+    await toOffscreen({ target: "offscreen", type: "improve", language });
+    done = await result;
+  } finally {
+    clearTimeout(timer);
+    improveWait = null;
+  }
+  await log(`improve: ${done.lines.length} lines`);
+  if (done.lines.length === 0) return "The second pass heard no speech.";
+  const current = await onNode((_c, app) => app.getMeeting({ meetingId: meeting.id }), meeting.appId);
+  const base = current.nextSeq;
+  const segments = [];
+  for (const [i, l] of done.lines.entries()) {
+    const name = await lineName(l.speaker, done.startedAt, l.startMs, l.endMs);
+    segments.push({ seq: base + i, speaker: l.speaker, name, startMs: l.startMs, endMs: l.endMs, text: l.text.slice(0, 4_000) });
+  }
+  try {
+    for (let i = 0; i < segments.length; i += 100) {
+      const batch = segments.slice(i, i + 100);
+      await withTries(() => onNode((_c, app) => app.appendSegments({ meetingId: meeting.id, segments: batch }), meeting.appId));
+    }
+  } catch (e) {
+    await log(`improve: upload failed (${describe(e)}); keeping the live transcript`);
+    await dropSegments(meeting, base, 0xffffffff).catch(() => undefined);
+    return "The improved transcript couldn't be saved.";
+  }
+  await dropSegments(meeting, 0, base);
+  return null;
 }
 
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
@@ -474,6 +549,7 @@ function finish(durationMs: number): Promise<void> {
     let actions = 0;
     let wroteSummary = false;
     let notesBy: RecorderStatus["notesBy"] = null;
+    let improved: RecorderStatus["improved"] = null;
     const a = await auth();
     const meeting = s.meeting;
     if (a && meeting) {
@@ -487,32 +563,48 @@ function finish(durationMs: number): Promise<void> {
       }
       link = meetingLink(a.page, meeting.appId, meeting.id);
       const s = await settings();
-      if (all && !error && s.autoActions) {
-        // Smart notes are experimental: they run only when turned on in Settings.
+      if (all && !error && s.improveAfterCall) {
+        if (!lastCaps?.webgpu) {
+          improved = { done: false, why: "This browser doesn't offer WebGPU, which the second pass needs." };
+        } else {
+          try {
+            const why = await improveTranscript(meeting, s.language, durationMs);
+            improved = why ? { done: false, why } : { done: true };
+          } catch (e) {
+            await log(`improve: ${describe(e)}`);
+            improved = { done: false, why: `The second pass failed: ${describe(e)}` };
+          }
+          await setStatus((st) => ({ ...st, improve: null }));
+        }
+      }
+      // Two switches, each on its own: Find action items (phrase matching) and
+      // the experimental Smart notes (a model writes the summary and action items).
+      if (all && !error && (s.autoActions || s.smartNotes)) {
         const model = s.smartNotes && lastCaps ? notesModelFor(s.notesModel, lastCaps) : null;
         let written = false;
-        notesBy = {
-          kind: "phrases",
-          why:
-            !s.smartNotes || s.notesModel === "off"
-              ? ""
-              : lastCaps && !lastCaps.webgpu
-                ? "This browser doesn't offer WebGPU, which Smart notes need."
-                : "Smart notes didn't run.",
-        };
+        const why = !s.smartNotes
+          ? ""
+          : lastCaps && !lastCaps.webgpu
+            ? "This browser doesn't offer WebGPU, which Smart notes need."
+            : "Smart notes didn't run.";
+        notesBy = s.autoActions ? { kind: "phrases", why } : null;
         if (model) {
           try {
-            const r = await writeMeetingNotes(meeting, model);
+            const r = await writeMeetingNotes(meeting, model, s.autoActions);
             actions = r.actions;
             wroteSummary = r.wroteSummary;
             written = true;
-            notesBy = r.byModel ? { kind: "model", model } : { kind: "phrases", why: "The notes model found no task." };
+            notesBy = r.byModel
+              ? { kind: "model", model }
+              : s.autoActions
+                ? { kind: "phrases", why: "The notes model found no task." }
+                : null;
           } catch (e) {
-            await log(`notes: ${describe(e)}; phrase matching instead`);
-            notesBy = { kind: "phrases", why: `The notes model failed: ${describe(e)}` };
+            await log(`notes: ${describe(e)}${s.autoActions ? "; phrase matching instead" : ""}`);
+            notesBy = s.autoActions ? { kind: "phrases", why: `The notes model failed: ${describe(e)}` } : null;
           }
         }
-        if (!written) {
+        if (!written && s.autoActions) {
           actions = await addFoundActions(meeting).catch(async (e: unknown) => {
             await log(`actions: ${describe(e)}`);
             return 0;
@@ -532,6 +624,8 @@ function finish(durationMs: number): Promise<void> {
       actions,
       wroteSummary,
       notesBy,
+      improved,
+      improve: null,
       notes: null,
       pending: q && !all ? q.pending : 0,
       uploadError: all ? null : "Some lines are still waiting to be saved; they will be sent when you are back online.",
@@ -606,6 +700,16 @@ async function onOffscreen(event: OffscreenEvent): Promise<void> {
     case "drained":
       await finish(event.durationMs);
       return;
+    case "improveProgress":
+      await setStatus((s) => (s.phase === "improving" ? { ...s, improve: { step: event.step, fraction: event.fraction } } : s));
+      return;
+    case "improved":
+      improveWait?.resolve(event);
+      return;
+    case "improveError":
+      await log(`improve: ${event.error}`);
+      improveWait?.reject(new Error(event.error));
+      return;
     case "levels":
       return;
   }
@@ -663,7 +767,14 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
     // segments before it are queued.
     // The notes come while `drained` is still being handled (it waits for
     // them), so they cannot wait in line behind it.
-    if (e.type === "notes" || e.type === "notesError" || e.type === "notesProgress") {
+    if (
+      e.type === "notes" ||
+      e.type === "notesError" ||
+      e.type === "notesProgress" ||
+      e.type === "improved" ||
+      e.type === "improveError" ||
+      e.type === "improveProgress"
+    ) {
       void onOffscreen(e).catch((err: unknown) => log(`event ${e.type} failed: ${describe(err)}`));
     } else if (e.type !== "levels") {
       offscreenEvents = offscreenEvents.then(() => onOffscreen(e)).catch((err: unknown) => log(`event ${e.type} failed: ${describe(err)}`));

@@ -93,6 +93,25 @@ describe("popup", () => {
     expect(screen.getByText(/Not a meeting tab/)).toBeTruthy();
   });
 
+  for (const [url, title, label, button] of [
+    ["https://app.zoom.us/wc/81234567890/join", "Design review - Zoom", "Zoom · in a call", "Record meeting"],
+    ["https://us02web.zoom.us/j/81234567890", "Zoom Meeting", "Zoom · in a call", "Record meeting"],
+    ["https://teams.microsoft.com/v2/", "Planning | Microsoft Teams", "Microsoft Teams · in a call", "Record meeting"],
+    ["https://teams.live.com/meet/9381234", "Microsoft Teams", "Microsoft Teams · in a call", "Record meeting"],
+    ["https://zoom.us/", "Zoom", "Zoom · join the call, then record", "Record meeting"],
+    ["https://meet.jit.si/SylenceStandup", "SylenceStandup | Jitsi Meet", "Not a meeting tab — you can still record it", "Record this tab"],
+    ["https://acme.webex.com/meet/ana", "Cisco Webex", "Not a meeting tab — you can still record it", "Record this tab"],
+  ] as const) {
+    it(`ready on ${new URL(url).hostname}${new URL(url).pathname}: ${label}`, async () => {
+      chrome.areas.local.set(KEYS.auth, AUTH);
+      chrome.activeTab = { id: 5, url, title };
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: button }));
+      expect(screen.getByText(label)).toBeTruthy();
+      await waitFor(() => expect(chrome.sent).toContainEqual({ type: "start", tabId: 5 }));
+    });
+  }
+
   it("toggles the microphone setting", async () => {
     chrome.areas.local.set(KEYS.auth, AUTH);
     render(<App />);
@@ -224,5 +243,56 @@ describe("popup", () => {
     expect(await screen.findByText(/doesn't offer WebGPU/)).toBeTruthy();
     expect((within(group).getByRole("radio", { name: /Qwen2.5 0.5B/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId("notes-download")).toBeNull();
+  });
+
+  it("the two switches work on their own: Smart notes don't need Find action items", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    chrome.areas.local.set(KEYS.settings, { ...DEFAULT_SETTINGS, autoActions: false, smartNotes: true });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    expect((await screen.findByRole("switch", { name: "Find action items" })).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Smart notes and summary" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByText(/Turn on Find action items/)).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "Smart notes model" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "Find action items" }));
+    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { autoActions: boolean }).autoActions).toBe(true));
+    expect((chrome.areas.local.get(KEYS.settings) as { smartNotes: boolean }).smartNotes).toBe(true);
+  });
+
+  it("improving the transcript after the call: on by default, can be turned off", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    const toggle = await screen.findByRole("switch", { name: "Improve the transcript after the call" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    await waitFor(() => expect((chrome.areas.local.get(KEYS.settings) as { improveAfterCall: boolean }).improveAfterCall).toBe(false));
+  });
+
+  it("shows the second pass's progress, then says the transcript was improved", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    const meeting = { id: "m1", appId: "app-1", title: "Roadmap review", platform: "meet" as const, startedAt: 0 };
+    chrome.areas.session.set(KEYS.status, { ...IDLE, phase: "improving", meeting, improve: { step: "transcribe", fraction: 0.4 } });
+    const { unmount } = render(<App />);
+    expect(await screen.findByText("Improving the transcript")).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Improving the transcript" }).getAttribute("aria-valuenow")).toBe("40");
+    unmount();
+    chrome.areas.session.set(KEYS.status, { ...IDLE, phase: "saved", meeting, link: "x", improved: { done: true } });
+    render(<App />);
+    expect((await screen.findByTestId("improved")).textContent).toMatch(/Transcript improved after the call/);
+  });
+
+  it("says no action items were found, and why", async () => {
+    chrome.areas.local.set(KEYS.auth, AUTH);
+    chrome.areas.session.set(KEYS.status, {
+      ...IDLE,
+      phase: "saved",
+      link: "x",
+      actions: 0,
+      notesBy: { kind: "phrases", why: "" },
+      meeting: { id: "m1", appId: "app-1", title: "Roadmap review", platform: "meet", startedAt: 0 },
+    });
+    render(<App />);
+    expect((await screen.findByTestId("notes-by")).textContent).toMatch(/^No action items found/);
   });
 });

@@ -60,6 +60,7 @@ export function meeting(over: Partial<import("../sylenceApi").MeetingView> = {})
     segments: 2,
     words: 9,
     nextSeq: 2,
+    revised: false,
     live: false,
     openActions: 1,
     ...over,

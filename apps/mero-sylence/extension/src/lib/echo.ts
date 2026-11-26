@@ -73,6 +73,9 @@ export class EchoGate {
   private first = 0;
   private pending = new Float32Array(0);
 
+  /** `keepMs`: how much of the call is remembered (live needs the last minutes; after the call, all of it). */
+  constructor(private readonly keepMs = KEEP_MS) {}
+
   /** The call's audio at 16 kHz, in order, from the start of the recording. */
   pushReference(block: Float32Array): void {
     const all = new Float32Array(this.pending.length + block.length);
@@ -82,7 +85,7 @@ export class EchoGate {
     const env = envelope(all.subarray(0, frames * FRAME));
     for (const v of env) this.ref.push(v);
     this.pending = all.slice(frames * FRAME);
-    const keep = KEEP_MS / FRAME_MS;
+    const keep = this.keepMs / FRAME_MS;
     if (this.ref.length > keep * 1.5) {
       const drop = this.ref.length - keep;
       this.ref = this.ref.slice(drop);
