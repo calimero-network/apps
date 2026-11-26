@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CheckSquare } from "@calimero-network/mero-icons";
 import { ManageInHomeLink, NativeApproval, NodeShield } from "@calimero-apps/passkey";
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 import { InstallAppIconButton } from "@calimero-apps/install";
 
 import { InstallPage } from "./InstallPage";
+import { Landing } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
 import { OpenActions } from "./OpenActions";
@@ -202,51 +202,7 @@ function SignedOutPages({ onSignIn }: { onSignIn: () => void }) {
 
 /** The front door when signed out. */
 export function Welcome({ onSignIn, onInstall }: { onSignIn: () => void; onInstall?: () => void }) {
-  return (
-    <Shell>
-      <section className="hero">
-        <div className="hero-mark" aria-hidden="true">
-          <Icon name="wave" size={30} />
-        </div>
-        <h1>Meeting notes that write themselves, privately.</h1>
-        <p className="lede">
-          {PRODUCT} records your Google Meet, Zoom and Teams calls from your browser, turns speech into
-          text on your own laptop, and keeps the transcript and action items in your team&apos;s
-          workspace. No bot joins the call, and the audio never leaves your machine.
-        </p>
-        <div className="row">
-          {onInstall && (
-            <button type="button" className="btn primary large" onClick={onInstall}>
-              <Icon name="download" /> Get the extension
-            </button>
-          )}
-          <button type="button" className={onInstall ? "btn large" : "btn primary large"} onClick={onSignIn}>
-            Sign in
-          </button>
-        </div>
-        <ul className="features">
-          <li>
-            <Icon name="mic" />
-            <span>
-              <strong>On-device speech to text.</strong> Whisper large-v3-turbo on a GPU, a small fast model on any laptop.
-            </span>
-          </li>
-          <li>
-            <CheckSquare size={16} aria-hidden="true" />
-            <span>
-              <strong>Action items</strong> from any line of the transcript, ticked off by the team.
-            </span>
-          </li>
-          <li>
-            <Icon name="list" />
-            <span>
-              <strong>Searchable meetings</strong> in a workspace only your organization reaches.
-            </span>
-          </li>
-        </ul>
-      </section>
-    </Shell>
-  );
+  return <Landing onSignIn={onSignIn} onInstall={onInstall} nodeShield={<NodeShield compactBelow={720} />} />;
 }
 
 /** Signed in: the workspace picker, or the open workspace. */
