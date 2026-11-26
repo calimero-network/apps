@@ -161,7 +161,7 @@ function clock(s: number) {
 /**
  * A call that plays itself, at a fixed size: tiles light up in the speaker's
  * colour, lines arrive under their names, then the second pass tidies the
- * transcript and the action item lands. Nothing in it changes its height.
+ * transcript and it turns into the saved meeting. Nothing in it changes its height.
  */
 function CallDemo() {
   const reduced = prefersReducedMotion();
@@ -169,7 +169,7 @@ function CallDemo() {
 
   useEffect(() => {
     if (reduced) return;
-    const wait = step === SAVED ? STEP_MS * 3 : step === 0 ? 900 : STEP_MS;
+    const wait = step === SAVED ? STEP_MS * 4.5 : step === 0 ? 900 : STEP_MS;
     const t = setTimeout(() => setStep((s) => (s >= SAVED ? 0 : s + 1)), wait);
     return () => clearTimeout(t);
   }, [step, reduced]);
@@ -183,7 +183,7 @@ function CallDemo() {
     <div
       className="demo"
       role="img"
-      aria-label="A call on Google Meet: Eve, John, Sam and you talk, and Sylence writes each line under the speaker's name, then finds the action item."
+      aria-label="A call on Google Meet: Eve, John, Sam and you talk, and Sylence writes each line under the speaker's name, then saves the meeting with a timestamped transcript, a summary and action items."
     >
       <div className="demo-call">
         <div className="demo-bar">
@@ -217,7 +217,7 @@ function CallDemo() {
         </div>
       </div>
 
-      <div className={`demo-panel ${step === SAVED ? "saved" : ""}`}>
+      <div className="demo-panel">
         <div className="demo-panel-head">
           <img src="./favicon.svg" alt="" width={18} height={18} />
           <strong>{PRODUCT}</strong>
@@ -246,15 +246,65 @@ function CallDemo() {
             </li>
           ))}
         </ol>
-        <div className={`demo-action ${step === SAVED ? "in" : ""}`}>
-          <span className="demo-action-label">Action item</span>
-          <span className="demo-action-row">
-            <span className="demo-check" aria-hidden="true" />
-            <span>
-              Send the deck to design by Friday <Name p={JOHN} />
-            </span>
-          </span>
-        </div>
+      </div>
+
+      <SavedMeeting shown={step === SAVED} />
+    </div>
+  );
+}
+
+const SUMMARY =
+  "Launch plan review. The store listing is ready apart from screenshots, which you take this afternoon. Speaker names checked out on Zoom. John sends the deck to design on Thursday, ahead of Friday.";
+const ACTIONS: { text: string; p: Person; due: string }[] = [
+  { text: "Take the screenshots for the listing", p: YOU, due: "Today" },
+  { text: "Send the deck to design", p: JOHN, due: "Friday" },
+];
+
+/** Where the call ends up: the saved meeting, transcript with times, summary and action items beside it. */
+function SavedMeeting({ shown }: { shown: boolean }) {
+  return (
+    <div className={`demo-saved ${shown ? "in" : ""}`} aria-hidden={!shown}>
+      <div className="saved-head">
+        <img src="./favicon.svg" alt="" width={18} height={18} />
+        <span className="saved-crumb">Meetings /</span>
+        <strong>Launch plan</strong>
+        <span className="saved-meta">Google Meet · 0:42 · 4 people</span>
+        <span className="saved-badge">Revised</span>
+      </div>
+      <div className="saved-body">
+        <ol className="saved-transcript">
+          {DEMO.map((l, i) => (
+            <li key={i} style={{ transitionDelay: `${150 + i * 70}ms` }}>
+              <time>{clock(i * 7)}</time>
+              <Name p={l.p} />
+              <span>{l.text}</span>
+            </li>
+          ))}
+        </ol>
+        <aside className="saved-side">
+          <section style={{ transitionDelay: "450ms" }}>
+            <h4>Summary</h4>
+            <p>{SUMMARY}</p>
+          </section>
+          <section style={{ transitionDelay: "650ms" }}>
+            <h4>
+              Action items <span className="saved-count">{ACTIONS.length}</span>
+            </h4>
+            <ul>
+              {ACTIONS.map((a) => (
+                <li key={a.text}>
+                  <span className="demo-check" aria-hidden="true" />
+                  <span className="saved-action">
+                    {a.text}
+                    <span className="saved-action-meta">
+                      <Name p={a.p} /> <em>{a.due}</em>
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </aside>
       </div>
     </div>
   );
