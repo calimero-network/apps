@@ -5,8 +5,8 @@ import { appTeamsLabel, holdingsLabel, markOrgFor, myOrgs, orgsWithApp, otherOrg
 
 const CHAT = { package: "com.calimero.chat" } as const;
 
-function app(appId: string, org: string | null, pkg: string, name = appId): AppInfo {
-  return { appId, name, owner: "acct-me", org, bundle: `b-${pkg}`, package: pkg, version: "1.0.0" };
+function app(appId: string, org: string, pkg: string, name = appId): AppInfo {
+  return { appId, name, owner: "acct-me", org, bundle: `b-${pkg}`, package: pkg, version: "1.0.0", deployment: null };
 }
 
 /**
@@ -17,7 +17,7 @@ function fakeClient(opts: { role?: string; account?: string | null } = {}) {
   const apps = [
     app("blocks-1", "overworld", "com.calimero.mero-blocks", "overworld"),
     app("chat-1", "team", "com.calimero.chat", "general"),
-    app("solo", null, "com.calimero.chat", "notes"),
+    app("solo", "", "com.calimero.chat", "notes"),
   ];
   const orgs: Record<string, Record<string, unknown>> = {
     overworld: { members: { "acct-me": opts.role ?? "owner" } },

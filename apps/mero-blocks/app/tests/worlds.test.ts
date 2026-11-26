@@ -24,7 +24,7 @@ function memory(): KeyValueStorage {
   };
 }
 
-const app = (appId: string, name: string, org: string | null): AppInfo => ({
+const app = (appId: string, name: string, org: string): AppInfo => ({
   appId,
   name,
   org,
@@ -32,6 +32,7 @@ const app = (appId: string, name: string, org: string | null): AppInfo => ({
   bundle: "b",
   package: null,
   version: null,
+  deployment: null,
 });
 
 afterEach(() => window.history.replaceState(null, "", "/"));
@@ -55,7 +56,7 @@ describe("worlds are app instances", () => {
   });
 
   it("are listed by bundle or package, by name", async () => {
-    const listApps = vi.fn(async () => [app("2", "b", null), app("1", "a", null)]);
+    const listApps = vi.fn(async () => [app("2", "b", ""), app("1", "a", "")]);
     expect((await listWorlds(withRoutes({ listApps }), "abc")).map((w) => w.name)).toEqual(["a", "b"]);
     expect(listApps).toHaveBeenLastCalledWith({ bundle: "abc" });
     await listWorlds(withRoutes({ listApps }), { package: "p" });

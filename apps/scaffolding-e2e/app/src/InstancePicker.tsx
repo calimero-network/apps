@@ -46,7 +46,7 @@ export function InstancePicker({
       after();
       const created = (await listInstances(client, source)).find((a) => a.appId === appId);
       onOpen(
-        created ?? { appId, name: name.trim(), owner: "", org: null, bundle: "", package: null, version: null },
+        created ?? { appId, name: name.trim(), owner: "", org: "", bundle: "", package: null, version: null, deployment: null },
       );
     } catch (e) {
       setError(describeError(e));

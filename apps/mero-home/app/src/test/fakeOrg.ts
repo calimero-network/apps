@@ -92,8 +92,8 @@ export function fakeOrg(opts: FakeOrgOptions = {}) {
       : { "acct-ana": "owner", "acct-bob": "member", "acct-gus": "guest" };
 
   const apps: AppInfo[] = [
-    { appId: "chat-1", name: "general", owner: "acct-ana", org: ORG, bundle: "b1", package: CHAT, version: "1.0.0" },
-    { appId: "crm-1", name: "pipeline", owner: "acct-ana", org: ORG, bundle: "b3", package: CRM, version: "1.0.0" },
+    { appId: "chat-1", name: "general", owner: "acct-ana", org: ORG, bundle: "b1", package: CHAT, version: "1.0.0", deployment: null },
+    { appId: "crm-1", name: "pipeline", owner: "acct-ana", org: ORG, bundle: "b3", package: CRM, version: "1.0.0", deployment: null },
   ];
   let invites: OrgInvite[] = opts.invites ?? [];
   let betaApps = ["beta-notes", "beta-big"];

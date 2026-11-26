@@ -128,7 +128,7 @@ function fakeClient() {
   /** The org's member defaults as the node keeps them (`setCapabilities` without `at`). */
   const defaults = new Map<string, number>();
   const metadata = new Map<string, unknown>();
-  const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null });
+  const room = (app: string) => ({ appId: app, name: app, owner: "acct-alice", org: "org-1", bundle: "b", package: null, version: null, deployment: null });
   return withRoutes({
     apps,
     orgs,
@@ -311,7 +311,7 @@ describe("App", () => {
   it("does not list an org made for another app; connects it on request by creating a room there", async () => {
     const client = fakeClient();
     client.orgs.push({ orgId: "ow", name: "overworld", role: "Owner" });
-    client.apps.push({ appId: "w1", name: "overworld", owner: "acct-alice", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null });
+    client.apps.push({ appId: "w1", name: "overworld", owner: "acct-alice", org: "ow", bundle: "blocks", package: "com.calimero.mero-blocks", version: null, deployment: null });
     renderApp(client, "/streams", true);
     await screen.findByTestId("streams-empty");
     expect(screen.queryByTestId("connect-org-ow")).toBeNull();

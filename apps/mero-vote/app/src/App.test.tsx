@@ -79,7 +79,7 @@ function fakeClient(apps: AppInfo[] = []) {
     listApps: vi.fn(async () => apps),
     createOrg: vi.fn(async () => "org-1"),
     createApp: vi.fn(async (name: string) => {
-      apps.push({ appId: "app-new", name, owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null });
+      apps.push({ appId: "app-new", name, owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null });
       return "app-new";
     }),
     call: vi.fn(async () => ({ index: 1, result: null, events: [] })),
@@ -226,7 +226,7 @@ describe("App", () => {
 
   it("joins the roster with a name", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
@@ -241,7 +241,7 @@ describe("App", () => {
 
   it("restores the session and the group opened last time, and goes back to the picker", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     const storage = new Memory();
     new SessionStore(APP, LOCAL, storage).save(SESSION);
@@ -261,7 +261,7 @@ describe("App", () => {
 
   it("closes a group that no longer admits the account, back to the picker", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     client.events = vi.fn(() => ({
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new NotFound("not found")) }),
@@ -278,7 +278,7 @@ describe("App", () => {
 
   it("closes the group when its stream ends and the node then refuses a read", async () => {
     const client = fakeClient([
-      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-1", name: "Board", owner: ME, org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ]);
     // Taken out of the org: the stream just ends, and every read is refused.
     client.view = vi.fn(async (_app: string, method: string) => {
@@ -386,8 +386,8 @@ describe("App", () => {
   describe("invitations land in the invited org", () => {
     /** Two shared voting groups in two orgs: the one opened last, and the one an invite is for. */
     const TWO_ORGS: AppInfo[] = [
-      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null },
-      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null },
+      { appId: "app-a", name: "alpha", owner: "acct-bob", org: "org-1", bundle: "bundle-hash", package: null, version: null, deployment: null },
+      { appId: "app-b", name: "beta", owner: "acct-bob", org: "org-2", bundle: "bundle-hash", package: null, version: null, deployment: null },
     ];
     const selected = (storage: KeyValueStorage) =>
       (JSON.parse(storage.getItem(selectionKey(LOCAL, "acct-alice")) ?? "null") as { appId?: string } | null)?.appId;

@@ -176,6 +176,7 @@ const FORUM: AppInfo = {
   bundle: "bundle-hash",
   package: null,
   version: null,
+  deployment: null,
 };
 
 const POST = {
