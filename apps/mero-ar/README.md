@@ -131,7 +131,7 @@ The Swift client is **not** vendored here: the app depends on Calimero's Swift
 SDK (`MeroKit` + `MeroKitUI`), which lives in
 [calimero-network/core](https://github.com/calimero-network/core)
 (`sdks/clients/mero-swift`) and is versioned with it, declared in
-`mobile/ios/project.yml` at core `1.0.0-rc.35` (`exactVersion`).
+`mobile/ios/project.yml` at the monorepo's core release (`exactVersion`, kept current by core's fleet bump).
 
 The app first verifies the node's TDX quote (`GET /attestation`, against signed
 mero-tee releases) and opens the sealed channel; everything else goes through
@@ -262,7 +262,7 @@ so there is nothing to announce; anyone who can reach the room can download it.
 
 ## Status
 
-- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on core 1.0.0-rc.35's SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
+- ✅ Scene-graph contract (objects + transforms, presence, comments, locking, version counter, world-map blob, room scan) — a component on the monorepo's core SDK, tested on core's wasmtime engine (TestApp harness + scenarios)
 - ✅ Account identity model: account-attributed writes, account-keyed roles and presence, owner-only room rename, admin lock-breaking, org admins moderate
 - ✅ App on core's Swift SDK: Calimero Cloud sign-in on Mero AR's served page, passkey approvals there, consent-page org actions, sealed intents/views/events, Keychain session resume, orgs as homes, invites, consent-page upgrades
 - ✅ Its own dark spatial design (glass panels, aurora accent, SF Symbols, ids behind "Technical details")

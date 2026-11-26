@@ -886,10 +886,6 @@
         ],
         "type": "object"
       },
-      "Attrs": {
-        "description": "The app type `Attrs`. The ABI names it without describing its shape, so any JSON value is accepted here.",
-        "x-calimero-abi-type": "Attrs"
-      },
       "AxesChangedEvent": {
         "properties": {
           "count": {
@@ -4682,7 +4678,17 @@
               "attributes": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/Attrs"
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
                   },
                   {
                     "type": "null"
@@ -4693,7 +4699,7 @@
                 "maximum": 4294967295,
                 "minimum": 0,
                 "type": "integer",
-                "x-calimero-type": "usize"
+                "x-calimero-type": "u32"
               }
             },
             "required": [
@@ -4706,7 +4712,17 @@
               "attributes": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/Attrs"
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
                   },
                   {
                     "type": "null"
@@ -4728,7 +4744,7 @@
                 "maximum": 4294967295,
                 "minimum": 0,
                 "type": "integer",
-                "x-calimero-type": "usize"
+                "x-calimero-type": "u32"
               }
             },
             "required": [

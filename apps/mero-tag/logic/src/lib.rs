@@ -125,7 +125,7 @@ pub mod pure {
 // ── Location ──────────────────────────────────────────────────────────────────
 
 /// A location fix as the phone reported it.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Location {
     pub latitude: f64,
@@ -134,23 +134,25 @@ pub struct Location {
     pub speed: f64,
     pub heading: f64,
     pub battery: u8,
+    #[abi(plain)]
     /// When the GPS took the fix, unix milliseconds: only the phone knows it.
     pub timestamp: u64,
 }
 
 /// A trimmed location for history playback (no battery/heading/speed).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct LocationSample {
     pub latitude: f64,
     pub longitude: f64,
+    #[abi(plain)]
     pub timestamp: u64,
 }
 
 // ── Records ───────────────────────────────────────────────────────────────────
 
 /// Something whose location is shared: a phone, a tag.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Tracker {
     pub id: String,
@@ -160,12 +162,14 @@ pub struct Tracker {
     /// Member ids granted view access (owner is always implicitly allowed).
     pub viewers: Vec<String>,
     pub latest: Option<Location>,
+    #[abi(plain)]
     pub created_at: u64,
+    #[abi(plain)]
     pub updated_at: u64,
 }
 
 /// A named set of members and trackers.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
     pub id: String,
@@ -173,11 +177,12 @@ pub struct Group {
     pub owner_id: String,
     pub member_ids: Vec<String>,
     pub tracker_ids: Vec<String>,
+    #[abi(plain)]
     pub updated_at: u64,
 }
 
 /// A circle on the map that phones report entering and leaving.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Geofence {
     pub id: String,
@@ -187,24 +192,27 @@ pub struct Geofence {
     /// Radius in metres.
     pub radius: f64,
     pub created_by: String,
+    #[abi(plain)]
     pub created_at: u64,
 }
 
 /// A member's online state.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Presence {
     pub user_id: String,
     pub online: bool,
+    #[abi(plain)]
     pub last_seen: u64,
 }
 
 /// Someone who has called `join`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub id: String,
     pub username: String,
+    #[abi(plain)]
     pub joined_at: u64,
 }
 
@@ -215,7 +223,7 @@ pub struct History {
 }
 
 /// The space summary.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SpaceInfo {
     pub name: String,
@@ -226,7 +234,7 @@ pub struct SpaceInfo {
 
 /// What a view tells the app about the caller: the member id this space stores
 /// for them, and their standing in the organization the app instance belongs to.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Me {
     /// The caller's account — the id every record here is keyed by.

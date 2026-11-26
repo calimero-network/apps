@@ -1824,11 +1824,11 @@
           "fields": [
             [
               "retain",
-              "usize"
+              "u32"
             ],
             [
               "attributes",
-              "option<Attrs>",
+              "option<BTreeMap<String,Option<String>>>",
               {
                 "optional": true
               }
@@ -1844,7 +1844,7 @@
             ],
             [
               "attributes",
-              "option<Attrs>",
+              "option<BTreeMap<String,Option<String>>>",
               {
                 "optional": true
               }
@@ -1856,7 +1856,7 @@
           "fields": [
             [
               "delete",
-              "usize"
+              "u32"
             ]
           ],
           "name": "Delete"

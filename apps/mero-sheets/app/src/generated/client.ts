@@ -173,8 +173,8 @@ export interface NamedRange {
 
 /** The app type `NoteChange`. */
 export type NoteChange =
-  | { retain: number; attributes?: Attrs | null }
-  | { insert: string; attributes?: Attrs | null }
+  | { retain: number; attributes?: Record<string, string | null> | null }
+  | { insert: string; attributes?: Record<string, string | null> | null }
   | { delete: number };
 
 /** The app type `NotedCell`. */
@@ -277,9 +277,6 @@ export interface StyleOp {
   field: string;
   value: string;
 }
-
-/** The app type `Attrs`: the ABI names it without its shape. */
-export type Attrs = unknown;
 
 /** The arguments of `addAttachment`. */
 export interface AddAttachmentArgs {

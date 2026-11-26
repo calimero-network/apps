@@ -32,17 +32,17 @@ pub type Attrs = BTreeMap<String, Option<String>>;
 #[serde(untagged)]
 pub enum NoteChange {
     Retain {
-        retain: usize,
+        retain: u32,
         #[serde(default)]
-        attributes: Option<Attrs>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     Insert {
         insert: String,
         #[serde(default)]
-        attributes: Option<Attrs>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     Delete {
-        delete: usize,
+        delete: u32,
     },
 }
 
@@ -104,7 +104,7 @@ impl NoteDoc {
             match op {
                 NoteChange::Retain { retain, attributes } => {
                     let end = at
-                        .checked_add(*retain)
+                        .checked_add(*retain as usize)
                         .filter(|&e| e <= chars.len())
                         .ok_or("a retain runs past the end of the note")?;
                     for (c, mut a) in chars[at..end].iter().cloned() {
@@ -134,7 +134,7 @@ impl NoteDoc {
                 }
                 NoteChange::Delete { delete } => {
                     at = at
-                        .checked_add(*delete)
+                        .checked_add(*delete as usize)
                         .filter(|&e| e <= chars.len())
                         .ok_or("a delete runs past the end of the note")?;
                 }

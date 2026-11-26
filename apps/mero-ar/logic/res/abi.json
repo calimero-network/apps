@@ -523,5 +523,331 @@
     },
     "version": 1
   },
+  "types": {
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "avatar",
+          "option<string>"
+        ],
+        [
+          "joinedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "MemberRole": {
+      "fields": [
+        [
+          "member",
+          "string"
+        ],
+        [
+          "role",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "ObjectData": {
+      "kind": "enum",
+      "tag": "kind",
+      "variants": [
+        {
+          "name": "cube"
+        },
+        {
+          "name": "sphere"
+        },
+        {
+          "name": "arrow"
+        },
+        {
+          "name": "marker"
+        },
+        {
+          "fields": [
+            [
+              "content",
+              "string"
+            ]
+          ],
+          "name": "text"
+        },
+        {
+          "fields": [
+            [
+              "blobId",
+              "string",
+              {
+                "optional": true
+              }
+            ],
+            [
+              "naturalWidth",
+              "u32",
+              {
+                "optional": true
+              }
+            ],
+            [
+              "naturalHeight",
+              "u32",
+              {
+                "optional": true
+              }
+            ]
+          ],
+          "name": "image"
+        },
+        {
+          "fields": [
+            [
+              "item",
+              "string"
+            ]
+          ],
+          "name": "furniture"
+        }
+      ]
+    },
+    "Presence": {
+      "fields": [
+        [
+          "identity",
+          "string"
+        ],
+        [
+          "member",
+          "string"
+        ],
+        [
+          "cameraPosition",
+          "Vec3"
+        ],
+        [
+          "cameraRotation",
+          "Quat"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Quat": {
+      "fields": [
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "z",
+          "f64"
+        ],
+        [
+          "w",
+          "f64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RoomInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "objectCount",
+          "u32"
+        ],
+        [
+          "memberCount",
+          "u32"
+        ],
+        [
+          "worldMapBlob",
+          "string"
+        ],
+        [
+          "version",
+          "u64_number"
+        ],
+        [
+          "owner",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "RoomScan": {
+      "fields": [
+        [
+          "jsonBlob",
+          "string"
+        ],
+        [
+          "jsonSize",
+          "u64_number"
+        ],
+        [
+          "usdzBlob",
+          "option<string>"
+        ],
+        [
+          "usdzSize",
+          "option<u64_number>"
+        ],
+        [
+          "width",
+          "f64"
+        ],
+        [
+          "length",
+          "f64"
+        ],
+        [
+          "height",
+          "f64"
+        ],
+        [
+          "objectCount",
+          "u32"
+        ],
+        [
+          "sample",
+          "bool"
+        ],
+        [
+          "scannedBy",
+          "string"
+        ],
+        [
+          "scannedAt",
+          "u64_number"
+        ],
+        [
+          "version",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SceneObject": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "data",
+          "ObjectData"
+        ],
+        [
+          "transform",
+          "Transform"
+        ],
+        [
+          "color",
+          "string"
+        ],
+        [
+          "lockedBy",
+          "option<string>"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ],
+        [
+          "version",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SpatialComment": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "text",
+          "string"
+        ],
+        [
+          "position",
+          "Vec3"
+        ],
+        [
+          "author",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Transform": {
+      "fields": [
+        [
+          "position",
+          "Vec3"
+        ],
+        [
+          "rotation",
+          "Quat"
+        ],
+        [
+          "scale",
+          "Vec3"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Vec3": {
+      "fields": [
+        [
+          "x",
+          "f64"
+        ],
+        [
+          "y",
+          "f64"
+        ],
+        [
+          "z",
+          "f64"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.7"
 }

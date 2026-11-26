@@ -1174,7 +1174,7 @@
             ],
             [
               "attributes",
-              "option<AttrDelta>",
+              "option<BTreeMap<String,Option<String>>>",
               {
                 "optional": true
               }
@@ -1190,7 +1190,7 @@
             ],
             [
               "attributes",
-              "option<AttrDelta>",
+              "option<BTreeMap<String,Option<String>>>",
               {
                 "optional": true
               }
@@ -1342,7 +1342,7 @@
         ],
         [
           "attributes",
-          "Attrs"
+          "BTreeMap<String,String>"
         ]
       ],
       "kind": "record"
