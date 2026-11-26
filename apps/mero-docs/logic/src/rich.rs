@@ -56,13 +56,13 @@ pub enum Change {
     Retain {
         retain: u32,
         #[serde(default)]
-        attributes: Option<AttrDelta>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     /// Inserts text at the current position.
     Insert {
         insert: String,
         #[serde(default)]
-        attributes: Option<AttrDelta>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     /// Removes characters at the current position.
     Delete { delete: u32 },
@@ -72,7 +72,7 @@ pub enum Change {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 pub struct Span {
     pub text: String,
-    pub attributes: Attrs,
+    pub attributes: BTreeMap<String, String>,
 }
 
 /// A run of consecutive character ids. `replica` is always `"0"`: one leader
@@ -89,7 +89,7 @@ pub struct Run {
 pub struct Char {
     pub id: u64,
     pub ch: char,
-    pub attrs: Attrs,
+    pub attrs: BTreeMap<String, String>,
 }
 
 /// The `RichText` holding the text called `name`.

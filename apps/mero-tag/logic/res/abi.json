@@ -502,5 +502,224 @@
     },
     "version": 1
   },
+  "types": {
+    "Geofence": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "centerLat",
+          "f64"
+        ],
+        [
+          "centerLng",
+          "f64"
+        ],
+        [
+          "radius",
+          "f64"
+        ],
+        [
+          "createdBy",
+          "string"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Group": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "ownerId",
+          "string"
+        ],
+        [
+          "memberIds",
+          "list<string>"
+        ],
+        [
+          "trackerIds",
+          "list<string>"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Location": {
+      "fields": [
+        [
+          "latitude",
+          "f64"
+        ],
+        [
+          "longitude",
+          "f64"
+        ],
+        [
+          "altitude",
+          "f64"
+        ],
+        [
+          "speed",
+          "f64"
+        ],
+        [
+          "heading",
+          "f64"
+        ],
+        [
+          "battery",
+          "u8"
+        ],
+        [
+          "timestamp",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "LocationSample": {
+      "fields": [
+        [
+          "latitude",
+          "f64"
+        ],
+        [
+          "longitude",
+          "f64"
+        ],
+        [
+          "timestamp",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Me": {
+      "fields": [
+        [
+          "memberId",
+          "string"
+        ],
+        [
+          "org",
+          "option<string>"
+        ],
+        [
+          "orgRole",
+          "option<string>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Member": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "username",
+          "string"
+        ],
+        [
+          "joinedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Presence": {
+      "fields": [
+        [
+          "userId",
+          "string"
+        ],
+        [
+          "online",
+          "bool"
+        ],
+        [
+          "lastSeen",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SpaceInfo": {
+      "fields": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "trackerCount",
+          "u32"
+        ],
+        [
+          "memberCount",
+          "u32"
+        ],
+        [
+          "groupCount",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Tracker": {
+      "fields": [
+        [
+          "id",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ],
+        [
+          "ownerId",
+          "string"
+        ],
+        [
+          "viewers",
+          "list<string>"
+        ],
+        [
+          "latest",
+          "option<Location>"
+        ],
+        [
+          "createdAt",
+          "u64_number"
+        ],
+        [
+          "updatedAt",
+          "u64_number"
+        ]
+      ],
+      "kind": "record"
+    }
+  },
   "world": "calimero:app@0.5.7"
 }

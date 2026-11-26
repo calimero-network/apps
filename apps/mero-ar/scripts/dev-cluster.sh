@@ -20,7 +20,7 @@
 #   scripts/dev-cluster.sh status | logs | down
 #
 # CORE_TAG picks the merod release (default: `component-core-tag` in the
-# repository's root Cargo.toml, else the release below).
+# repository's root Cargo.toml, which core's fleet bump keeps current).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,7 +28,7 @@ REPO="$(cd "$ROOT/../.." && pwd)"
 if [ -z "${CORE_TAG:-}" ] && [ -f "$REPO/Cargo.toml" ]; then
   CORE_TAG=$(sed -n 's/^component-core-tag = "\(.*\)"/\1/p' "$REPO/Cargo.toml" | head -1)
 fi
-CORE_TAG="${CORE_TAG:-1.0.0-rc.35}"
+[ -n "${CORE_TAG:-}" ] || { echo "dev-cluster: set CORE_TAG (no component-core-tag in $REPO/Cargo.toml)" >&2; exit 1; }
 IMAGE="${MEROD_IMAGE:-ghcr.io/calimero-network/merod:${CORE_TAG}}"
 FORWARDER_IMAGE="alpine/socat:1.8.0.3"
 NAME="merod-local"

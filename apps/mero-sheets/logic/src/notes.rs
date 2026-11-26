@@ -23,26 +23,23 @@ pub const NOTE_MARKS: [&str; 7] = [
     "link",
 ];
 
-/// A requested attribute set: `null` as a value removes the key.
-pub type Attrs = BTreeMap<String, Option<String>>;
-
 /// One step of a note edit, in the Quill delta shape: keep, insert or delete
 /// characters, with formatting on kept or inserted text.
 #[derive(Clone, Debug, Serialize, Deserialize, calimero_sdk::AbiType)]
 #[serde(untagged)]
 pub enum NoteChange {
     Retain {
-        retain: usize,
+        retain: u32,
         #[serde(default)]
-        attributes: Option<Attrs>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     Insert {
         insert: String,
         #[serde(default)]
-        attributes: Option<Attrs>,
+        attributes: Option<BTreeMap<String, Option<String>>>,
     },
     Delete {
-        delete: usize,
+        delete: u32,
     },
 }
 
@@ -104,7 +101,7 @@ impl NoteDoc {
             match op {
                 NoteChange::Retain { retain, attributes } => {
                     let end = at
-                        .checked_add(*retain)
+                        .checked_add(*retain as usize)
                         .filter(|&e| e <= chars.len())
                         .ok_or("a retain runs past the end of the note")?;
                     for (c, mut a) in chars[at..end].iter().cloned() {
@@ -134,7 +131,7 @@ impl NoteDoc {
                 }
                 NoteChange::Delete { delete } => {
                     at = at
-                        .checked_add(*delete)
+                        .checked_add(*delete as usize)
                         .filter(|&e| e <= chars.len())
                         .ok_or("a delete runs past the end of the note")?;
                 }
@@ -167,7 +164,7 @@ mod tests {
     fn ins(text: &str, bold: bool) -> NoteChange {
         NoteChange::Insert {
             insert: text.into(),
-            attributes: bold.then(|| Attrs::from([("bold".into(), Some("true".into()))])),
+            attributes: bold.then(|| BTreeMap::from([("bold".into(), Some("true".into()))])),
         }
     }
 
@@ -185,7 +182,7 @@ mod tests {
             },
             NoteChange::Retain {
                 retain: 5,
-                attributes: Some(Attrs::from([("bold".into(), None)])),
+                attributes: Some(BTreeMap::from([("bold".into(), None)])),
             },
         ])
         .unwrap();
@@ -202,7 +199,7 @@ mod tests {
         assert!(doc
             .apply(&[NoteChange::Insert {
                 insert: "x".into(),
-                attributes: Some(Attrs::from([("font".into(), Some("x".into()))])),
+                attributes: Some(BTreeMap::from([("font".into(), Some("x".into()))])),
             }])
             .is_err());
         assert_eq!(doc.text(), "abc");

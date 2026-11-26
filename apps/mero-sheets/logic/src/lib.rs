@@ -1295,7 +1295,7 @@ impl Spreadsheet {
         let mut note = self.notes.get(&key)?.unwrap_or_default();
         let (added, removed) = ops.iter().fold((0usize, 0usize), |(a, r), op| match op {
             NoteChange::Insert { insert, .. } => (a + insert.chars().count(), r),
-            NoteChange::Delete { delete } => (a, r.saturating_add(*delete)),
+            NoteChange::Delete { delete } => (a, r.saturating_add(*delete as usize)),
             NoteChange::Retain { .. } => (a, r),
         });
         if (note.len() + added).saturating_sub(removed) > MAX_NOTE_CHARS {

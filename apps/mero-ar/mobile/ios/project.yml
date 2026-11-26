@@ -13,7 +13,7 @@ options:
 # Mero AR's served page on Calimero Cloud, a `SoftPasskey` for `merod local`),
 # organizations, app instances and the consent page.
 #
-# Pinned to core 1.0.0-rc.35. Bump `exactVersion` for a new core release.
+# Pinned to a core release (`exactVersion`); core's fleet bump keeps it current.
 #
 # Local development against a core checkout: swap `url` + `exactVersion` for
 # `path: ../../../core` (or your worktree), regenerate, and do NOT commit that.

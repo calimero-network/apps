@@ -114,7 +114,7 @@ Run `make help` for all targets. [requirements.md](requirements.md) has the full
 
 ## Status
 
-- Done: the component contract on core 1.0.0-rc.35 (trackers, locations, sharing, groups, geofences, presence, history).
+- Done: the component contract on the monorepo's core release (trackers, locations, sharing, groups, geofences, presence, history).
 - Done: passkey sign-in through the served page, spaces as app instances in organizations, invites, live events,
   organization and update approvals on the consent page.
 - Not yet: authoring geofences, playing back history, and a UI for groups.

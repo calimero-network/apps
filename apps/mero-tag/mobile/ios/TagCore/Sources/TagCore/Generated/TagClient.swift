@@ -15,29 +15,408 @@ import MeroKit
 /// its own idempotency key, so `confirm` methods, `events` and an `idempotencyKey` throw
 /// `MeroAppBackendUnsupported`. A refusal throws `AppError`; `Refusal(_:)` types it.
 public struct TagClient: Sendable {
-    /// The app type `Geofence`: the ABI names it without its shape, so it is its JSON.
-    public typealias Geofence = JSONValue
 
-    /// The app type `Group`: the ABI names it without its shape, so it is its JSON.
-    public typealias Group = JSONValue
+    /// The app type `Geofence`.
+    public struct Geofence: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var centerLat: Double
+        public var centerLng: Double
+        public var radius: Double
+        public var createdBy: String
+        public var createdAt: UInt64
 
-    /// The app type `LocationSample`: the ABI names it without its shape, so it is its JSON.
-    public typealias LocationSample = JSONValue
+        public init(
+            id: String,
+            name: String,
+            centerLat: Double,
+            centerLng: Double,
+            radius: Double,
+            createdBy: String,
+            createdAt: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.centerLat = centerLat
+            self.centerLng = centerLng
+            self.radius = radius
+            self.createdBy = createdBy
+            self.createdAt = createdAt
+        }
 
-    /// The app type `Me`: the ABI names it without its shape, so it is its JSON.
-    public typealias Me = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(Double.self, forKey: Key("centerLat"))
+            let v3 = try fields.decode(Double.self, forKey: Key("centerLng"))
+            let v4 = try fields.decode(Double.self, forKey: Key("radius"))
+            let v5 = try fields.decode(String.self, forKey: Key("createdBy"))
+            let v6 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            self.id = v0
+            self.name = v1
+            self.centerLat = v2
+            self.centerLng = v3
+            self.radius = v4
+            self.createdBy = v5
+            self.createdAt = v6
+        }
 
-    /// The app type `Member`: the ABI names it without its shape, so it is its JSON.
-    public typealias Member = JSONValue
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.centerLat, forKey: Key("centerLat"))
+            try fields.encode(self.centerLng, forKey: Key("centerLng"))
+            try fields.encode(self.radius, forKey: Key("radius"))
+            try fields.encode(self.createdBy, forKey: Key("createdBy"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+        }
+    }
 
-    /// The app type `Presence`: the ABI names it without its shape, so it is its JSON.
-    public typealias Presence = JSONValue
+    /// The app type `Group`.
+    public struct Group: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var ownerId: String
+        public var memberIds: [String]
+        public var trackerIds: [String]
+        public var updatedAt: UInt64
 
-    /// The app type `SpaceInfo`: the ABI names it without its shape, so it is its JSON.
-    public typealias SpaceInfo = JSONValue
+        public init(
+            id: String,
+            name: String,
+            ownerId: String,
+            memberIds: [String],
+            trackerIds: [String],
+            updatedAt: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.ownerId = ownerId
+            self.memberIds = memberIds
+            self.trackerIds = trackerIds
+            self.updatedAt = updatedAt
+        }
 
-    /// The app type `Tracker`: the ABI names it without its shape, so it is its JSON.
-    public typealias Tracker = JSONValue
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("ownerId"))
+            let v3 = try fields.decode([String].self, forKey: Key("memberIds"))
+            let v4 = try fields.decode([String].self, forKey: Key("trackerIds"))
+            let v5 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.id = v0
+            self.name = v1
+            self.ownerId = v2
+            self.memberIds = v3
+            self.trackerIds = v4
+            self.updatedAt = v5
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.ownerId, forKey: Key("ownerId"))
+            try fields.encode(self.memberIds, forKey: Key("memberIds"))
+            try fields.encode(self.trackerIds, forKey: Key("trackerIds"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
+
+    /// The app type `Location`.
+    public struct Location: Codable, Sendable, Equatable {
+        public var latitude: Double
+        public var longitude: Double
+        public var altitude: Double
+        public var speed: Double
+        public var heading: Double
+        public var battery: UInt8
+        public var timestamp: UInt64
+
+        public init(
+            latitude: Double,
+            longitude: Double,
+            altitude: Double,
+            speed: Double,
+            heading: Double,
+            battery: UInt8,
+            timestamp: UInt64
+        ) {
+            self.latitude = latitude
+            self.longitude = longitude
+            self.altitude = altitude
+            self.speed = speed
+            self.heading = heading
+            self.battery = battery
+            self.timestamp = timestamp
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Double.self, forKey: Key("latitude"))
+            let v1 = try fields.decode(Double.self, forKey: Key("longitude"))
+            let v2 = try fields.decode(Double.self, forKey: Key("altitude"))
+            let v3 = try fields.decode(Double.self, forKey: Key("speed"))
+            let v4 = try fields.decode(Double.self, forKey: Key("heading"))
+            let v5 = try fields.decode(UInt8.self, forKey: Key("battery"))
+            let v6 = try fields.decode(UInt64.self, forKey: Key("timestamp"))
+            self.latitude = v0
+            self.longitude = v1
+            self.altitude = v2
+            self.speed = v3
+            self.heading = v4
+            self.battery = v5
+            self.timestamp = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.latitude, forKey: Key("latitude"))
+            try fields.encode(self.longitude, forKey: Key("longitude"))
+            try fields.encode(self.altitude, forKey: Key("altitude"))
+            try fields.encode(self.speed, forKey: Key("speed"))
+            try fields.encode(self.heading, forKey: Key("heading"))
+            try fields.encode(self.battery, forKey: Key("battery"))
+            try fields.encode(self.timestamp, forKey: Key("timestamp"))
+        }
+    }
+
+    /// The app type `LocationSample`.
+    public struct LocationSample: Codable, Sendable, Equatable {
+        public var latitude: Double
+        public var longitude: Double
+        public var timestamp: UInt64
+
+        public init(
+            latitude: Double,
+            longitude: Double,
+            timestamp: UInt64
+        ) {
+            self.latitude = latitude
+            self.longitude = longitude
+            self.timestamp = timestamp
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(Double.self, forKey: Key("latitude"))
+            let v1 = try fields.decode(Double.self, forKey: Key("longitude"))
+            let v2 = try fields.decode(UInt64.self, forKey: Key("timestamp"))
+            self.latitude = v0
+            self.longitude = v1
+            self.timestamp = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.latitude, forKey: Key("latitude"))
+            try fields.encode(self.longitude, forKey: Key("longitude"))
+            try fields.encode(self.timestamp, forKey: Key("timestamp"))
+        }
+    }
+
+    /// The app type `Me`.
+    public struct Me: Codable, Sendable, Equatable {
+        public var memberId: String
+        public var org: String?
+        public var orgRole: String?
+
+        public init(
+            memberId: String,
+            org: String? = nil,
+            orgRole: String? = nil
+        ) {
+            self.memberId = memberId
+            self.org = org
+            self.orgRole = orgRole
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("memberId"))
+            let v1 = try fields.decodeIfPresent(String.self, forKey: Key("org"))
+            let v2 = try fields.decodeIfPresent(String.self, forKey: Key("orgRole"))
+            self.memberId = v0
+            self.org = v1
+            self.orgRole = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.memberId, forKey: Key("memberId"))
+            try fields.encode(self.org, forKey: Key("org"))
+            try fields.encode(self.orgRole, forKey: Key("orgRole"))
+        }
+    }
+
+    /// The app type `Member`.
+    public struct Member: Codable, Sendable, Equatable {
+        public var id: String
+        public var username: String
+        public var joinedAt: UInt64
+
+        public init(
+            id: String,
+            username: String,
+            joinedAt: UInt64
+        ) {
+            self.id = id
+            self.username = username
+            self.joinedAt = joinedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("username"))
+            let v2 = try fields.decode(UInt64.self, forKey: Key("joinedAt"))
+            self.id = v0
+            self.username = v1
+            self.joinedAt = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.username, forKey: Key("username"))
+            try fields.encode(self.joinedAt, forKey: Key("joinedAt"))
+        }
+    }
+
+    /// The app type `Presence`.
+    public struct Presence: Codable, Sendable, Equatable {
+        public var userId: String
+        public var online: Bool
+        public var lastSeen: UInt64
+
+        public init(
+            userId: String,
+            online: Bool,
+            lastSeen: UInt64
+        ) {
+            self.userId = userId
+            self.online = online
+            self.lastSeen = lastSeen
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("userId"))
+            let v1 = try fields.decode(Bool.self, forKey: Key("online"))
+            let v2 = try fields.decode(UInt64.self, forKey: Key("lastSeen"))
+            self.userId = v0
+            self.online = v1
+            self.lastSeen = v2
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.userId, forKey: Key("userId"))
+            try fields.encode(self.online, forKey: Key("online"))
+            try fields.encode(self.lastSeen, forKey: Key("lastSeen"))
+        }
+    }
+
+    /// The app type `SpaceInfo`.
+    public struct SpaceInfo: Codable, Sendable, Equatable {
+        public var name: String
+        public var trackerCount: UInt32
+        public var memberCount: UInt32
+        public var groupCount: UInt32
+
+        public init(
+            name: String,
+            trackerCount: UInt32,
+            memberCount: UInt32,
+            groupCount: UInt32
+        ) {
+            self.name = name
+            self.trackerCount = trackerCount
+            self.memberCount = memberCount
+            self.groupCount = groupCount
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("name"))
+            let v1 = try fields.decode(UInt32.self, forKey: Key("trackerCount"))
+            let v2 = try fields.decode(UInt32.self, forKey: Key("memberCount"))
+            let v3 = try fields.decode(UInt32.self, forKey: Key("groupCount"))
+            self.name = v0
+            self.trackerCount = v1
+            self.memberCount = v2
+            self.groupCount = v3
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.trackerCount, forKey: Key("trackerCount"))
+            try fields.encode(self.memberCount, forKey: Key("memberCount"))
+            try fields.encode(self.groupCount, forKey: Key("groupCount"))
+        }
+    }
+
+    /// The app type `Tracker`.
+    public struct Tracker: Codable, Sendable, Equatable {
+        public var id: String
+        public var name: String
+        public var ownerId: String
+        public var viewers: [String]
+        public var latest: Location?
+        public var createdAt: UInt64
+        public var updatedAt: UInt64
+
+        public init(
+            id: String,
+            name: String,
+            ownerId: String,
+            viewers: [String],
+            latest: Location? = nil,
+            createdAt: UInt64,
+            updatedAt: UInt64
+        ) {
+            self.id = id
+            self.name = name
+            self.ownerId = ownerId
+            self.viewers = viewers
+            self.latest = latest
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let fields = try decoder.container(keyedBy: Key.self)
+            let v0 = try fields.decode(String.self, forKey: Key("id"))
+            let v1 = try fields.decode(String.self, forKey: Key("name"))
+            let v2 = try fields.decode(String.self, forKey: Key("ownerId"))
+            let v3 = try fields.decode([String].self, forKey: Key("viewers"))
+            let v4 = try fields.decodeIfPresent(Location.self, forKey: Key("latest"))
+            let v5 = try fields.decode(UInt64.self, forKey: Key("createdAt"))
+            let v6 = try fields.decode(UInt64.self, forKey: Key("updatedAt"))
+            self.id = v0
+            self.name = v1
+            self.ownerId = v2
+            self.viewers = v3
+            self.latest = v4
+            self.createdAt = v5
+            self.updatedAt = v6
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var fields = encoder.container(keyedBy: Key.self)
+            try fields.encode(self.id, forKey: Key("id"))
+            try fields.encode(self.name, forKey: Key("name"))
+            try fields.encode(self.ownerId, forKey: Key("ownerId"))
+            try fields.encode(self.viewers, forKey: Key("viewers"))
+            try fields.encode(self.latest, forKey: Key("latest"))
+            try fields.encode(self.createdAt, forKey: Key("createdAt"))
+            try fields.encode(self.updatedAt, forKey: Key("updatedAt"))
+        }
+    }
 
     private enum Transport: Sendable {
         case client(CalimeroClient, String)

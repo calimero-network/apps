@@ -153,7 +153,7 @@ pub mod pure {
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 /// A point or a scale, in metres.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, calimero_sdk::AbiType)]
 pub struct Vec3 {
     pub x: f64,
     pub y: f64,
@@ -161,7 +161,7 @@ pub struct Vec3 {
 }
 
 /// A rotation as a unit quaternion.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 pub struct Quat {
     pub x: f64,
     pub y: f64,
@@ -181,7 +181,7 @@ impl Default for Quat {
 }
 
 /// Where an object is, how it is turned and how big it is.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
@@ -205,7 +205,7 @@ impl Default for Transform {
 // ── Object data (kind-tagged, lowercase to match ARKit/frontend) ──────────────
 
 /// What an object is, as a JSON object tagged by `kind`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "kind")]
 pub enum ObjectData {
@@ -234,7 +234,7 @@ pub enum ObjectData {
 // ── Records ───────────────────────────────────────────────────────────────────
 
 /// One object in the scene.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneObject {
     /// Chosen by the caller; use a fresh UUID.
@@ -246,28 +246,32 @@ pub struct SceneObject {
     pub locked_by: Option<String>,
     /// The creator's account, set by the contract; the value sent is ignored.
     pub created_by: String,
+    #[abi(plain)]
     /// Unix milliseconds, the leader's clock; the value sent is ignored.
     pub created_at: u64,
+    #[abi(plain)]
     /// Unix milliseconds, the leader's clock; the value sent is ignored.
     pub updated_at: u64,
+    #[abi(plain)]
     /// The room's version counter at the object's last change.
     pub version: u64,
 }
 
 /// Someone who has called `join`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     /// The member's account.
     pub id: String,
     pub username: String,
     pub avatar: Option<String>,
+    #[abi(plain)]
     /// Unix milliseconds, the leader's clock.
     pub joined_at: u64,
 }
 
 /// A member's camera pose.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct Presence {
     /// The viewpoint's key. Core 1.0 has no devices, so this is the member's
@@ -277,11 +281,12 @@ pub struct Presence {
     pub member: String,
     pub camera_position: Vec3,
     pub camera_rotation: Quat,
+    #[abi(plain)]
     pub updated_at: u64,
 }
 
 /// A note pinned in space.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct SpatialComment {
     pub id: String,
@@ -289,6 +294,7 @@ pub struct SpatialComment {
     pub position: Vec3,
     /// The writer's account, set by the contract.
     pub author: String,
+    #[abi(plain)]
     pub created_at: u64,
 }
 
@@ -297,14 +303,16 @@ pub struct SpatialComment {
 /// plus optionally the parametric USDZ RoomPlan export. Both are blobs of the
 /// app instance; this record names them. One current scan per room: a new one
 /// replaces it and bumps `version`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomScan {
     /// Blob id of the `CapturedRoom` JSON — the shared model every client renders.
     pub json_blob: String,
+    #[abi(plain)]
     pub json_size: u64,
     /// Blob id of the USDZ export, when the scanner made one.
     pub usdz_blob: Option<String>,
+    #[abi(plain)]
     pub usdz_size: Option<u64>,
     /// Floor extent and wall height, in metres.
     pub width: f64,
@@ -316,25 +324,28 @@ pub struct RoomScan {
     /// use one); clients label it as such.
     pub sample: bool,
     pub scanned_by: String,
+    #[abi(plain)]
     pub scanned_at: u64,
+    #[abi(plain)]
     pub version: u64,
 }
 
 /// The room summary.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomInfo {
     pub name: String,
     pub object_count: u32,
     pub member_count: u32,
     pub world_map_blob: String,
+    #[abi(plain)]
     pub version: u64,
     /// The room owner's account.
     pub owner: Option<String>,
 }
 
 /// A member with their effective role — the roster the members sheet renders.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, calimero_sdk::AbiType)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
     pub member: String,
