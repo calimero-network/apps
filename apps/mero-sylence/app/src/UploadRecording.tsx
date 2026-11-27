@@ -44,7 +44,7 @@ interface Run {
 }
 
 /** `12.3 / 30.1 MB`. */
-export function formatBytes({ loaded, total }: { loaded: number; total: number }): string {
+export function formatDownload({ loaded, total }: { loaded: number; total: number }): string {
   const mb = (n: number) => (n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0);
   return `${mb(loaded)} / ${mb(total)} MB`;
 }
@@ -342,7 +342,7 @@ export function UploadRecording({
                     </span>
                     <span>{s.label}</span>
                     {state === "active" && (s.id === "load" || s.id === "transcribe" || s.id === "voices" || s.id === "diarize") && (
-                      <span className="dim mono">{run.bytes && run.bytes.total ? formatBytes(run.bytes) : `${Math.round(run.fraction * 100)}%`}</span>
+                      <span className="dim mono">{run.bytes && run.bytes.total ? formatDownload(run.bytes) : `${Math.round(run.fraction * 100)}%`}</span>
                     )}
                     {state === "active" && (
                       <span
