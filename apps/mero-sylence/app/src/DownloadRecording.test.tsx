@@ -30,6 +30,8 @@ describe("Download recording", () => {
       saved.push(this.download);
     });
     render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    // It is in the meeting's Export menu.
+    fireEvent.click(await screen.findByTestId("export-menu"));
     fireEvent.click(await screen.findByTestId("download-recording"));
     await waitFor(() => expect(saved).toEqual(["launch-plan-q4.mp3"]));
     const file = blobs.at(-1)!;
@@ -46,6 +48,7 @@ describe("Download recording", () => {
   it("is not offered for a meeting without audio", async () => {
     const fake = fakeWorkspace({ getMeeting: () => meeting(), listActions: () => [], transcript: () => ({ segments: [], next: null }) });
     render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    fireEvent.click(await screen.findByTestId("export-menu"));
     await screen.findByText(/Copy as Markdown/);
     expect(screen.queryByTestId("download-recording")).toBeNull();
   });

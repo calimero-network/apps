@@ -163,15 +163,17 @@ test("a meeting: rename, summary, edit a line, action items, Markdown", async ()
   await expect(item).toBeChecked();
   await expect(page.locator(".actions-card .card-head .pill")).toHaveText("1 open");
 
-  await page.getByRole("button", { name: "Copy as Markdown" }).click();
-  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  await page.getByTestId("export-menu").click();
+  await page.getByRole("menuitem", { name: "Copy as Markdown" }).click();
+  await expect(page.getByTestId("export-menu")).toHaveText(/Copied/);
   const markdown = await page.evaluate(() => navigator.clipboard.readText());
   expect(markdown).toContain("# Design review");
   expect(markdown).toContain("- [x] Agreed. The model picker goes in a sheet.");
   expect(markdown).toContain("- [ ] Draw the sheet (Cy)");
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download .md" }).click();
+  await page.getByTestId("export-menu").click();
+  await page.getByRole("menuitem", { name: "Download .md" }).click();
   expect((await download).suggestedFilename()).toMatch(/design-review.*\.md$/i);
 
   await page.getByRole("button", { name: "All meetings" }).click();

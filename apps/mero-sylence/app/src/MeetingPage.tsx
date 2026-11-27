@@ -357,25 +357,14 @@ export function MeetingBody({
           </div>
         </div>
         <div className="meeting-tools">
-          <button type="button" className="btn" onClick={() => void copy()}>
-            <Icon name={copied ? "check" : "copy"} /> {copied ? "Copied" : "Copy as Markdown"}
-          </button>
-          <button type="button" className="btn" onClick={download}>
-            <Download size={16} aria-hidden="true" /> Download .md
-          </button>
-          {hasAudio && (
-            <button
-              type="button"
-              className={`btn${savingAudio ? " is-busy" : ""}`}
-              onClick={() => void downloadRecording()}
-              disabled={savingAudio}
-              aria-busy={savingAudio}
-              data-testid="download-recording"
-            >
-              {savingAudio ? <span className="btn-spinner" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
-              {savingAudio ? "Preparing…" : "Download recording"}
-            </button>
-          )}
+          <ExportMenu
+            copied={copied}
+            busy={savingAudio}
+            hasAudio={hasAudio}
+            onCopy={() => void copy()}
+            onDownloadMarkdown={download}
+            onDownloadRecording={() => void downloadRecording()}
+          />
           {(recorder || isOwner) && (
             <DeleteMeeting
               workspace={workspace}
@@ -848,5 +837,85 @@ function DeleteMeeting({
       </button>
       {error && <span className="err">{error}</span>}
     </div>
+  );
+}
+
+/** "Export": copy the meeting as Markdown, download it as .md, or download its recording. */
+function ExportMenu({
+  copied,
+  busy,
+  hasAudio,
+  onCopy,
+  onDownloadMarkdown,
+  onDownloadRecording,
+}: {
+  copied: boolean;
+  busy: boolean;
+  hasAudio: boolean;
+  onCopy: () => void;
+  onDownloadMarkdown: () => void;
+  onDownloadRecording: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const presence = usePresence(open);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!button.current?.contains(e.target as Node) && !inPopover(e.target)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  const pick = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={`btn export-button${busy ? " is-busy" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-busy={busy}
+        onClick={() => setOpen((o) => !o)}
+        data-testid="export-menu"
+      >
+        {busy ? <span className="btn-spinner" aria-hidden="true" /> : copied ? <Icon name="check" /> : <Download size={16} aria-hidden="true" />}
+        {busy ? "Preparing…" : copied ? "Copied" : "Export"}
+        <Icon name="down" size={14} />
+      </button>
+      {presence.mounted && (
+        <Popover anchor={button.current} closing={presence.closing} width={220} role="menu" label="Export">
+          <div className="menu-panel-in">
+            <button type="button" role="menuitem" className="menu-item" onClick={pick(onCopy)}>
+              <Icon name="copy" /> Copy as Markdown
+            </button>
+            <button type="button" role="menuitem" className="menu-item" onClick={pick(onDownloadMarkdown)}>
+              <Icon name="form" /> Download .md
+            </button>
+            {hasAudio && (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                disabled={busy}
+                onClick={pick(onDownloadRecording)}
+                data-testid="download-recording"
+              >
+                <Icon name="wave" /> Download recording
+              </button>
+            )}
+          </div>
+        </Popover>
+      )}
+    </>
   );
 }
