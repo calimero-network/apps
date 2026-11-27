@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionView, SegmentView } from "./sylenceApi";
 import { MeetingPage } from "./MeetingPage";
 import { fakeWorkspace, meeting } from "./test/workspace";
+import { sha256Hex } from "./useRecording";
 
 afterEach(cleanup);
 
@@ -266,7 +267,7 @@ describe("talk time and playback", () => {
 
   it("plays a meeting's recording and seeks from a line", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const id = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const id = await sha256Hex(bytes.slice().buffer);
     const fake = fakeWorkspace({
       getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 200_000 } }),
       listActions: () => [],
@@ -342,7 +343,7 @@ describe("round-2 fixes", () => {
 
   it("marks no line as playing before anything played", async () => {
     const bytes = new Uint8Array([4, 5, 6]);
-    const id = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const id = await sha256Hex(bytes.slice().buffer);
     const fake = fakeWorkspace({
       getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 60_000 } }),
       listActions: () => [],

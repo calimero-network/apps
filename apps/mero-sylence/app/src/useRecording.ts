@@ -53,7 +53,8 @@ const keyOf = (appId: string, blobId: string) => `${appId}/${blobId}`;
 /** The SHA-256 of `data` as 64 lowercase hex digits. */
 export async function sha256Hex(data: ArrayBuffer | Blob): Promise<string> {
   const bytes = data instanceof Blob ? await data.arrayBuffer() : data;
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  // A copy in this realm: some runtimes refuse an ArrayBuffer made by another one (a test DOM).
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", Uint8Array.from(new Uint8Array(bytes))));
   return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
