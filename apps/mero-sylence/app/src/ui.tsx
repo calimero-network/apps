@@ -161,12 +161,13 @@ const THEME_KEY = "mero-sylence:theme";
 
 /** The stored choice, applied to <html> as `data-theme` ("system" = none). */
 export function applyStoredTheme(): Theme {
-  let theme: Theme = "system";
+  // Light unless the person chose dark or "follow the system".
+  let theme: Theme = "light";
   try {
     const stored = window.localStorage.getItem(THEME_KEY);
-    if (stored === "light" || stored === "dark") theme = stored;
+    if (stored === "light" || stored === "dark" || stored === "system") theme = stored;
   } catch {
-    // Storage blocked: follow the system, which needs nothing stored.
+    // Storage blocked: light, the default.
   }
   if (theme === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", theme);
@@ -177,8 +178,7 @@ export function useTheme(): [Theme, (t: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(() => applyStoredTheme());
   const choose = useCallback((t: Theme) => {
     try {
-      if (t === "system") window.localStorage.removeItem(THEME_KEY);
-      else window.localStorage.setItem(THEME_KEY, t);
+      window.localStorage.setItem(THEME_KEY, t);
     } catch {
       // A per-browser convenience; failing to remember it is harmless.
     }

@@ -2,7 +2,7 @@ import { CALIMERO_URL, REPO_URL } from "./Landing";
 import { PRODUCT } from "./session";
 
 /** The signed-in footer: the way back to the home page, help, your account, legal. */
-export function AppFooter({ onShowTips }: { onShowTips?: () => void }) {
+export function AppFooter({ onShowTips, workspace = true }: { onShowTips?: () => void; workspace?: boolean }) {
   return (
     <footer className="app-footer">
       <div className="app-footer-grid">
@@ -15,9 +15,15 @@ export function AppFooter({ onShowTips }: { onShowTips?: () => void }) {
         </div>
         <nav aria-label="Workspace">
           <h3>Workspace</h3>
-          <a href="#/">Meetings</a>
-          <a href="#/actions">Action items</a>
-          <a href="#/people">People</a>
+          {workspace ? (
+            <>
+              <a href="#/">Meetings</a>
+              <a href="#/actions">Action items</a>
+              <a href="#/people">People</a>
+            </>
+          ) : (
+            <a href="#/">Your workspaces</a>
+          )}
         </nav>
         <nav aria-label="Help">
           <h3>Help</h3>

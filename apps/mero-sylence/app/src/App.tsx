@@ -247,7 +247,8 @@ export function Welcome({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
 function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t: Theme) => void; onLogout: () => void }) {
   const { active, open, leaving } = useActiveWorkspace();
   const [lostNotice, setLostNotice] = useState(false);
-  const { client, source, after } = useSignedIn();
+  const { client, source, after, accountId } = useSignedIn();
+  const [route, go] = useRoute();
 
   // A link to another workspace (`#/w/<appId>/...`, from the extension) opens it,
   // if this account reaches it; the picker shows otherwise.
@@ -273,18 +274,26 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
 
   if (!active) {
     return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />} footer={<AppFooter />}>
-        {lostNotice && (
-          <div className="card" role="status">
-            <p className="empty">You no longer have access to that workspace.</p>
-          </div>
+      <Shell right={<Menu me={accountId} theme={theme} setTheme={setTheme} onLogout={onLogout} />} footer={<AppFooter workspace={false} />}>
+        {route.page === "install" ? (
+          <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Your workspaces" />
+        ) : route.page === "profile" ? (
+          <ProfilePage workspaceName={null} onLogout={onLogout} />
+        ) : (
+          <>
+            {lostNotice && (
+              <div className="card" role="status">
+                <p className="empty">You no longer have access to that workspace.</p>
+              </div>
+            )}
+            <WorkspacePicker
+              onOpen={(w) => {
+                setLostNotice(false);
+                open(w);
+              }}
+            />
+          </>
         )}
-        <WorkspacePicker
-          onOpen={(w) => {
-            setLostNotice(false);
-            open(w);
-          }}
-        />
       </Shell>
     );
   }
@@ -601,7 +610,7 @@ function Menu({
                 <Icon name="key" /> Profile
               </a>
             )}
-            {me && (
+            {me && org && (
               <a className="menu-item home-link" href="#/people" onClick={() => setOpen(false)}>
                 <Icon name="users" /> People and invites
               </a>

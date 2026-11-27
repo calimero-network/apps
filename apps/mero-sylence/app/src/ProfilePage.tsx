@@ -22,8 +22,9 @@ export function ProfilePage({
   onSwitchWorkspace,
   onLogout,
 }: {
-  workspaceName: string;
-  onSwitchWorkspace: () => void;
+  /** `null` when no workspace is open. */
+  workspaceName: string | null;
+  onSwitchWorkspace?: () => void;
   onLogout: () => void;
 }) {
   const { accountId } = useSignedIn();
@@ -118,6 +119,7 @@ export function ProfilePage({
               </button>
             </dd>
           </div>
+          {workspaceName !== null && (
           <div>
             <dt>Workspace</dt>
             <dd>
@@ -125,11 +127,14 @@ export function ProfilePage({
               {members && <span className="role-badge">{roleName(members.roles.get(accountId))}</span>}
             </dd>
           </div>
+          )}
         </dl>
         <div className="row profile-actions">
-          <button type="button" className="btn" onClick={onSwitchWorkspace}>
-            Switch workspace
-          </button>
+          {onSwitchWorkspace && (
+            <button type="button" className="btn" onClick={onSwitchWorkspace}>
+              Switch workspace
+            </button>
+          )}
           <button type="button" className="btn danger-ghost" onClick={onLogout}>
             Log out
           </button>
