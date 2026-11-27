@@ -112,6 +112,27 @@ const FAQ: { q: string; a: ReactNode }[] = [
     ),
   },
   {
+    q: "Can I upload a recording instead?",
+    a: (
+      <p>
+        Yes. On the meetings page, choose Upload and pick an mp3, m4a, wav, ogg or mp4 file. Sylence transcribes it on
+        your laptop, tells the voices apart (Speaker 1, Speaker 2, and so on, which you can rename), and saves it as a
+        meeting with the audio attached. Play it back and the line being said is highlighted; click any line to jump
+        there. Recordings over about 50 MB are still transcribed, but saved without their audio.
+      </p>
+    ),
+  },
+  {
+    q: "What do the people insights show?",
+    a: (
+      <p>
+        For each person in a meeting: talk time and share, words, turns, longest stretch, pace and questions asked.
+        Choose Analyze for more: each person's tone, a short profile, their key points and their action items. The
+        models run on your laptop, and only their results are saved to the workspace.
+      </p>
+    ),
+  },
+  {
     q: "Do I need an account?",
     a: (
       <p>

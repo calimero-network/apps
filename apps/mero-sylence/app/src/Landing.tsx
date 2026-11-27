@@ -539,6 +539,126 @@ function TileExport() {
   );
 }
 
+// ── replay and people: an uploaded recording, played back ─────────────────
+
+/** An uploaded meeting: start and end (seconds) of each line, out of REPLAY_LEN. */
+const REPLAY_LEN = 760;
+const REPLAY: { p: Person; at: number; end: number; text: string }[] = [
+  { p: EVE, at: 0, end: 150, text: "Let's lock the Q4 roadmap today." },
+  {
+    p: JOHN,
+    at: 150,
+    end: 250,
+    text: "Pricing goes first, then the mobile app.",
+  },
+  {
+    p: EVE,
+    at: 250,
+    end: 420,
+    text: "Agreed. Sam, is the pricing page ready?",
+  },
+  { p: SAM, at: 420, end: 520, text: "Not yet, I'll update it tomorrow." },
+  { p: EVE, at: 520, end: 640, text: "Great, John takes the mobile spec." },
+  { p: JOHN, at: 640, end: 760, text: "On it. Draft by Friday." },
+];
+/** The people card under it: share of talk time, and how each came across. */
+const TALK: { p: Person; share: number; tone: string }[] = [
+  { p: EVE, share: 52, tone: "Enthusiastic" },
+  { p: JOHN, share: 29, tone: "Positive" },
+  { p: SAM, share: 19, tone: "Concerned" },
+];
+
+/**
+ * A meeting page after an upload, playing itself: the playhead runs along a
+ * timeline coloured by speaker, the line being said lights up, and talk time
+ * and tone per person sit under it. Fixed size, like the hero demo.
+ */
+function ReplayDemo() {
+  const reduced = prefersReducedMotion();
+  const [line, setLine] = useState(reduced ? 2 : 0);
+
+  useEffect(() => {
+    if (reduced) return;
+    const t = setTimeout(() => setLine((l) => (l + 1) % REPLAY.length), 1_800);
+    return () => clearTimeout(t);
+  }, [line, reduced]);
+
+  const now = REPLAY[line]!;
+  const pct = (s: number) => `${(s / REPLAY_LEN) * 100}%`;
+
+  return (
+    <div
+      className="replay"
+      role="img"
+      aria-label="An uploaded meeting playing back: the line being said is highlighted as the audio plays, a timeline shows who spoke when, and a people card shows Eve talked 52% of the time and came across enthusiastic, John 29% and positive, Sam 19% and concerned."
+    >
+      <div className="replay-head">
+        <img src="./favicon.svg" alt="" width={18} height={18} />
+        <strong>Q4 roadmap</strong>
+        <span className="replay-meta">Uploaded · 12:40 · 3 people</span>
+      </div>
+
+      <div className="replay-player">
+        <span className="replay-btn" aria-hidden="true">
+          <i />
+          <i />
+        </span>
+        <div className="replay-track">
+          <div className="replay-bar">
+            <i
+              className={line === 0 && !reduced ? "reset" : ""}
+              style={{ width: pct(now.at + (now.end - now.at) / 2) }}
+            />
+          </div>
+          <div className="replay-lanes">
+            {REPLAY.map((l, i) => (
+              <span
+                key={i}
+                style={{
+                  ...hue(l.p),
+                  left: pct(l.at),
+                  width: pct(l.end - l.at),
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <span className="replay-time">
+          {clock(Math.round((now.at + now.end) / 2))}
+        </span>
+        <span className="replay-speed">1.5×</span>
+      </div>
+
+      <ol className="replay-lines">
+        {REPLAY.map((l, i) => (
+          <li key={i} className={i === line ? "on" : ""}>
+            <time>{clock(l.at)}</time>
+            <Name p={l.p} />
+            <span>{l.text}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="replay-people">
+        <div className="replay-share">
+          {TALK.map((t) => (
+            <span key={t.p.name} style={{ ...hue(t.p), flexGrow: t.share }} />
+          ))}
+        </div>
+        <ul>
+          {TALK.map((t) => (
+            <li key={t.p.name}>
+              <Name p={t.p} />
+              <b>{t.share}%</b>
+              <em>{t.tone}</em>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // ── page ────────────────────────────────────────────────────────────────────
 
 function Available() {
@@ -581,6 +701,7 @@ const SECTIONS = [
   { id: "how", label: "How it works" },
   { id: "private", label: "Privacy" },
   { id: "features", label: "Features" },
+  { id: "replay", label: "Replay and people" },
   { id: "open", label: "Open source" },
   { id: "get", label: "Get Sylence" },
 ];
@@ -825,9 +946,9 @@ export function Landing({
           <div className="lp-hero-copy">
             <h1>Meeting notes that write themselves, privately.</h1>
             <p>
-              Record Meet, Zoom and Teams from your browser. Speech becomes text
-              on your laptop, and the recording is kept in a secure enclave only
-              your team can read.
+              Record Meet, Zoom and Teams from your browser, or upload a
+              recording. Speech becomes text on your laptop, and the recording
+              is kept in a secure enclave only your team can read.
             </p>
             <div className="lp-cta">
               {onInstall && (
@@ -991,6 +1112,31 @@ export function Landing({
               </p>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      <section id="replay" className="lp-sect lp-band">
+        <div className="lp-inner lp-split replay-split">
+          <Reveal>
+            <ReplayDemo />
+          </Reveal>
+          <Reveal delay={150}>
+            <span className="lp-eyebrow">Replay and people</span>
+            <h2 className="lp-h2">Play it back. See who drove it.</h2>
+            <p className="lp-p">
+              Upload a recording and {PRODUCT} tells the voices apart, writes
+              the transcript and keeps the audio with it. Play it back and the
+              line being said lights up; then see how each person talked and
+              what they took on.
+            </p>
+            <ul className="lp-ticks">
+              <li>Upload an mp3, m4a, wav or mp4 recording</li>
+              <li>Click any line or search hit to hear it</li>
+              <li>Talk time, turns and questions per person</li>
+              <li>Tone, key points and to-dos for each person</li>
+              <li>Rename &ldquo;Speaker 2&rdquo; to John for the whole team</li>
+            </ul>
+          </Reveal>
         </div>
       </section>
 
