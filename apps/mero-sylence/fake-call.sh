@@ -27,6 +27,8 @@ cd "$ROOT"
 started=""
 if ! curl -sf -o /dev/null http://127.0.0.1:2501/health && ! curl -s -o /dev/null http://127.0.0.1:2501/; then
   echo "• starting the local nodes and the Sylence page (pnpm dev:local mero-sylence)…"
+  # The log lives where dev:local keeps its state; on a fresh checkout that folder is not there yet.
+  mkdir -p "$ROOT/.merod-local"
   pnpm dev:local mero-sylence > "$ROOT/.merod-local/fake-call-dev.log" 2>&1 &
   started=$!
   trap '[ -n "$started" ] && kill "$started" 2>/dev/null || true' EXIT
