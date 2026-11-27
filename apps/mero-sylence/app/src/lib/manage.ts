@@ -20,8 +20,7 @@ function returnTo(): string {
 }
 
 async function roleOnConsentPage(client: CalimeroClient, org: string, account: string, role: ManagedRole): Promise<Outcome> {
-  // The node takes the organization kinds; mero-js's request type does not list this one yet.
-  const request = { kind: "setMemberRole", subject: { org, account, role }, returnTo: returnTo() } as unknown as ConsentRequest;
+  const request: ConsentRequest = { kind: "setMemberRole", subject: { org, account, role }, returnTo: returnTo() };
   await client.openConsentPage(request);
   return "consent";
 }

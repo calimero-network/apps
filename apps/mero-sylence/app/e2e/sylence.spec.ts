@@ -45,7 +45,7 @@ test("signs up with a passkey and makes a workspace", async () => {
   // Signed in with no workspace: the picker.
   await page.getByRole("button", { name: "Start a workspace" }).click();
   await page.getByPlaceholder("e.g. Product team").fill("Launch team");
-  await page.getByPlaceholder("e.g. Alice").fill("Eve");
+  await page.getByPlaceholder("e.g. Alex").fill("Eve");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByTestId("empty-meetings")).toBeVisible({ timeout: 60_000 });
@@ -150,12 +150,15 @@ test("a meeting: rename, summary, edit a line, action items, Markdown", async ()
 
   await second.hover();
   await second.getByRole("button", { name: "Make action item" }).click();
+  await page.getByRole("option", { name: /Add without assigning/ }).click();
   const item = page.getByRole("checkbox", { name: /The model picker goes in a sheet/ });
   await expect(item).toBeVisible();
   await expect(page.locator(".actions-card .card-head .pill")).toHaveText("1 open");
 
-  await page.getByLabel("New action item").fill("Draw the sheet");
-  await page.getByLabel("Assignee").fill("Cy");
+  await page.getByRole("textbox", { name: "New action item" }).fill("Draw the sheet");
+  await page.getByRole("button", { name: "Assign the new action item" }).click();
+  await page.getByLabel("Assignee name").fill("Cy");
+  await page.getByRole("option", { name: /Assign to “Cy”/ }).click();
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.locator(".actions-card .card-head .pill")).toHaveText("2 open");
   // The box follows the contract's answer, not the click.
@@ -197,7 +200,7 @@ test("deletes a meeting with its transcript and action items", async () => {
   await page.getByRole("searchbox", { name: "Search meetings" }).fill("");
 });
 
-test("dark theme, and selects drawn by the page", async () => {
+test("dark theme, and back to the picker and into the workspace", async () => {
   await page.getByRole("button", { name: "account menu" }).click();
   await page.getByRole("radio", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -206,18 +209,11 @@ test("dark theme, and selects drawn by the page", async () => {
   await page.getByRole("radio", { name: "Light" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
-  // The picker offers this workspace's organization in a select.
-  await page.getByRole("button", { name: "Switch workspace" }).click();
-  const select = page.getByRole("combobox", { name: "organization" });
-  await expect(select).toBeVisible();
-  const look = await select.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return { appearance: s.appearance, image: s.backgroundImage, radius: s.borderRadius };
-  });
-  expect(look.appearance).toBe("none");
-  expect(look.image).toContain("data:image/svg+xml");
-  expect(look.radius).toBe("8px");
-  await page.getByRole("button", { name: /Launch team/ }).click();
+  // Back to the picker from the workspace bar, and into the workspace again.
+  await page.keyboard.press("Escape");
+  await page.getByTestId("workspace-bar").getByRole("button", { name: "Switch workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  await page.getByRole("button", { name: /^Launch team/ }).click();
   await expect(page.getByTestId("meeting-row")).toHaveCount(2);
 });
 
@@ -228,7 +224,7 @@ async function nativeRequest(): Promise<{ state: string; key: string }> {
   return { state: Buffer.from(webcrypto.getRandomValues(new Uint8Array(32))).toString("base64url"), key: raw.toString("base64url") };
 }
 
-test("the extension's window: asked to create, it shows only the start form; then hands the session over", async () => {
+test("the extension's window: asked to create, it signs in at once and shows only the start form; then hands the session over", async () => {
   const req = await nativeRequest();
   let answer: string | null = null;
   await context.route(`${CALLBACK}**`, (route) => {
@@ -238,11 +234,9 @@ test("the extension's window: asked to create, it shows only the start form; the
 
   await page.goto("about:blank");
   await page.goto(`/#native-sign-in&state=${req.state}&key=${req.key}&intent=create`);
-  // The page keeps no session for the extension: a passkey sign-in, said to be for it.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in to the Sylence extension");
-  await page.getByRole("button", { name: /Sign in with passkey/ }).click();
+  // The page keeps no session for the extension: it asks for the passkey at once.
   await expect(page.getByRole("heading", { level: 1, name: "Create a workspace" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Start a workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a new workspace" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Your workspaces" })).toHaveCount(0);
 
   // Cancel: the session goes to the extension's fixed callback, sealed to its key.
@@ -267,7 +261,6 @@ test("the extension's window: an account with workspaces is handed over at once"
   });
   await page.goto("about:blank");
   await page.goto(`/#native-sign-in&state=${req.state}&key=${req.key}`);
-  await page.getByRole("button", { name: /Sign in with passkey/ }).click();
   await page.waitForURL(`${CALLBACK}**`, { timeout: 30_000 });
   expect(answer).not.toBeNull();
   const params = new URLSearchParams(new URL(page.url()).hash.slice(1));

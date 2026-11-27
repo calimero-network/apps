@@ -401,9 +401,10 @@ describe("a sign-up in the control", () => {
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
     fireEvent.click(await screen.findByTestId("signup-create"));
-    fireEvent.click(await screen.findByTestId("signup-cancel"));
+    await screen.findByTestId("signup-approve");
+    fireEvent.click(screen.getByTestId("signup-cancel"));
     await waitFor(() => expect(screen.queryByTestId("signup-approve")).toBeNull());
-    expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
+    expect((await screen.findByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId("signin-error")).toBeNull();
     expect(pk.get).toHaveBeenCalledTimes(1);
   });

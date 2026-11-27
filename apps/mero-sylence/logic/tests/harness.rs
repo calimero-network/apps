@@ -922,10 +922,21 @@ fn recordings_keep_audio_of_the_type_they_were_uploaded_as() {
     // A call recorded by the extension keeps its audio, as an upload does.
     let call_id = start(&mut t, "bob", "Call");
     let call_blob = t.upload_blob(&[6_u8; 256], "audio/mpeg");
-    let m = attach(&mut t, "bob", &call_id, &call_blob, "audio/mpeg", 1_000).expect("a call keeps its audio");
+    let m = attach(&mut t, "bob", &call_id, &call_blob, "audio/mpeg", 1_000)
+        .expect("a call keeps its audio");
     assert_eq!(m["audio"]["mime"], "audio/mpeg");
     // Only its recorder.
-    assert_eq!(code(attach(&mut t, "cy", &call_id, &call_blob, "audio/mpeg", 1_000)), "Forbidden");
+    assert_eq!(
+        code(attach(
+            &mut t,
+            "cy",
+            &call_id,
+            &call_blob,
+            "audio/mpeg",
+            1_000
+        )),
+        "Forbidden"
+    );
     let blob = t.upload_blob(&[5_u8; 256], "audio/mpeg");
 
     let id = upload_meeting(&mut t, "bob");
@@ -1192,7 +1203,12 @@ fn a_meeting_lists_who_spoke_in_the_order_they_first_did() {
         ])
     );
     // A batch resent, and a speaker heard again, add no one.
-    append(&mut t, "bob", &id, vec![named(4, "others", "Speaker 2", "Yes")]);
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![named(4, "others", "Speaker 2", "Yes")],
+    );
     let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
     assert_eq!(m["speakers"].as_array().map(Vec::len), Some(3));
     // The list comes with the meetings, for the open action items page.
@@ -1204,10 +1220,17 @@ fn a_meeting_lists_who_spoke_in_the_order_they_first_did() {
 fn voices_told_apart_name_the_lines_and_join_who_spoke() {
     let mut t = app();
     let id = start(&mut t, "bob", "Call");
-    let others = |seq: u32, text: &str| {
-        json!({ "seq": seq, "startMs": seq * 3_000, "endMs": seq * 3_000 + 2_500, "speaker": "others", "name": "", "text": text })
-    };
-    append(&mut t, "bob", &id, vec![others(0, "Morning"), others(1, "Hi"), others(2, "Deck by Friday")]);
+    let others = |seq: u32, text: &str| json!({ "seq": seq, "startMs": seq * 3_000, "endMs": seq * 3_000 + 2_500, "speaker": "others", "name": "", "text": text });
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            others(0, "Morning"),
+            others(1, "Hi"),
+            others(2, "Deck by Friday"),
+        ],
+    );
     let n = call(
         &mut t,
         "bob",
@@ -1219,8 +1242,18 @@ fn voices_told_apart_name_the_lines_and_join_who_spoke() {
     );
     // Line 9 is not there: skipped.
     assert_eq!(n, 3);
-    let page = view(&mut t, "cy", "transcript", json!({ "meetingId": id, "fromSeq": 0, "limit": 10 }));
-    let names: Vec<&str> = page["segments"].as_array().unwrap().iter().map(|s| s["name"].as_str().unwrap()).collect();
+    let page = view(
+        &mut t,
+        "cy",
+        "transcript",
+        json!({ "meetingId": id, "fromSeq": 0, "limit": 10 }),
+    );
+    let names: Vec<&str> = page["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["Voice 1", "Voice 2", "Voice 1"]);
     let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
     assert_eq!(
@@ -1232,7 +1265,12 @@ fn voices_told_apart_name_the_lines_and_join_who_spoke() {
         ])
     );
     // Naming a line what it already is changes nothing.
-    let again = call(&mut t, "bob", "nameSegments", json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Voice 1" }] }));
+    let again = call(
+        &mut t,
+        "bob",
+        "nameSegments",
+        json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Voice 1" }] }),
+    );
     assert_eq!(again, 0);
 }
 
@@ -1241,9 +1279,14 @@ fn only_the_recorder_or_the_owner_names_lines_and_at_most_500_a_call() {
     let mut t = app();
     let id = start(&mut t, "bob", "Call");
     append(&mut t, "bob", &id, vec![seg(0, "others", "Morning")]);
-    let other = t.as_("cy").call("nameSegments", json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Eve" }] }));
+    let other = t.as_("cy").call(
+        "nameSegments",
+        json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Eve" }] }),
+    );
     assert_eq!(code(other), "Forbidden");
     let many: Vec<Value> = (0..501).map(|i| json!({ "seq": i, "name": "V" })).collect();
-    let over = t.as_("bob").call("nameSegments", json!({ "meetingId": id, "names": many }));
+    let over = t
+        .as_("bob")
+        .call("nameSegments", json!({ "meetingId": id, "names": many }));
     assert_eq!(code(over), "Invalid");
 }
