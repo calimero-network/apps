@@ -24,19 +24,39 @@ if [ -d "$HOME/Desktop/calimero/bin-rc38/bin" ]; then
 fi
 
 cd "$ROOT"
+# A checkout last installed before a dependency bump runs stale packages (e.g. an older
+# mero-js without an export dev:local imports): match the lockfile first. Quick when it does.
+echo "• installing dependencies (pnpm install)…"
+pnpm install --frozen-lockfile --prefer-offline > /dev/null
+
 started=""
 if ! curl -sf -o /dev/null http://127.0.0.1:2501/health && ! curl -s -o /dev/null http://127.0.0.1:2501/; then
   echo "• starting the local nodes and the Sylence page (pnpm dev:local mero-sylence)…"
+  # The log lives where dev:local keeps its state; on a fresh checkout that folder is not there yet.
+  mkdir -p "$ROOT/.merod-local"
   pnpm dev:local mero-sylence > "$ROOT/.merod-local/fake-call-dev.log" 2>&1 &
   started=$!
   trap '[ -n "$started" ] && kill "$started" 2>/dev/null || true' EXIT
   for _ in $(seq 1 150); do
     curl -s -o /dev/null http://localhost:5173/ && break
+    # dev:local stopped: say why now instead of waiting out the five minutes.
+    if ! kill -0 "$started" 2>/dev/null; then
+      echo "pnpm dev:local mero-sylence stopped. The end of .merod-local/fake-call-dev.log:" >&2
+      tail -20 "$ROOT/.merod-local/fake-call-dev.log" >&2
+      exit 1
+    fi
     sleep 2
   done
-  curl -s -o /dev/null http://localhost:5173/ || { echo "the local page did not come up; see .merod-local/fake-call-dev.log" >&2; exit 1; }
+  curl -s -o /dev/null http://localhost:5173/ || {
+    echo "the local page did not come up in 5 minutes. The end of .merod-local/fake-call-dev.log:" >&2
+    tail -20 "$ROOT/.merod-local/fake-call-dev.log" >&2
+    exit 1
+  }
 fi
 
+echo "• the page is up: http://localhost:5173/"
+echo "• building the extension, then playing the call on: $PLATFORM"
+echo "  (browser windows open and the voices talk; each platform takes a few minutes, and the test prints when one ends)"
 if [ "$PLATFORM" = "all" ]; then
   pnpm -F mero-sylence-extension e2e:call
 else
