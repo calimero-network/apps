@@ -20,36 +20,51 @@ const HEARTBEAT_MS = 10_000;
 export function start(href: string = location.href): { stop: () => void } {
   const platform = detectPlatform(href);
   const state = newReaderState();
-  const observer = new MutationObserver((records) => {
-    const now = Date.now();
-    for (const r of records) state.activity.record(r.target, now);
-  });
-  if (platform === "meet") {
-    observer.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class", "style"] });
-  }
 
   let last = "";
   let lastSent = 0;
+  let lastRead = 0;
   const send = (s: SpeakerSample, now: number) =>
     chrome.runtime
-      .sendMessage({ source: "speakers", type: "speakers", at: now, platform, ...s })
+      .sendMessage({ source: "speakers", type: "speakers", at: now, platform, hidden: document.hidden, ...s })
       .catch(() => stop());
 
-  const timer = window.setInterval(() => {
+  const tick = () => {
     const now = Date.now();
+    lastRead = now;
     let sample: SpeakerSample;
     try {
       sample = readSpeakers(document, platform, state, now);
     } catch {
       return;
     }
-    const key = JSON.stringify([sample.speaking, sample.participants, sample.self]);
+    const key = JSON.stringify([sample.speaking, sample.participants, sample.self, document.hidden]);
     if (key !== last || now - lastSent >= HEARTBEAT_MS) {
       last = key;
       lastSent = now;
       void send(sample, now);
     }
-  }, SAMPLE_MS);
+  };
+
+  // Chrome slows a background tab's timers to once a second or less, and the
+  // Meet tab is in the background whenever the person presents another tab or
+  // window. The page still changes as people talk, so its changes read it too.
+  const observer = new MutationObserver((records) => {
+    const now = Date.now();
+    if (platform === "meet") for (const r of records) state.activity.record(r.target, now);
+    if (now - lastRead >= SAMPLE_MS) tick();
+  });
+  observer.observe(document.documentElement, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "aria-label", "data-is-speaking"],
+    childList: true,
+    characterData: true,
+  });
+
+  const timer = window.setInterval(tick, SAMPLE_MS);
+  const onVisibility = () => tick();
+  document.addEventListener("visibilitychange", onVisibility);
 
   const onMessage = (m: unknown) => {
     if ((m as { target?: string; type?: string })?.target === "speakers" && (m as { type?: string }).type === "stop") stop();
@@ -59,6 +74,7 @@ export function start(href: string = location.href): { stop: () => void } {
   function stop() {
     window.clearInterval(timer);
     observer.disconnect();
+    document.removeEventListener("visibilitychange", onVisibility);
     try {
       chrome.runtime.onMessage.removeListener(onMessage);
     } catch {

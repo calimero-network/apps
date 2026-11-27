@@ -7,7 +7,8 @@
  */
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
 import { callAudioBytes, takeCallAudio, unkeptCallAudio } from "../lib/callAudio";
-import { PACKAGE, meetingLink, servedPage, isLocalPage } from "../lib/appHost";
+import { APPS_DOMAIN, PACKAGE, meetingLink, servedPage, isLocalPage, workspaceLink } from "../lib/appHost";
+import { callNoticeText, postCallNotice, type NoticeResult } from "../lib/callNotice";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
 import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
 import { openAuthWindow, focusAuthWindow } from "../lib/authWindow";
@@ -27,7 +28,7 @@ import {
   type SpeakersEvent,
   type Workspace,
 } from "../lib/messages";
-import { detectPlatform, meetingTitle, meetingUrl } from "../lib/platform";
+import { detectPlatform, meetingTitle, meetingUrl, type Platform } from "../lib/platform";
 import { UploadQueue, type QueueState, type QueueStore, type QueuedSegment } from "../lib/queue";
 import { describe, isSignedOut, withClient } from "../lib/session";
 import { read, write } from "../lib/storage";
@@ -142,6 +143,15 @@ interface SpeakerState {
   self: string | null;
   /** The recorder's name in the workspace's organization: names their lines when the call page doesn't say who they are. */
   me?: string | null;
+  /** The last reading of each frame of the call tab that has shown the call (by frame id). */
+  frames?: Record<string, FrameReading>;
+  /** The call tab was in the background at the last reading. */
+  hidden?: boolean;
+}
+interface FrameReading {
+  speaking: string[];
+  participants: string[];
+  self: string | null;
 }
 const NO_SPEAKERS: SpeakerState = { tab: null, timeline: [], participants: [], self: null, me: null };
 /** Changes kept: lines are named within minutes of being spoken, even when transcription lags. */
@@ -192,6 +202,34 @@ async function startSpeakerReader(tabId: number, me: string | null): Promise<voi
   }
 }
 
+/**
+ * Posts the recording notice in the call's own chat, so everyone in the call
+ * knows. Never holds up the recording: a page whose chat can't be found is
+ * logged and left alone.
+ */
+async function announceRecording(
+  tabId: number,
+  platform: Platform,
+  page: { origin: string; version: string | null } | undefined,
+  meeting: { appId: string; meetingId: string },
+): Promise<void> {
+  // Only the public page goes in the chat, never a development address.
+  const link = page && new URL(page.origin).hostname.endsWith(`.${APPS_DOMAIN}`) ? workspaceLink(page) : null;
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: postCallNotice,
+      args: [platform, callNoticeText(link)],
+    });
+    const outcome = (result?.result as NoticeResult | undefined) ?? "no answer";
+    await log(`notice: ${outcome}`);
+    // The meeting says so on the page, for everyone in the workspace.
+    if (outcome === "posted") await onNode((_c, app) => app.markNotified({ meetingId: meeting.meetingId }), meeting.appId);
+  } catch (e) {
+    await log(`notice: not posted: ${describe(e)}`);
+  }
+}
+
 async function stopSpeakerReader(): Promise<void> {
   const st = await speakers();
   if (st.tab === null) return;
@@ -202,15 +240,27 @@ async function stopSpeakerReader(): Promise<void> {
   }
 }
 
-async function onSpeakers(e: SpeakersEvent, tabId: number | undefined): Promise<void> {
+async function onSpeakers(e: SpeakersEvent, tabId: number | undefined, frameId = 0): Promise<void> {
   const st = await speakers();
   if (st.tab === null || tabId !== st.tab) return;
-  const names = [...e.speaking].sort();
-  const self = e.self ?? st.self;
-  const participants = e.participants.length ? e.participants : st.participants;
+  // The reader runs in every frame of the call tab. A frame that has never
+  // shown a participant (Meet's helper frames, a shared screen's preview) has
+  // nothing to say: its empty readings must not cut off who is talking.
+  const key = String(frameId);
+  const known = st.frames?.[key];
+  if (!known && !e.participants.length && !e.speaking.length && !e.self) return;
+  const frames = { ...st.frames, [key]: { speaking: e.speaking, participants: e.participants, self: e.self } };
+  const readings = Object.values(frames);
+  const names = [...new Set(readings.flatMap((f) => f.speaking))].sort();
+  const seen = [...new Set(readings.flatMap((f) => f.participants))];
+  const self = readings.find((f) => f.self)?.self ?? st.self;
+  const participants = seen.length ? seen : st.participants;
+  const hidden = !!e.hidden;
   const timeline = pushChange(st.timeline, { at: e.at, names }, TIMELINE_LIMIT);
-  if (timeline === st.timeline && self === st.self && participants.join("|") === st.participants.join("|")) return;
-  await saveSpeakers({ ...st, timeline, self, participants });
+  if (hidden !== !!st.hidden) {
+    await log(hidden ? "speakers: the call tab went to the background (presenting?)" : "speakers: the call tab is shown again");
+  }
+  await saveSpeakers({ ...st, timeline, self, participants, frames, hidden });
   const via = e.via;
   await setStatus((s) =>
     s.phase === "recording" || s.phase === "loading-model"
@@ -447,6 +497,7 @@ async function start(tabId: number): Promise<void> {
     const me = s.speakerNames ? await recorderName(workspace) : null;
     if (s.speakerNames && platform !== "other") await startSpeakerReader(tabId, me);
     else await saveSpeakers({ ...NO_SPEAKERS, me });
+    if (s.announceRecording && platform !== "other") void announceRecording(tabId, platform, a.page, { appId: workspace.appId, meetingId: id });
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
     // No audio can come: drop the empty meeting rather than leave it behind.
@@ -926,7 +977,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   if (m.target === "offscreen" || (m.target as string | undefined) === "speakers") return false;
   if ((m.source as string | undefined) === "speakers") {
     const e = message as SpeakersEvent;
-    offscreenEvents = offscreenEvents.then(() => onSpeakers(e, sender.tab?.id)).catch((err: unknown) => log(`speakers failed: ${describe(err)}`));
+    offscreenEvents = offscreenEvents.then(() => onSpeakers(e, sender.tab?.id, sender.frameId ?? 0)).catch((err: unknown) => log(`speakers failed: ${describe(err)}`));
     return false;
   }
   if (m.source === "offscreen") {

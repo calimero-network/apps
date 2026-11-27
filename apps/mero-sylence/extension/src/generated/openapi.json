@@ -1532,6 +1532,62 @@
         ],
         "type": "object"
       },
+      "MarkNotifiedArgs": {
+        "description": "The arguments of `markNotified`, by name.",
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId"
+        ],
+        "type": "object"
+      },
+      "MarkNotifiedRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/MarkNotifiedArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "MarkNotifiedResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/MeetingView"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "MeetingChangedEvent": {
         "properties": {
           "id": {
@@ -1584,6 +1640,9 @@
             "minimum": 0,
             "type": "integer",
             "x-calimero-type": "u32"
+          },
+          "notified": {
+            "type": "boolean"
           },
           "openActions": {
             "maximum": 4294967295,
@@ -1660,7 +1719,8 @@
           "openActions",
           "audio",
           "speakerNames",
-          "speakers"
+          "speakers",
+          "notified"
         ],
         "type": "object",
         "x-calimero-abi-type": "MeetingView"
@@ -3801,6 +3861,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "Every meeting, newest first."
+      }
+    },
+    "/apps/{app}/methods/markNotified": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"markNotified\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "markNotified",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotifiedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkNotifiedResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `markNotified`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Notes that everyone in the call was told it is recorded: the extension\nposted the notice in the call's chat. The recorder only."
       }
     },
     "/apps/{app}/methods/myAccount": {

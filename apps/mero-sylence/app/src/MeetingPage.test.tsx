@@ -36,13 +36,14 @@ function setup({
   live = false,
   pages = [[seg(0, "Morning all", "you"), seg(1, "Cy will send the deck")]],
   focusSeq,
-}: { me?: string; isOwner?: boolean; live?: boolean; pages?: SegmentView[][]; focusSeq?: number } = {}) {
+  notified = false,
+}: { me?: string; isOwner?: boolean; live?: boolean; pages?: SegmentView[][]; focusSeq?: number; notified?: boolean } = {}) {
   let actions: ActionView[] = [action()];
   let page = 0;
   const transcriptLines = new Map<number, SegmentView>();
   for (const p of pages) for (const s of p) transcriptLines.set(s.seq, s);
   const fake = fakeWorkspace({
-    getMeeting: () => meeting({ live }),
+    getMeeting: () => meeting({ live, notified }),
     listActions: () => actions,
     transcript: (args) => {
       const from = args.fromSeq as number;
@@ -80,6 +81,17 @@ function setup({
 
 
 describe("MeetingPage", () => {
+  it("says when the call was told it is recorded", async () => {
+    setup({ notified: true });
+    expect((await screen.findByTestId("call-notified")).textContent).toContain("Call told it's recorded");
+  });
+
+  it("says nothing about telling the call when the extension posted no note", async () => {
+    setup();
+    await screen.findByText("Morning all");
+    expect(screen.queryByTestId("call-notified")).toBeNull();
+  });
+
   it("shows the transcript with speakers and timestamps", async () => {
     setup({ me: "cy" });
     const lines = await screen.findAllByTestId("segment");

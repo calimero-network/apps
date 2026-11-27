@@ -177,6 +177,7 @@ fn only_the_recorder_writes_the_transcript() {
             json!({ "meetingId": id, "title": "Mine now" }),
         ),
         ("setSummary", json!({ "meetingId": id, "summary": "Nope" })),
+        ("markNotified", json!({ "meetingId": id })),
     ] {
         assert_eq!(
             code(t.as_("cy").call(method, args)),
@@ -464,6 +465,26 @@ fn rename_and_summary() {
         json!({ "meetingId": id, "summary": "We agreed on Q1 scope." }),
     );
     assert_eq!(m["summary"], "We agreed on Q1 scope.");
+}
+
+#[test]
+fn the_call_was_told_it_is_recorded() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Weekly sync");
+    let m = view(&mut t, "bob", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["notified"], false);
+    let m = call(&mut t, "bob", "markNotified", json!({ "meetingId": id }));
+    assert_eq!(m["notified"], true);
+    // Once is enough: a second call changes nothing.
+    let m = call(&mut t, "bob", "markNotified", json!({ "meetingId": id }));
+    assert_eq!(m["notified"], true);
+    assert_eq!(
+        code(
+            t.as_("bob")
+                .call("markNotified", json!({ "meetingId": "nope" }))
+        ),
+        "NotFound"
+    );
 }
 
 #[test]

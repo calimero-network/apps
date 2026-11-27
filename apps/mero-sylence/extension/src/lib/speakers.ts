@@ -37,6 +37,9 @@ export interface SpeakerChange {
 const NOT_A_NAME =
   /^(you|me|pin|unpin|more|more options|more_vert|mic|mic_off|videocam|videocam_off|keep|keep_off|present_to_all|presentation|presenting|host|co-host|guest|external|muted|unmuted|speaking|raise hand|frame_person|visual_effects|close|\(you\)|\(host\)|\(guest\))$/i;
 
+/** Text Meet, Zoom and Teams put on a shared screen's tile. */
+const PRESENTING = /\bpresent(ing|ation)\b|\bscreen ?shar(e|ing)\b|\bsharing (your|their|the) screen\b/i;
+
 /** A display name, tidied: "Eve Parker (Guest)" → "Eve Parker"; null when it is not one. */
 export function cleanName(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -47,6 +50,8 @@ export function cleanName(raw: string | null | undefined): string | null {
   n = n.replace(/^(presentation|screen) (from|by)\s+/i, "").replace(/\s+is presenting$/i, "").trim();
   if (n.length < 1 || n.length > 60) return null;
   if (NOT_A_NAME.test(n)) return null;
+  // The screen being shared, not a person: "You are presenting", "Fran (Presentation)", "Stop presenting".
+  if (PRESENTING.test(n)) return null;
   // Icon ligatures and ids: lowercase_with_underscores, or no letters at all.
   if (/^[a-z0-9_]+$/.test(n) && n.includes("_")) return null;
   if (!/\p{L}/u.test(n)) return null;
@@ -151,18 +156,83 @@ export function teamsCaptions(doc: Document): CaptionBlock[] {
 
 // ── tiles ────────────────────────────────────────────────────────────────────
 
+const MEET_TILE = "[data-participant-id]";
+
+/** The tile `el` belongs to: the innermost participant tile around it. */
+function tileOf(el: Element): Element | null {
+  return el.closest(MEET_TILE);
+}
+
+/** Elements under `tile` matching `selector` that belong to it, not to a tile nested inside it. */
+function ownAll(tile: Element, selector: string): Element[] {
+  return Array.from(tile.querySelectorAll(selector)).filter((el) => tileOf(el) === tile);
+}
+
+/** The text `tile` shows itself, without the tiles nested in it. */
+function tileText(tile: Element): string {
+  let t = "";
+  const walker = tile.ownerDocument.createTreeWalker(tile, 4 /* SHOW_TEXT */);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.parentElement && tileOf(n.parentElement) === tile) t += ` ${n.textContent ?? ""}`;
+  }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A shared screen's tile. While someone presents, Meet adds a tile for the
+ * screen (its own participant id, or the presenter's) and moves everyone else
+ * into a strip beside it, sometimes inside that tile. The screen's tile
+ * flickers constantly as the picture changes, so it must neither be a speaker
+ * nor hide the people around it.
+ */
+function isPresentation(tile: Element): boolean {
+  const id = tile.getAttribute("data-participant-id") ?? "";
+  if (/present|screen/i.test(id)) return true;
+  if (PRESENTING.test(tile.getAttribute("aria-label") ?? "")) return true;
+  if (ownAll(tile, "button, [role=button]").some((b) => /stop presenting|stop sharing/i.test(`${b.getAttribute("aria-label") ?? ""} ${b.textContent ?? ""}`))) return true;
+  const label = ownAll(tile, ".zWGUib, .XEazBc")[0]?.textContent ?? "";
+  return PRESENTING.test(label) || /^(you are|you're) presenting/i.test(tileText(tile));
+}
+
+/** The first name-like text in `tile` that is its own (not a nested tile's). */
+function tileName(tile: Element): string | null {
+  for (const el of ownAll(tile, ".zWGUib, .XEazBc, [data-self-name]")) {
+    const name = cleanName(el.textContent);
+    if (name) return name;
+  }
+  const walker = tile.ownerDocument.createTreeWalker(tile, 1 /* SHOW_ELEMENT */);
+  for (let el = walker.currentNode as Element | null; el; el = walker.nextNode() as Element | null) {
+    if (tileOf(el) !== tile) continue;
+    if (el.closest("button, [role=button], [aria-hidden=true], i, svg, style, script")) continue;
+    const name = cleanName(ownText(el));
+    if (name) return name;
+  }
+  return null;
+}
+
 /** Meet: participant tiles, and the recorder's own. */
 export function meetTiles(doc: Document): { name: string; tile: Element; self: boolean }[] {
   const out: { name: string; tile: Element; self: boolean }[] = [];
-  for (const tile of Array.from(doc.querySelectorAll("[data-participant-id]"))) {
-    // Nested tiles (a tile inside a tile) are the same person.
-    if (tile.parentElement?.closest("[data-participant-id]")) continue;
-    const selfAttr = tile.querySelector("[data-self-name]")?.getAttribute("data-self-name");
-    const name = cleanName(tile.querySelector(".zWGUib, .XEazBc, [data-self-name]")?.textContent) ?? nameIn(tile);
+  for (const tile of Array.from(doc.querySelectorAll(MEET_TILE))) {
+    // A tile inside a tile with the same id is the same person (Meet nests them).
+    const outer = tile.parentElement ? tileOf(tile.parentElement) : null;
+    if (outer && outer.getAttribute("data-participant-id") === tile.getAttribute("data-participant-id")) continue;
+    if (isPresentation(tile)) continue;
+    const name = tileName(tile);
     if (!name) continue;
-    out.push({ name, tile, self: !!selfAttr || /\(you\)/i.test(tile.textContent ?? "") });
+    const self = ownAll(tile, "[data-self-name]").length > 0 || /\(you\)/i.test(tileText(tile));
+    out.push({ name, tile, self });
   }
   return out;
+}
+
+/** The named tile a busy element belongs to: itself, else the innermost named tile around it. */
+function namedTile<T extends { tile: Element }>(tiles: T[], busy: Element): T | undefined {
+  const exact = tiles.find((t) => t.tile === busy);
+  if (exact) return exact;
+  let best: T | undefined;
+  for (const t of tiles) if (t.tile.contains(busy) && (!best || best.tile.contains(t.tile))) best = t;
+  return best;
 }
 
 /** Zoom web client: the active speaker's name. */
@@ -266,7 +336,7 @@ export function readSpeakers(doc: Document, platform: Platform, state: ReaderSta
     const fromCaptions = state.captions.update(meetCaptions(doc), now);
     if (fromCaptions.length) return { speaking: fromCaptions, participants, self, via: "meet-captions" };
     const busy = state.activity.busiest(now);
-    const speaking = unique(busy.map((b) => tiles.find((t) => t.tile === b || t.tile.contains(b) || b.contains(t.tile))?.name)).slice(0, 2);
+    const speaking = unique(busy.map((b) => namedTile(tiles, b)?.name)).slice(0, 2);
     return { speaking, participants, self, via: speaking.length ? "meet-tiles" : null };
   }
   if (platform === "teams") {

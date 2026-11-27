@@ -88,6 +88,7 @@ export interface MeetingView {
   audio: Audio | null;
   speakerNames: SpeakerName[];
   speakers: Speaker[];
+  notified: boolean;
 }
 
 /** The app type `PersonInsight`. */
@@ -229,6 +230,11 @@ export interface InsightsArgs {
 
 /** The arguments of `listActions`. */
 export interface ListActionsArgs {
+  meetingId: string;
+}
+
+/** The arguments of `markNotified`. */
+export interface MarkNotifiedArgs {
   meetingId: string;
 }
 
@@ -449,6 +455,8 @@ export interface MeroSylenceApi {
   listActions(args: ListActionsArgs, options?: ViewOptions): Promise<ActionView[]>;
   /** view `listMeetings`. */
   listMeetings(options?: ViewOptions): Promise<MeetingView[]>;
+  /** call `markNotified`. */
+  markNotified(args: MarkNotifiedArgs, options?: CallOptions): Promise<MeetingView>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<string>;
   /** call `nameSegments`. */
@@ -510,6 +518,8 @@ export interface MeroSylenceRawApi {
   listActions(args: ListActionsArgs, options?: ViewOptions): Promise<ViewAnswer<ActionView[]>>;
   /** view `listMeetings`. */
   listMeetings(options?: ViewOptions): Promise<ViewAnswer<MeetingView[]>>;
+  /** call `markNotified`. */
+  markNotified(args: MarkNotifiedArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<ViewAnswer<string>>;
   /** call `nameSegments`. */
@@ -571,6 +581,7 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
       insights: (args, options = {}) => this.#view<Insights | null>('insights', args, options),
       listActions: (args, options = {}) => this.#view<ActionView[]>('listActions', args, options),
       listMeetings: (options = {}) => this.#view<MeetingView[]>('listMeetings', {}, options),
+      markNotified: (args, options = {}) => this.#call<MeetingView>('markNotified', args, options),
       myAccount: (options = {}) => this.#view<string>('myAccount', {}, options),
       nameSegments: (args, options = {}) => this.#call<number>('nameSegments', args, options),
       openActions: (options = {}) => this.#view<ActionView[]>('openActions', {}, options),
@@ -674,6 +685,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
   /** view `listMeetings`. */
   async listMeetings(options: ViewOptions = {}): Promise<MeetingView[]> {
     return (await this.#view<MeetingView[]>('listMeetings', {}, options)).result;
+  }
+
+  /** call `markNotified`. */
+  async markNotified(args: MarkNotifiedArgs, options: CallOptions = {}): Promise<MeetingView> {
+    return (await this.#call<MeetingView>('markNotified', args, options)).result;
   }
 
   /** view `myAccount`. */

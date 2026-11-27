@@ -141,6 +141,10 @@ pub struct MeetingRow {
     /// from this meeting can be given to. Rows written before it have none.
     #[serde(default)]
     pub speakers: Vec<Speaker>,
+    /// Everyone in the call was told it is recorded (the extension posted the
+    /// notice in the call's chat). Rows written before it say no.
+    #[serde(default)]
+    pub notified: bool,
 }
 
 /// One line's speaker name, as `nameSegments` sets it.
@@ -305,6 +309,8 @@ pub struct MeetingView {
     pub speaker_names: Vec<SpeakerName>,
     /// Everyone who spoke, in the order they first did.
     pub speakers: Vec<Speaker>,
+    /// The call was told it is recorded, in its own chat.
+    pub notified: bool,
 }
 
 #[derive(Clone, Debug, Serialize, AbiType)]
@@ -597,6 +603,7 @@ impl Sylence {
             audio: None,
             aliases: Vec::new(),
             speakers: Vec::new(),
+            notified: false,
         };
         let _ = self.meetings.insert(&id, &row)?;
         let _ = self.by_time.insert(&(now, id.clone()))?;
@@ -796,6 +803,23 @@ impl Sylence {
         if row.ended_at == 0 {
             row.ended_at = env::time_now();
             row.duration_ms = row.duration_ms.max(duration_ms);
+            let _ = self.meetings.insert(&meeting_id, &row)?;
+            env::emit(
+                Event::MeetingChanged {
+                    id: meeting_id.clone(),
+                },
+                Audience::All,
+            )?;
+        }
+        self.view_of(meeting_id, row)
+    }
+
+    /// Notes that everyone in the call was told it is recorded: the extension
+    /// posted the notice in the call's chat. The recorder only.
+    pub fn mark_notified(&mut self, meeting_id: String) -> app::Result<MeetingView> {
+        let mut row = self.recorders(&meeting_id)?;
+        if !row.notified {
+            row.notified = true;
             let _ = self.meetings.insert(&meeting_id, &row)?;
             env::emit(
                 Event::MeetingChanged {
@@ -1556,6 +1580,7 @@ impl Sylence {
             audio: row.audio,
             speaker_names: row.aliases,
             speakers: row.speakers,
+            notified: row.notified,
         })
     }
 }
