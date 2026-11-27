@@ -179,6 +179,10 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const signedIn = useMaybeSignedIn();
   const [signingIn, setSigningIn] = useState(false);
   const [route, go] = useRoute();
+  // Signed in, the sign-in popup is done with: logging out later must not reopen it.
+  useEffect(() => {
+    if (signedIn) setSigningIn(false);
+  }, [signedIn]);
   // Signed in, `#/home` is the landing page with the way back to the dashboard.
   if (route.page === "home" && signedIn) {
     return <Landing onDashboard={() => go({ page: "meetings" })} />;
