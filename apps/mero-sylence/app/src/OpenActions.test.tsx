@@ -34,8 +34,22 @@ describe("OpenActionsList", () => {
     expect(screen.getAllByTestId("open-action")).toHaveLength(3);
     fireEvent.click(screen.getByRole("checkbox", { name: "Done: Book the room" }));
     expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Roadmap" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Roadmap" }));
     expect(onOpen).toHaveBeenCalledWith("m2");
+  });
+
+  it("folds each call, and opens or folds them all", () => {
+    const actions = ["m1", "m2", "m3", "m4"].map((m, i) => a(String(i), m, `Item ${i}`));
+    const meetings = ["m1", "m2", "m3", "m4"].map((id) => meeting({ id, title: `Call ${id}` }));
+    render(<OpenActionsList actions={actions} meetings={meetings} onToggle={() => {}} onOpen={() => {}} />);
+    const groups = screen.getAllByTestId("open-action-group") as HTMLDetailsElement[];
+    // Four calls: the newest two start open.
+    expect(groups.map((g) => g.open)).toEqual([true, true, false, false]);
+    expect(screen.getByText("4 open items from 4 calls")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(groups.every((g) => g.open)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(groups.some((g) => g.open)).toBe(false);
   });
 
   it("says when nothing is open", () => {
