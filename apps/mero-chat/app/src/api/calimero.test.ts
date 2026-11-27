@@ -9,6 +9,7 @@ import {
 } from "@calimero-network/mero-js";
 import {
   PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PASSKEY_UNKNOWN_LEAD,
   PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
   SIGN_UP_CLOSED,
   SIGN_UP_INVITE_ONLY,
@@ -132,7 +133,7 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
     const { result } = await unknownPasskeyOn(POLICY.invite);
     expect(result.current.signUpAccess).toBe("needs-invite");
     expect(result.current.message).toBe(
-      `This passkey isn't known on this cluster. ${SIGN_UP_INVITE_ONLY}`,
+      `${PASSKEY_UNKNOWN_LEAD} ${SIGN_UP_INVITE_ONLY}`,
     );
   });
 
@@ -140,7 +141,7 @@ describe("an unknown passkey, by the cluster's sign-up policy", () => {
     const { result } = await unknownPasskeyOn(POLICY.closed);
     expect(result.current.signUpAccess).toBe("closed");
     expect(result.current.message).toBe(
-      `This passkey isn't known on this cluster. ${SIGN_UP_CLOSED}`,
+      `${PASSKEY_UNKNOWN_LEAD} ${SIGN_UP_CLOSED}`,
     );
   });
 });

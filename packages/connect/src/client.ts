@@ -170,16 +170,17 @@ export function describeError(error: unknown): string {
   return String(error);
 }
 
+/** The first sentence of every answer to a passkey the cluster has no account for. */
+export const PASSKEY_UNKNOWN_LEAD = "This passkey's account doesn't exist on this server.";
+
 /**
  * What a person is told when the cluster has no account for the passkey they
  * used and its sign-up policy is not known.
  */
-export const PASSKEY_UNKNOWN_HERE_MESSAGE =
-  "This passkey isn't known on this cluster: create a new passkey here, or use one you made on this cluster.";
+export const PASSKEY_UNKNOWN_HERE_MESSAGE = `${PASSKEY_UNKNOWN_LEAD} You can create a new account below, or sign in with a passkey you made here.`;
 
-/** The same, on a cluster that lets this page create an account. */
-export const PASSKEY_UNKNOWN_SIGN_UP_MESSAGE =
-  "This passkey isn't known on this cluster. Create an account here: it makes a new passkey for this cluster.";
+/** The same, on a cluster that lets this page create an account (the panel's own create button is the way on). */
+export const PASSKEY_UNKNOWN_SIGN_UP_MESSAGE = `${PASSKEY_UNKNOWN_LEAD} You can create a new account below.`;
 
 /** The node's own words in a refusal, without mero-js's `"{status} {code}: "` prefix. */
 function nodeMessage(error: CalimeroError): string {
@@ -231,7 +232,7 @@ export function describeSignInError(error: unknown, access: SignUpAccess = "unkn
   if (isPasskeyUnknownHere(error)) {
     if (access === "allowed") return PASSKEY_UNKNOWN_SIGN_UP_MESSAGE;
     const notice = signUpNotice(access);
-    return notice ? `This passkey isn't known on this cluster. ${notice}` : PASSKEY_UNKNOWN_HERE_MESSAGE;
+    return notice ? `${PASSKEY_UNKNOWN_LEAD} ${notice}` : PASSKEY_UNKNOWN_HERE_MESSAGE;
   }
   if (error instanceof SignUpRefused) return describeSignUpRefused(error);
   if (error instanceof LoginRequired) {

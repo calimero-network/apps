@@ -84,22 +84,22 @@ describe("signUpAccess", () => {
 });
 
 describe("describeSignInError for a passkey this cluster does not know, by policy", () => {
-  it("open (or invite with a token): offers an account here, made with a new passkey", () => {
+  it("open (or invite with a token): points at the create-account button", () => {
     const text = describeSignInError(unknownPasskey(), "allowed");
     expect(text).toBe(
-      "This passkey isn't known on this cluster. Create an account here: it makes a new passkey for this cluster.",
+      "This passkey's account doesn't exist on this server. You can create a new account below.",
     );
   });
 
   it("invite without a token: invited people only", () => {
     expect(describeSignInError(unknownPasskey(), "needs-invite")).toBe(
-      "This passkey isn't known on this cluster. This cluster lets in invited people only: open the invite link you were sent, or ask the cluster's owner for one.",
+      "This passkey's account doesn't exist on this server. This cluster lets in invited people only: open the invite link you were sent, or ask the cluster's owner for one.",
     );
   });
 
   it("closed: not open to new accounts", () => {
     expect(describeSignInError(unknownPasskey(), "closed")).toBe(
-      "This passkey isn't known on this cluster. This cluster isn't open to new accounts: ask its operator for a sign-up invite.",
+      "This passkey's account doesn't exist on this server. This cluster isn't open to new accounts: ask its operator for a sign-up invite.",
     );
   });
 

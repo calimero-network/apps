@@ -11,6 +11,7 @@ import {
 } from "@calimero-network/mero-js";
 import {
   PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PASSKEY_UNKNOWN_LEAD,
   PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
   PROMPT_BLOCKED_MESSAGE,
   SIGN_UP_CLOSED,
@@ -290,13 +291,18 @@ describe("sign-up policy", () => {
     return screen.findByTestId("signin-error");
   }
 
-  it("open: reads the policy once, offers an account here after an unknown passkey, and runs sign-up", async () => {
+  it("open: reads the policy once, points an unknown passkey at the one create button, and runs sign-up", async () => {
     const client = cluster(POLICY.open);
     render(<Panel d={deps(client)} />);
     expect((await screen.findByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
 
-    expect((await signInWithUnknownPasskey()).textContent).toBe(PASSKEY_UNKNOWN_SIGN_UP_MESSAGE);
-    fireEvent.click(screen.getByTestId("signup-here"));
+    const error = await signInWithUnknownPasskey();
+    expect(error.textContent).toBe(PASSKEY_UNKNOWN_SIGN_UP_MESSAGE);
+    expect(screen.getAllByText(/create an account/i)).toHaveLength(1);
+    // The message says "below": it sits above the create button.
+    const create = screen.getByTestId("signup-passkey");
+    expect(error.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(create);
     await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("signed-in"));
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(client.policyReads).toHaveBeenCalledTimes(1);
@@ -310,9 +316,9 @@ describe("sign-up policy", () => {
     expect(screen.getByTestId("signin-passkey").textContent).toBe("Join with your passkey");
 
     expect((await signInWithUnknownPasskey()).textContent).toBe(
-      `This passkey isn't known on this cluster. ${SIGN_UP_CLOSED}`,
+      `${PASSKEY_UNKNOWN_LEAD} ${SIGN_UP_CLOSED}`,
     );
-    expect(screen.queryByTestId("signup-here")).toBeNull();
+    expect(screen.queryByTestId("signup-passkey")).toBeNull();
     expect(client.signUp).not.toHaveBeenCalled();
   });
 
@@ -332,9 +338,10 @@ describe("sign-up policy", () => {
     expect(screen.getByTestId("signup-unavailable").textContent).toBe(SIGN_UP_INVITE_ONLY);
 
     expect((await signInWithUnknownPasskey()).textContent).toBe(
-      `This passkey isn't known on this cluster. ${SIGN_UP_INVITE_ONLY}`,
+      `${PASSKEY_UNKNOWN_LEAD} ${SIGN_UP_INVITE_ONLY}`,
     );
-    expect(screen.queryByTestId("signup-here")).toBeNull();
+    expect(screen.getAllByTestId("signup-passkey")).toHaveLength(1);
+    expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("invite with a token: creating the account is the first action, with the invite", async () => {
@@ -354,7 +361,7 @@ describe("sign-up policy", () => {
     render(<Panel d={deps(client)} />);
     expect((await signInWithUnknownPasskey()).textContent).toBe(PASSKEY_UNKNOWN_HERE_MESSAGE);
     expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByTestId("signup-here")).toBeTruthy();
+    expect(screen.getAllByTestId("signup-passkey")).toHaveLength(1);
     expect(screen.queryByTestId("signup-unavailable")).toBeNull();
   });
 
