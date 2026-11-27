@@ -5,7 +5,17 @@
 //! decides who reaches it, and everyone who reaches it reads every meeting in
 //! it. The browser extension records a call (the meeting tab's audio and the
 //! microphone), turns speech into text on the laptop, and sends the text here
-//! in batches of segments. Audio never reaches the node.
+//! in batches of segments. A live call's audio never reaches the node.
+//!
+//! # Uploaded recordings
+//!
+//! A recording uploaded on the page (platform `upload`) is transcribed in the
+//! browser like a call; its voices are told apart there and saved as
+//! `others` lines named `Speaker 1`, `Speaker 2`, … The audio itself is one
+//! of the app's blobs, and the meeting holds a [`BlobRef`] to it, which keeps
+//! the blob for as long as the meeting names it. `setSpeakerName` gives a
+//! label a real name for everyone; `setInsights` keeps what the page worked
+//! out about each person (tone, emotions, profile, key points).
 //!
 //! # Who may write what
 //!
@@ -14,6 +24,8 @@
 //! | start a meeting | any account that reaches the app |
 //! | append, edit segments; rename, end, summarize a meeting | the meeting's recorder |
 //! | delete a meeting | its recorder or the instance's owner |
+//! | attach or remove a meeting's audio | the meeting's recorder |
+//! | name a speaker, save the people insights | the meeting's recorder or the instance's owner |
 //! | add an action item, tick it off, edit it | any account that reaches the app |
 //! | remove an action item | its author, the meeting's recorder or the instance's owner |
 //!
@@ -53,6 +65,19 @@ const MAX_HITS: u32 = 100;
 const SEARCH_SCAN: usize = 50_000;
 /// Segments one `deleteMeeting` call removes; the client calls again while some remain.
 const DELETE_BATCH: u32 = 1_000;
+/// The largest audio blob a meeting may name: a node keeps blobs up to 47.25 MiB.
+pub const MAX_AUDIO_BYTES: u64 = 49_545_216;
+const MAX_MIME: usize = 100;
+/// Speaker names one meeting keeps.
+const MAX_ALIASES: usize = 50;
+/// People one insights record describes.
+const MAX_PEOPLE: usize = 50;
+const MAX_TONE: usize = 40;
+const MAX_PROFILE: usize = 1_000;
+const MAX_KEY_POINTS: usize = 8;
+const MAX_KEY_POINT: usize = 400;
+const MAX_EMOTIONS: usize = 8;
+const MAX_EMOTION: usize = 40;
 
 /// The speakers a segment may name.
 pub const SPEAKERS: [&str; 2] = ["you", "others"];
@@ -86,6 +111,79 @@ pub struct MeetingRow {
     /// The transcript was redone after the call (`dropSegments` from 0).
     #[serde(default)]
     pub revised: bool,
+    /// The recording, when one was uploaded with the meeting.
+    #[serde(default)]
+    pub audio: Option<Audio>,
+    /// Names given to speaker labels ("Speaker 1" → "Eve").
+    #[serde(default)]
+    pub aliases: Vec<SpeakerName>,
+}
+
+/// A meeting's recording: one of the app's blobs.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct Audio {
+    /// The blob; in JSON its id, 64 lowercase hex digits.
+    pub blob: BlobRef,
+    /// The content type the browser plays it as, e.g. `audio/mpeg`.
+    pub mime: String,
+    /// Bytes, as the node recorded the upload.
+    pub size: u32,
+    /// The recording's length in ms, as the page decoded it.
+    pub duration_ms: u32,
+}
+
+/// A name for a speaker label.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SpeakerName {
+    /// The label the lines carry: their `name`, or `you` / `others` when they have none.
+    pub label: String,
+    pub name: String,
+}
+
+/// One emotion's share of a person's lines, in thousandths.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EmotionShare {
+    pub label: String,
+    pub share: u32,
+}
+
+/// What the page worked out about one person in the meeting.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PersonInsight {
+    /// The speaker label, as in [`SpeakerName::label`].
+    pub label: String,
+    /// One word or two: `enthusiastic`, `neutral`, `concerned`, …
+    pub tone: String,
+    /// A sentence or two on how they came across.
+    pub profile: String,
+    /// The strongest emotions, largest first.
+    pub emotions: Vec<EmotionShare>,
+    /// What they said that mattered.
+    pub key_points: Vec<String>,
+}
+
+/// The people insights, as the page sends them.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InsightsInput {
+    /// The models that produced them, e.g. `go-emotions + qwen2.5-1.5b`.
+    pub model: String,
+    pub people: Vec<PersonInsight>,
+}
+
+/// The people insights as stored and read.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct Insights {
+    pub model: String,
+    pub people: Vec<PersonInsight>,
+    pub updated_by: String,
+    #[serde(with = "calimero_sdk::json::u64_str")]
+    pub updated_at: u64,
 }
 
 /// One stretch of speech, as the extension sends it.
@@ -158,6 +256,9 @@ pub struct MeetingView {
     pub revised: bool,
     pub live: bool,
     pub open_actions: u32,
+    /// The uploaded recording, if any.
+    pub audio: Option<Audio>,
+    pub speaker_names: Vec<SpeakerName>,
 }
 
 #[derive(Clone, Debug, Serialize, AbiType)]
@@ -266,6 +367,8 @@ pub struct Sylence {
     open_actions: Set<(String, String)>,
     /// Meetings being deleted: hidden, their segments removed in batches.
     deleting: Set<String>,
+    /// People insights by meeting id.
+    insights: UnorderedMap<String, Insights>,
 }
 
 #[app::error]
@@ -293,6 +396,8 @@ pub enum Event {
     },
     /// An action item was added, changed or removed.
     ActionChanged { id: String, meeting_id: String },
+    /// A meeting's people insights were saved or cleared.
+    InsightsChanged { meeting_id: String },
 }
 
 fn invalid(message: impl Into<String>) -> AppError {
@@ -356,7 +461,7 @@ fn word_count(text: &str) -> u32 {
 fn clean_platform(platform: &str) -> app::Result<String> {
     let platform = clean("platform", platform, MAX_PLATFORM, false)?.to_lowercase();
     Ok(match platform.as_str() {
-        "meet" | "zoom" | "teams" => platform,
+        "meet" | "zoom" | "teams" | "upload" => platform,
         _ => "other".to_owned(),
     })
 }
@@ -439,6 +544,8 @@ impl Sylence {
             words: 0,
             next_seq: 0,
             revised: false,
+            audio: None,
+            aliases: Vec::new(),
         };
         let _ = self.meetings.insert(&id, &row)?;
         let _ = self.by_time.insert(&(now, id.clone()))?;
@@ -690,6 +797,7 @@ impl Sylence {
                     .remove(&(meeting_id.clone(), key.2.clone()))?;
                 let _ = self.meeting_actions.remove(&key)?;
             }
+            let _ = self.insights.remove(&meeting_id)?;
             let _ = self.deleting.insert(&meeting_id)?;
             env::emit(
                 Event::MeetingChanged {
@@ -719,6 +827,168 @@ impl Sylence {
             let _ = self.deleting.remove(&meeting_id)?;
         }
         Ok(DeleteResult { remaining: left })
+    }
+
+    // ── Audio, speaker names and insights ────────────────────────────────────
+
+    /// Gives the meeting its recording: blob `blob`, which the caller uploaded
+    /// to the app first. Replaces any earlier one (whose blob the node then
+    /// collects). The recorder only.
+    pub fn attach_audio(
+        &mut self,
+        meeting_id: String,
+        blob: BlobRef,
+        mime: String,
+        duration_ms: u32,
+    ) -> app::Result<MeetingView> {
+        let mut row = self.recorders(&meeting_id)?;
+        let mime = clean("mime", &mime, MAX_MIME, true)?.to_lowercase();
+        if !(mime.starts_with("audio/") || mime.starts_with("video/")) {
+            return Err(invalid("mime must be an audio or video type"));
+        }
+        let Some(info) = blob.info() else {
+            return Err(not_found("the app holds no such blob; upload it first"));
+        };
+        if info.size == 0 || info.size > MAX_AUDIO_BYTES {
+            return Err(invalid(format!(
+                "a recording is at most {MAX_AUDIO_BYTES} bytes"
+            )));
+        }
+        row.audio = Some(Audio {
+            blob,
+            mime,
+            size: info.size as u32,
+            duration_ms,
+        });
+        row.duration_ms = row.duration_ms.max(duration_ms);
+        let _ = self.meetings.insert(&meeting_id, &row)?;
+        env::emit(
+            Event::MeetingChanged {
+                id: meeting_id.clone(),
+            },
+            Audience::All,
+        )?;
+        self.view_of(meeting_id, row)
+    }
+
+    /// Removes the meeting's recording; the transcript stays. The recorder only.
+    pub fn remove_audio(&mut self, meeting_id: String) -> app::Result<MeetingView> {
+        let mut row = self.recorders(&meeting_id)?;
+        if row.audio.take().is_some() {
+            let _ = self.meetings.insert(&meeting_id, &row)?;
+            env::emit(
+                Event::MeetingChanged {
+                    id: meeting_id.clone(),
+                },
+                Audience::All,
+            )?;
+        }
+        self.view_of(meeting_id, row)
+    }
+
+    /// Names speaker `label` ("Speaker 1") as `name` ("Eve") in this meeting;
+    /// an empty name removes it. The recorder or the instance's owner.
+    pub fn set_speaker_name(
+        &mut self,
+        meeting_id: String,
+        label: String,
+        name: String,
+    ) -> app::Result<MeetingView> {
+        let mut row = self.editors(&meeting_id)?;
+        let label = clean("label", &label, MAX_ASSIGNEE, true)?;
+        let name = clean("name", &name, MAX_ASSIGNEE, false)?;
+        row.aliases.retain(|a| a.label != label);
+        if !name.is_empty() && name != label {
+            if row.aliases.len() >= MAX_ALIASES {
+                return Err(refused(format!(
+                    "a meeting keeps at most {MAX_ALIASES} speaker names"
+                )));
+            }
+            row.aliases.push(SpeakerName { label, name });
+        }
+        let _ = self.meetings.insert(&meeting_id, &row)?;
+        env::emit(
+            Event::MeetingChanged {
+                id: meeting_id.clone(),
+            },
+            Audience::All,
+        )?;
+        self.view_of(meeting_id, row)
+    }
+
+    /// Saves what the page worked out about each person, replacing what was
+    /// there. No people clears them. The recorder or the instance's owner.
+    pub fn set_insights(
+        &mut self,
+        meeting_id: String,
+        insights: InsightsInput,
+    ) -> app::Result<Option<Insights>> {
+        let caller = me()?;
+        let _ = self.editors(&meeting_id)?;
+        let model = clean("model", &insights.model, MAX_MODEL, false)?;
+        if insights.people.len() > MAX_PEOPLE {
+            return Err(invalid(format!("at most {MAX_PEOPLE} people")));
+        }
+        let mut people = Vec::with_capacity(insights.people.len());
+        for p in insights.people {
+            if p.key_points.len() > MAX_KEY_POINTS {
+                return Err(invalid(format!(
+                    "at most {MAX_KEY_POINTS} key points a person"
+                )));
+            }
+            if p.emotions.len() > MAX_EMOTIONS {
+                return Err(invalid(format!("at most {MAX_EMOTIONS} emotions a person")));
+            }
+            let mut emotions = Vec::with_capacity(p.emotions.len());
+            for e in p.emotions {
+                if e.share > 1_000 {
+                    return Err(invalid(
+                        "an emotion's share is in thousandths, at most 1000",
+                    ));
+                }
+                emotions.push(EmotionShare {
+                    label: clean("emotion", &e.label, MAX_EMOTION, true)?,
+                    share: e.share,
+                });
+            }
+            let mut key_points = Vec::with_capacity(p.key_points.len());
+            for k in p.key_points {
+                let k = clean("key point", &k, MAX_KEY_POINT, false)?;
+                if !k.is_empty() {
+                    key_points.push(k);
+                }
+            }
+            people.push(PersonInsight {
+                label: clean("label", &p.label, MAX_ASSIGNEE, true)?,
+                tone: clean("tone", &p.tone, MAX_TONE, false)?,
+                profile: clean("profile", &p.profile, MAX_PROFILE, false)?,
+                emotions,
+                key_points,
+            });
+        }
+        let saved = if people.is_empty() {
+            let _ = self.insights.remove(&meeting_id)?;
+            None
+        } else {
+            let row = Insights {
+                model,
+                people,
+                updated_by: caller,
+                updated_at: env::time_now(),
+            };
+            let _ = self.insights.insert(&meeting_id, &row)?;
+            Some(row)
+        };
+        env::emit(Event::InsightsChanged { meeting_id }, Audience::All)?;
+        Ok(saved)
+    }
+
+    /// A meeting's people insights, if any were saved.
+    #[app::view]
+    pub fn insights(&self, meeting_id: String) -> app::Result<Option<Insights>> {
+        let _ = me()?;
+        let _ = self.meeting(&meeting_id)?;
+        Ok(self.insights.get(&meeting_id)?)
     }
 
     /// One meeting.
@@ -1041,6 +1311,18 @@ impl Sylence {
         Ok(row)
     }
 
+    /// The meeting, if the caller recorded it or owns the instance.
+    fn editors(&self, id: &str) -> app::Result<MeetingRow> {
+        let caller = me()?;
+        let row = self.meeting(id)?;
+        if row.recorder != caller && env::app_owner() != caller {
+            return Err(forbidden(
+                "only the meeting's recorder or the workspace's owner may change this",
+            ));
+        }
+        Ok(row)
+    }
+
     fn action(&self, id: &str) -> app::Result<ActionRow> {
         self.actions
             .get(&id.to_owned())?
@@ -1083,6 +1365,8 @@ impl Sylence {
             next_seq: row.next_seq,
             revised: row.revised,
             open_actions: open,
+            audio: row.audio,
+            speaker_names: row.aliases,
         })
     }
 }

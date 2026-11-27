@@ -23,6 +23,15 @@ import {
 import { useTranscript } from "./useTranscript";
 import { useRead, type Workspace } from "./useWorkspace";
 import { Icon } from "./ui";
+import { talkStats } from "./lib/stats";
+import { activeIndex, speakerColor, speakerLanes } from "./lib/playback";
+import { Player } from "./Player";
+import { usePlayer } from "./usePlayer";
+import { SpeakersCard } from "./SpeakersCard";
+import { useRecording } from "./useRecording";
+import { PeopleCard } from "./PeopleCard";
+import { useAnalyze } from "./useAnalyze";
+import type { Insights } from "./generated/client";
 
 /** One meeting: its header, summary, transcript (live while recording) and action items. */
 export function MeetingPage({
@@ -44,6 +53,7 @@ export function MeetingPage({
 }) {
   const meeting = useRead(workspace.client, workspace.version, (c) => c.getMeeting({ meetingId }), [meetingId]);
   const actions = useRead(workspace.client, workspace.version, (c) => c.listActions({ meetingId }), [meetingId]);
+  const insights = useRead(workspace.client, workspace.version, (c) => c.insights({ meetingId }), [meetingId]);
   const transcript = useTranscript(workspace, meetingId);
   const { nameOf } = useSpaceNames();
 
@@ -72,6 +82,7 @@ export function MeetingPage({
     <MeetingBody
       workspace={workspace}
       meeting={m}
+      recordingBlobs={workspace.blobs}
       segments={transcript.segments}
       more={transcript.next !== null}
       loadingMore={transcript.loading}
@@ -79,6 +90,7 @@ export function MeetingPage({
       onLoadMore={() => void transcript.loadMore()}
       onSegmentChanged={transcript.replace}
       actions={actions.data}
+      insights={insights.data}
       me={me}
       isOwner={isOwner}
       recorderName={recorderName}
@@ -91,6 +103,7 @@ export function MeetingPage({
 /** The meeting once read. Presentational apart from the calls it makes through `workspace.act`. */
 export function MeetingBody({
   workspace,
+  recordingBlobs,
   meeting: m,
   segments,
   more,
@@ -99,6 +112,7 @@ export function MeetingBody({
   onLoadMore,
   onSegmentChanged,
   actions,
+  insights = null,
   me,
   isOwner,
   recorderName,
@@ -106,6 +120,8 @@ export function MeetingBody({
   focusSeq,
 }: {
   workspace: Pick<Workspace, "act">;
+  /** Where the recording is read from; without it there is no player. */
+  recordingBlobs?: Workspace["blobs"];
   meeting: MeetingView;
   segments: SegmentView[];
   more: boolean;
@@ -114,6 +130,8 @@ export function MeetingBody({
   onLoadMore: () => void;
   onSegmentChanged: (s: SegmentView) => void;
   actions: import("./sylenceApi").ActionView[] | null;
+  /** What was worked out about each person, if anyone ran Analyze. */
+  insights?: Insights | null;
   me: string;
   isOwner: boolean;
   recorderName: string;
@@ -121,19 +139,53 @@ export function MeetingBody({
   focusSeq?: number;
 }) {
   const recorder = m.recorder === me;
+  const canEdit = recorder || isOwner;
   const [find, setFind] = useState("");
   const findWords = useMemo(() => queryWords(find), [find]);
   /** The speaker the transcript is narrowed to, or null for everyone. */
   const [who, setWho] = useState<string | null>(null);
   const speakers = useMemo(() => speakersIn(segments, recorderName), [segments, recorderName]);
+  // Names given to speaker labels ("Speaker 1" → "Eve").
+  const aliases = useMemo(() => new Map((m.speakerNames ?? []).map((a) => [a.label, a.name])), [m.speakerNames]);
+  const nameOf = useCallback((label: string) => aliases.get(label) ?? label, [aliases]);
+  const labelOf = useCallback((s: SegmentView) => speakerLabel(s.speaker, recorderName, s.name), [recorderName]);
+  const stats = useMemo(() => talkStats(segments, labelOf), [segments, labelOf]);
+  const colorOf = useMemo(() => {
+    const index = new Map(stats.speakers.map((s, i) => [s.label, i]));
+    return (label: string) => speakerColor(index.get(label) ?? 7);
+  }, [stats]);
   const shownSegments = useMemo(
     () =>
       segments.filter(
-        (s) =>
-          (!findWords.length || matchesAll(s.text, findWords)) &&
-          (who === null || speakerLabel(s.speaker, recorderName, s.name) === who),
+        (s) => (!findWords.length || matchesAll(s.text, findWords)) && (who === null || labelOf(s) === who),
       ),
-    [segments, findWords, who, recorderName],
+    [segments, findWords, who, labelOf],
+  );
+
+  const analyze = useAnalyze({ workspace, meetingId: m.id, segments, labelOf, stats });
+
+  // ── playback ──
+  const noBlobs = useMemo(() => ({ upload: () => Promise.reject(new Error("no workspace")), download: () => Promise.reject(new Error("no workspace")) }), []);
+  const recording = useRecording(recordingBlobs ?? noBlobs, recordingBlobs ? m.audio : null);
+  const hasAudio = !!m.audio && !!recordingBlobs;
+  const player = usePlayer();
+  const [follow, setFollow] = useState(true);
+  const byStart = useMemo(() => [...segments].sort((a, b) => a.startMs - b.startMs || a.seq - b.seq), [segments]);
+  const playingIndex = hasAudio ? activeIndex(byStart, player.timeMs) : -1;
+  const playingSeq = playingIndex >= 0 ? byStart[playingIndex]!.seq : null;
+  const lanes = useMemo(
+    () => (hasAudio ? speakerLanes(segments, labelOf, stats.speakers.map((s) => s.label), m.audio?.durationMs || m.durationMs) : []),
+    [hasAudio, segments, labelOf, stats, m.audio?.durationMs, m.durationMs],
+  );
+  const playingRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    if (follow && player.playing && playingSeq !== null) playingRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [follow, player.playing, playingSeq]);
+  const seekTo = useCallback(
+    (ms: number, play = true) => {
+      player.seek(ms, play);
+    },
+    [player],
   );
   const lastSeq = segments.length ? segments[segments.length - 1]!.seq : -1;
   // Finding reads the whole transcript; a linked line reads up to it.
@@ -146,13 +198,19 @@ export function MeetingBody({
   useEffect(() => {
     if (focusLoaded) focusedRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [focusLoaded]);
+  // A linked line (a search hit) is where playback starts.
+  const focusStart = focusLoaded ? segments.find((s) => s.seq === focusSeq)?.startMs : undefined;
+  const { seek } = player;
+  useEffect(() => {
+    if (recording.url && focusStart !== undefined) seek(focusStart);
+  }, [recording.url, focusStart, seek]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const segmentStart = useCallback((seq: number) => segments.find((s) => s.seq === seq)?.startMs, [segments]);
 
   const markdown = useMemo(
-    () => toMarkdown(m, segments, actions ?? [], recorderName, undefined),
-    [m, segments, actions, recorderName],
+    () => toMarkdown(m, segments, actions ?? [], recorderName, undefined, nameOf),
+    [m, segments, actions, recorderName, nameOf],
   );
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -198,7 +256,7 @@ export function MeetingBody({
               <span>{platformName(m.platform)}</span>
               <span className="dot" aria-hidden="true" />
               <span>
-                Recorded by <PersonName account={m.recorder} />
+                {m.platform === "upload" ? "Uploaded by" : "Recorded by"} <PersonName account={m.recorder} />
               </span>
             </p>
             <p className="meeting-stats inline">
@@ -231,11 +289,37 @@ export function MeetingBody({
         </p>
       )}
 
+      {hasAudio && (
+        <Player
+          player={player}
+          src={recording.url}
+          loading={recording.loading}
+          error={recording.error}
+          fallbackDurationMs={m.audio?.durationMs || m.durationMs}
+          lanes={lanes}
+          nameOf={nameOf}
+          follow={follow}
+          onFollow={setFollow}
+        />
+      )}
+
       <Summary
         summary={m.summary}
         editable={recorder}
         onSave={(summary) => run(() => workspace.act((c) => c.setSummary({ meetingId: m.id, summary })))}
       />
+
+      {!m.live && segments.length > 0 && (
+        <PeopleCard
+          insights={insights}
+          stats={stats}
+          actions={actions}
+          displayName={nameOf}
+          canAnalyze={canEdit}
+          analyze={analyze}
+          onSeek={hasAudio && recording.url ? (ms) => seekTo(ms) : undefined}
+        />
+      )}
 
       <div className="meeting-grid">
         <section className="card transcript-card" aria-labelledby="transcript-title">
@@ -254,6 +338,10 @@ export function MeetingBody({
                 placeholder="Find in transcript"
                 value={find}
                 onChange={(e) => setFind(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter plays from the first line found.
+                  if (e.key === "Enter" && hasAudio && findWords.length && shownSegments[0]) seekTo(shownSegments[0].startMs);
+                }}
               />
             </div>
           </div>
@@ -270,7 +358,7 @@ export function MeetingBody({
                   aria-pressed={who === sp.label}
                   onClick={() => setWho(who === sp.label ? null : sp.label)}
                 >
-                  {sp.label}
+                  {nameOf(sp.label)}
                   <span className="chip-count">{sp.lines.toLocaleString()}</span>
                 </button>
               ))}
@@ -286,11 +374,14 @@ export function MeetingBody({
             {shownSegments.map((s) => (
               <SegmentRow
                 key={s.seq}
-                ref={s.seq === focusSeq ? focusedRef : undefined}
+                ref={s.seq === focusSeq ? focusedRef : s.seq === playingSeq ? playingRef : undefined}
                 focused={s.seq === focusSeq}
+                playing={s.seq === playingSeq}
+                onSeek={hasAudio && recording.url ? () => seekTo(s.startMs) : undefined}
+                color={colorOf(labelOf(s))}
                 highlight={findWords}
                 segment={s}
-                speaker={speakerLabel(s.speaker, recorderName, s.name)}
+                speaker={nameOf(labelOf(s))}
                 editable={recorder}
                 onSave={(text) =>
                   run(async () => {
@@ -317,6 +408,13 @@ export function MeetingBody({
         </section>
 
         <div className="side">
+          <SpeakersCard
+            stats={stats}
+            nameOf={nameOf}
+            canRename={canEdit}
+            onRename={(label, name) => run(() => workspace.act((c) => c.setSpeakerName({ meetingId: m.id, label, name })))}
+            onSeek={hasAudio && recording.url ? (ms) => seekTo(ms) : undefined}
+          />
           <ActionItems
             workspace={workspace}
             meetingId={m.id}
@@ -454,6 +552,9 @@ function Summary({ summary, editable, onSave }: { summary: string; editable: boo
 function SegmentRow({
   ref,
   focused = false,
+  playing = false,
+  onSeek,
+  color,
   highlight = [],
   segment,
   speaker,
@@ -463,6 +564,11 @@ function SegmentRow({
 }: {
   ref?: React.Ref<HTMLLIElement>;
   focused?: boolean;
+  /** The line being said in the recording now. */
+  playing?: boolean;
+  /** Play the recording from this line. */
+  onSeek?: () => void;
+  color?: string;
   highlight?: readonly string[];
   segment: SegmentView;
   speaker: string;
@@ -481,11 +587,21 @@ function SegmentRow({
     <li
       ref={ref}
       id={`line-${segment.seq}`}
-      className={`segment speaker-${segment.speaker === "you" ? "you" : "others"}${focused ? " focused" : ""}`}
+      className={`segment speaker-${segment.speaker === "you" ? "you" : "others"}${focused ? " focused" : ""}${playing ? " playing" : ""}`}
       data-testid="segment"
+      aria-current={playing ? "true" : undefined}
     >
-      <span className="segment-time mono">{formatClock(segment.startMs)}</span>
-      <span className={`speaker-chip ${segment.speaker === "you" ? "you" : "others"}`}>{speaker}</span>
+      {onSeek ? (
+        <button type="button" className="segment-time seekable mono" onClick={onSeek} aria-label={`Play from ${formatClock(segment.startMs)}`}>
+          {formatClock(segment.startMs)}
+        </button>
+      ) : (
+        <span className="segment-time mono">{formatClock(segment.startMs)}</span>
+      )}
+      <span className={`speaker-chip ${segment.speaker === "you" ? "you" : "others"}`} title={speaker}>
+        {color && <span className="spk-dot" style={{ background: color }} aria-hidden="true" />}
+        {speaker}
+      </span>
       {draft !== null ? (
         <form
           className="segment-edit"

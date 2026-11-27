@@ -19,6 +19,9 @@
       "id": "string",
       "meetingId": "string"
     },
+    "InsightsChanged": {
+      "meetingId": "string"
+    },
     "MeetingChanged": {
       "id": "string"
     },
@@ -72,6 +75,32 @@
       ],
       "public": false,
       "returns": "AppendResult"
+    },
+    "attachAudio": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Gives the meeting its recording: blob `blob`, which the caller uploaded\nto the app first. Replaces any earlier one (whose blob the node then\ncollects). The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "blob",
+          "BlobRef"
+        ],
+        [
+          "mime",
+          "string"
+        ],
+        [
+          "durationMs",
+          "u32"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
     },
     "deleteMeeting": {
       "allowSystem": false,
@@ -193,6 +222,20 @@
       "public": false,
       "returns": null
     },
+    "insights": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "A meeting's people insights, if any were saved.",
+      "kind": "view",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "option<Insights>"
+    },
     "listActions": {
       "allowSystem": false,
       "confirm": false,
@@ -248,6 +291,20 @@
       "public": false,
       "returns": null
     },
+    "removeAudio": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Removes the meeting's recording; the transcript stays. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
     "renameMeeting": {
       "allowSystem": false,
       "confirm": false,
@@ -301,6 +358,46 @@
       ],
       "public": false,
       "returns": "ActionView"
+    },
+    "setInsights": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Saves what the page worked out about each person, replacing what was\nthere. No people clears them. The recorder or the instance's owner.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "insights",
+          "InsightsInput"
+        ]
+      ],
+      "public": false,
+      "returns": "option<Insights>"
+    },
+    "setSpeakerName": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Names speaker `label` (\"Speaker 1\") as `name` (\"Eve\") in this meeting;\nan empty name removes it. The recorder or the instance's owner.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "label",
+          "string"
+        ],
+        [
+          "name",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
     },
     "setSummary": {
       "allowSystem": false,
@@ -378,6 +475,7 @@
       "actions": "unorderedMap",
       "byTime": "set",
       "deleting": "set",
+      "insights": "unorderedMap",
       "meetingActions": "set",
       "meetings": "unorderedMap",
       "openActions": "set",
@@ -387,6 +485,7 @@
       "actions": [],
       "byTime": [],
       "deleting": [],
+      "insights": [],
       "meetingActions": [],
       "meetings": [],
       "openActions": [],
@@ -453,6 +552,31 @@
       ],
       "kind": "record"
     },
+    "Audio": {
+      "fields": [
+        [
+          "blob",
+          "BlobRef"
+        ],
+        [
+          "mime",
+          "string"
+        ],
+        [
+          "size",
+          "u32"
+        ],
+        [
+          "durationMs",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "BlobRef": {
+      "kind": "newtype",
+      "type": "string"
+    },
     "DeleteResult": {
       "fields": [
         [
@@ -471,6 +595,53 @@
         [
           "remaining",
           "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "EmotionShare": {
+      "fields": [
+        [
+          "label",
+          "string"
+        ],
+        [
+          "share",
+          "u32"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Insights": {
+      "fields": [
+        [
+          "model",
+          "string"
+        ],
+        [
+          "people",
+          "list<PersonInsight>"
+        ],
+        [
+          "updatedBy",
+          "string"
+        ],
+        [
+          "updatedAt",
+          "u64"
+        ]
+      ],
+      "kind": "record"
+    },
+    "InsightsInput": {
+      "fields": [
+        [
+          "model",
+          "string"
+        ],
+        [
+          "people",
+          "list<PersonInsight>"
         ]
       ],
       "kind": "record"
@@ -544,6 +715,39 @@
         [
           "openActions",
           "u32"
+        ],
+        [
+          "audio",
+          "option<Audio>"
+        ],
+        [
+          "speakerNames",
+          "list<SpeakerName>"
+        ]
+      ],
+      "kind": "record"
+    },
+    "PersonInsight": {
+      "fields": [
+        [
+          "label",
+          "string"
+        ],
+        [
+          "tone",
+          "string"
+        ],
+        [
+          "profile",
+          "string"
+        ],
+        [
+          "emotions",
+          "list<EmotionShare>"
+        ],
+        [
+          "keyPoints",
+          "list<string>"
         ]
       ],
       "kind": "record"
@@ -663,6 +867,19 @@
         [
           "edited",
           "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SpeakerName": {
+      "fields": [
+        [
+          "label",
+          "string"
+        ],
+        [
+          "name",
+          "string"
         ]
       ],
       "kind": "record"

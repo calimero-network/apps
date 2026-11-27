@@ -1,0 +1,345 @@
+/* Playback, talk time and the speaker colours they share. */
+
+:root {
+  --spk-0: #ff5b35;
+  --spk-1: #3b6fe0;
+  --spk-2: #0f9f8f;
+  --spk-3: #8b5cf6;
+  --spk-4: #d98a06;
+  --spk-5: #db2777;
+  --spk-6: #16a34a;
+  --spk-7: #64748b;
+  --playing-bg: #fff4ef;
+  --playing-line: var(--coral);
+}
+:root[data-theme="dark"] {
+  --spk-0: #ff7a5c;
+  --spk-1: #6d95f2;
+  --spk-2: #2dd4bf;
+  --spk-3: #a78bfa;
+  --spk-4: #fbbf24;
+  --spk-5: #f472b6;
+  --spk-6: #4ade80;
+  --spk-7: #94a3b8;
+  --playing-bg: rgba(255, 91, 53, 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --spk-0: #ff7a5c;
+    --spk-1: #6d95f2;
+    --spk-2: #2dd4bf;
+    --spk-3: #a78bfa;
+    --spk-4: #fbbf24;
+    --spk-5: #f472b6;
+    --spk-6: #4ade80;
+    --spk-7: #94a3b8;
+    --playing-bg: rgba(255, 91, 53, 0.12);
+  }
+}
+
+.spk-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ── player ─────────────────────────────────────────────────────────────── */
+
+.card.player {
+  position: sticky;
+  top: 64px;
+  z-index: 5;
+  padding: 14px 16px 12px;
+  margin-bottom: 16px;
+}
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.player-play {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--ink);
+  color: var(--on-ink);
+  cursor: pointer;
+  margin-right: 4px;
+  transition: transform 120ms var(--ease-out), background 120ms ease-out;
+}
+.player-play:hover:not(:disabled) {
+  background: var(--ink-hover);
+}
+.player-play:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.player-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.player-play:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.player-time {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.player-spacer {
+  flex: 1;
+}
+.player-rate {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+}
+.player-follow.on {
+  background: var(--sunken);
+  color: var(--text);
+}
+.player-scrub {
+  position: relative;
+  margin-top: 12px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  cursor: pointer;
+  touch-action: none;
+  overflow: hidden;
+}
+.player-scrub.off {
+  cursor: default;
+  opacity: 0.6;
+}
+.player-scrub:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.player-lanes {
+  position: absolute;
+  inset: 4px 0;
+  display: grid;
+  gap: 2px;
+}
+.player-lane {
+  position: relative;
+  min-height: 2px;
+}
+.player-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+.player-played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  pointer-events: none;
+}
+.player-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+  pointer-events: none;
+}
+.player-legend {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.player-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.player-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .card.player {
+    top: 56px;
+  }
+  .player-follow {
+    padding-inline: 8px;
+  }
+}
+
+/* ── transcript while playing ───────────────────────────────────────────── */
+
+.segment.playing {
+  background: var(--playing-bg);
+  box-shadow: inset 2px 0 0 var(--playing-line);
+}
+.segment-time.seekable {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--faint);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 4px;
+}
+.segment-time.seekable:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.segment-time.seekable:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.speaker-chip .spk-dot {
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+/* ── talk time ──────────────────────────────────────────────────────────── */
+
+.talk-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--sunken);
+  gap: 2px;
+}
+.talk-bar span {
+  min-width: 2px;
+}
+.talk-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.talk-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.talk-row:first-child {
+  border-top: 0;
+}
+.talk-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.talk-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.talk-label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.talk-share {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.talk-rename {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.talk-rename input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  font-size: 13px;
+}
+.talk-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0 16px;
+}
+.talk-stats div {
+  min-width: 0;
+}
+.talk-stats dt {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.talk-stats dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.talk-first {
+  margin: 8px 0 0 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.talk-first:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* The side column grows with talk time and people: let it scroll with the page. */
+.meeting-page .side {
+  position: static;
+}
+
+/* ── meetings list: search beside Upload ───────────────────────────────── */
+
+.meetings-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.meetings-toolbar .search {
+  flex: 1;
+  min-width: 0;
+}
+.meetings-toolbar > .btn {
+  flex: none;
+  height: 36px;
+}
+.get-extension-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+@media (max-width: 560px) {
+  .meetings-toolbar {
+    flex-wrap: wrap;
+  }
+  .meetings-toolbar > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

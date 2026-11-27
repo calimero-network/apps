@@ -89,6 +89,29 @@ const paths: Record<string, ReactNode> = {
   wave: <path d="M2 8h1M4.5 5v6M7 3v10M9.5 5.5v5M12 6.5v3M14 8h0" />,
   list: <path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h0M2.5 8h0M2.5 12h0" />,
   puzzle: <path d="M3 5h2.5a1.5 1.5 0 1 1 3 0H11v2.5a1.5 1.5 0 1 1 0 3V13H8.5a1.5 1.5 0 1 0-3 0H3v-2.5a1.5 1.5 0 1 0 0-3V5Z" />,
+  play: <path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5Z" fill="currentColor" />,
+  pause: (
+    <>
+      <rect x="4" y="3" width="2.6" height="10" rx=".8" fill="currentColor" />
+      <rect x="9.4" y="3" width="2.6" height="10" rx=".8" fill="currentColor" />
+    </>
+  ),
+  back: <path d="M3 3v3.5h3.5M3.4 6.2A5.5 5.5 0 1 1 3 9.5" />,
+  forward: <path d="M13 3v3.5H9.5M12.6 6.2A5.5 5.5 0 1 0 13 9.5" />,
+  follow: (
+    <>
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5" />
+    </>
+  ),
+  upload: <path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 13.5h11" />,
+  users: (
+    <>
+      <circle cx="6" cy="5.5" r="2.5" />
+      <path d="M1.5 13.5a4.5 4.5 0 0 1 9 0M10.5 3.2a2.5 2.5 0 0 1 0 4.6M12 9.3a4.5 4.5 0 0 1 2.5 4.2" />
+    </>
+  ),
+  sparkle: <path d="M8 1.5 9.4 6.6 14.5 8l-5.1 1.4L8 14.5 6.6 9.4 1.5 8l5.1-1.4L8 1.5Z" />,
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof paths; size?: number }) {

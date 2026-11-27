@@ -26,6 +26,8 @@ export function fakeWorkspace(handlers: Record<string, Handler>, app = "app-syle
   const view = vi.fn(answer);
   const client = sylenceClient(withRoutes({ call, view }), app);
   const listeners = new Set<EventListener>();
+  /** The workspace's blobs, by id. */
+  const stored = new Map<string, Uint8Array>();
   const workspace: Workspace = {
     client,
     version: 0,
@@ -36,11 +38,23 @@ export function fakeWorkspace(handlers: Record<string, Handler>, app = "app-syle
         listeners.delete(fn);
       };
     },
+    blobs: {
+      upload: vi.fn(async (bytes: Uint8Array) => {
+        const id = String(stored.size + 1).padStart(64, "0");
+        stored.set(id, bytes.slice());
+        return { blobId: id, size: bytes.byteLength };
+      }),
+      download: vi.fn(async (id: string) => {
+        const bytes = stored.get(id);
+        if (!bytes) throw new Error("no such blob");
+        return bytes.slice().buffer as ArrayBuffer;
+      }),
+    },
   };
   const emit = (event: AppEvent) => {
     for (const fn of listeners) fn(event);
   };
-  return { workspace, sent, call, view, emit };
+  return { workspace, sent, call, view, emit, stored };
 }
 
 /** A meeting as the contract answers it, with `over` laid on top. */
@@ -63,6 +77,8 @@ export function meeting(over: Partial<import("../sylenceApi").MeetingView> = {})
     revised: false,
     live: false,
     openActions: 1,
+    audio: null,
+    speakerNames: [],
     ...over,
   };
 }

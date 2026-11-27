@@ -8,6 +8,7 @@ import { InstallPage } from "./InstallPage";
 import { Landing, LandingPage } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
+import { UploadRecording } from "./UploadRecording";
 import { OpenActions } from "./OpenActions";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
@@ -334,6 +335,7 @@ function WorkspaceView({
   const meetings = useRead(workspace.client, workspace.version, (c) => c.listMeetings(), []);
   const [owner, setOwner] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -404,6 +406,17 @@ function WorkspaceView({
           error={meetings.error}
           onOpen={(id, seq) => go(seq === undefined ? { page: "meeting", id } : { page: "meeting", id, seq })}
           searchTranscripts={searchTranscripts}
+          onUpload={() => setUploading(true)}
+        />
+      )}
+      {uploading && (
+        <UploadRecording
+          workspace={workspace}
+          onClose={() => setUploading(false)}
+          onDone={(id) => {
+            setUploading(false);
+            go({ page: "meeting", id });
+          }}
         />
       )}
       {route.page === "install" && <InstallPage onBack={() => go({ page: "meetings" })} backLabel="All meetings" />}

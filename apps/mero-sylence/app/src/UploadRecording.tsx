@@ -1,0 +1,379 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Upload } from "@calimero-network/mero-icons";
+import { LANGUAGES } from "../../extension/src/lib/tiers";
+import { findActions } from "../../extension/src/lib/actionItems";
+import type { FromSpeech, SpeechStage, ToSpeech } from "./ai/speechProtocol";
+import {
+  ACCEPT,
+  assignSpeakers,
+  audioMime,
+  batches,
+  decodeTo16kMono,
+  formatBytes,
+  isAudioFile,
+  labelSpeakers,
+  MAX_DURATION_MS,
+  titleFromFile,
+  toSegmentInputs,
+  tooLargeForAudio,
+} from "./lib/upload";
+import { Icon } from "./ui";
+import type { Workspace } from "./useWorkspace";
+import "./upload.css";
+
+type StepId = "decode" | "load" | "transcribe" | "diarize" | "save" | "actions";
+
+const STEPS: { id: StepId; label: string }[] = [
+  { id: "decode", label: "Reading the recording" },
+  { id: "load", label: "Loading the speech model" },
+  { id: "transcribe", label: "Transcribing" },
+  { id: "diarize", label: "Telling voices apart" },
+  { id: "save", label: "Saving to the workspace" },
+  { id: "actions", label: "Finding action items" },
+];
+
+/** How much of the whole bar each step is. */
+const WEIGHT: Record<StepId, number> = { decode: 0.04, load: 0.12, transcribe: 0.56, diarize: 0.16, save: 0.1, actions: 0.02 };
+
+interface Run {
+  step: StepId;
+  fraction: number;
+}
+
+class Cancelled extends Error {}
+
+function overall(run: Run): number {
+  let done = 0;
+  for (const s of STEPS) {
+    if (s.id === run.step) return done + WEIGHT[s.id] * run.fraction;
+    done += WEIGHT[s.id];
+  }
+  return done;
+}
+
+async function hasWebGpu(): Promise<boolean> {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+  if (!gpu) return false;
+  try {
+    return (await gpu.requestAdapter()) != null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Upload a recording: it is decoded and transcribed on this laptop, its
+ * voices told apart, and it becomes a meeting (platform `upload`) with the
+ * audio kept for playback when it fits in one blob.
+ */
+export function UploadRecording({
+  workspace,
+  onDone,
+  onClose,
+}: {
+  workspace: Pick<Workspace, "act" | "blobs">;
+  onDone: (meetingId: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [language, setLanguage] = useState("en");
+  const [keepAudio, setKeepAudio] = useState(true);
+  const [dragging, setDragging] = useState(false);
+  const [run, setRun] = useState<Run | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /** What is already in the workspace when something fails after the meeting started. */
+  const [saved, setSaved] = useState<{ meetingId: string; note: string } | null>(null);
+  const worker = useRef<Worker | null>(null);
+  /** Rejects the model run in flight, so a cancel ends `start`. */
+  const stopRun = useRef<(() => void) | null>(null);
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !el.open) {
+      if (typeof el.showModal === "function") el.showModal();
+      else el.setAttribute("open", "");
+    }
+    return () => worker.current?.terminate();
+  }, []);
+
+  const audioRefusal = file ? tooLargeForAudio(file.size) : null;
+  const busy = run !== null;
+
+  const pick = (f: File | undefined | null) => {
+    if (!f) return;
+    setError(null);
+    setSaved(null);
+    if (!isAudioFile(f)) {
+      setError("That file is not a recording Sylence can read. Use mp3, m4a, wav, webm, ogg or mp4.");
+      return;
+    }
+    setFile(f);
+  };
+
+  const close = useCallback(() => {
+    if (busy) return;
+    onClose();
+  }, [busy, onClose]);
+
+  const cancel = () => {
+    cancelled.current = true;
+    worker.current?.terminate();
+    worker.current = null;
+    stopRun.current?.();
+    setRun(null);
+    setError(saved ? null : "Cancelled. Nothing was saved.");
+  };
+
+  const start = async () => {
+    if (!file) return;
+    cancelled.current = false;
+    setError(null);
+    setSaved(null);
+    let meetingId: string | null = null;
+    let progressNote = "";
+    const step = (id: StepId, fraction = 0) => {
+      if (cancelled.current) throw new Cancelled();
+      setRun({ step: id, fraction });
+    };
+    try {
+      step("decode");
+      const { audio, durationMs } = await decodeTo16kMono(file);
+      if (durationMs > MAX_DURATION_MS) throw new Error("Recordings up to 4 hours can be uploaded.");
+      if (durationMs < 1_000) throw new Error("This recording is shorter than a second.");
+      step("load");
+      const webgpu = await hasWebGpu();
+
+      const { chunks, turns, modelId } = await new Promise<{
+        chunks: Extract<FromSpeech, { type: "done" }>["chunks"];
+        turns: Extract<FromSpeech, { type: "done" }>["turns"];
+        modelId: string;
+      }>((resolve, reject) => {
+        stopRun.current = () => reject(new Cancelled());
+        const w = new Worker(new URL("./ai/speech.worker.ts", import.meta.url), { type: "module" });
+        worker.current = w;
+        let modelId = "whisper";
+        const stageStep: Record<SpeechStage, StepId> = { load: "load", transcribe: "transcribe", diarize: "diarize" };
+        w.onmessage = (e: MessageEvent<FromSpeech>) => {
+          const m = e.data;
+          if (m.type === "progress") setRun({ step: stageStep[m.stage], fraction: m.fraction });
+          else if (m.type === "model") modelId = m.modelId;
+          else if (m.type === "done") resolve({ chunks: m.chunks, turns: m.turns, modelId });
+          else reject(new Error(m.error));
+        };
+        w.onerror = (e) => reject(new Error(e.message || "the speech model stopped"));
+        const msg: ToSpeech = { type: "run", audio, language, webgpu };
+        w.postMessage(msg, [audio.buffer]);
+      });
+      worker.current?.terminate();
+      worker.current = null;
+      stopRun.current = null;
+      if (cancelled.current) throw new Cancelled();
+
+      const lines = labelSpeakers(assignSpeakers(chunks, turns));
+      const segments = toSegmentInputs(lines);
+      if (segments.length === 0) throw new Error("No speech was found in this recording.");
+
+      step("save");
+      meetingId = await workspace.act((c) =>
+        c.startMeeting({ title: titleFromFile(file.name), platform: "upload", url: "", model: modelId, language }),
+      );
+      const id = meetingId;
+      const parts = batches(segments, 100);
+      for (let i = 0; i < parts.length; i++) {
+        step("save", (0.7 * i) / parts.length);
+        await workspace.act((c) => c.appendSegments({ meetingId: id, segments: parts[i]! }));
+      }
+      progressNote = "The transcript is saved";
+      if (keepAudio && !audioRefusal) {
+        step("save", 0.75);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const mime = audioMime(file);
+        const { blobId } = await workspace.blobs.upload(bytes, mime);
+        await workspace.act((c) => c.attachAudio({ meetingId: id, blob: blobId, mime, durationMs }));
+        progressNote = "The transcript and the audio are saved";
+      }
+      step("save", 0.95);
+      await workspace.act((c) => c.endMeeting({ meetingId: id, durationMs }));
+
+      step("actions");
+      const found = findActions(segments.map((s) => ({ seq: s.seq, speaker: s.speaker, name: s.name, text: s.text })));
+      for (const a of found) {
+        await workspace.act((c) => c.addAction({ meetingId: id, text: a.text, assignee: a.assignee, sourceSeq: a.sourceSeq }));
+      }
+      setRun(null);
+      onDone(id);
+    } catch (e) {
+      worker.current?.terminate();
+      worker.current = null;
+      setRun(null);
+      if (e instanceof Cancelled) return;
+      const message = e instanceof Error ? e.message : String(e);
+      if (meetingId) {
+        setSaved({
+          meetingId,
+          note: progressNote ? `${progressNote}; the rest did not finish.` : "The meeting was started, but its transcript was not fully saved.",
+        });
+      }
+      setError(message);
+    }
+  };
+
+  const currentIndex = run ? STEPS.findIndex((s) => s.id === run.step) : -1;
+
+  return (
+    <dialog
+      ref={ref}
+      className="dialog upload-dialog"
+      aria-labelledby="upload-title"
+      onCancel={(e) => {
+        e.preventDefault();
+        close();
+      }}
+      data-testid="upload-dialog"
+    >
+      <div className="dialog-body">
+        <div className="upload-head">
+          <h2 id="upload-title">Upload a recording</h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={close} disabled={busy}>
+            <Icon name="x" />
+          </button>
+        </div>
+        <p className="empty">
+          Sylence transcribes it on this laptop and tells the voices apart. The models download once and stay in
+          the browser.
+        </p>
+
+        {!busy && (
+          <>
+            <label
+              className={`upload-drop${dragging ? " dragging" : ""}${file ? " has-file" : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                pick(e.dataTransfer.files[0]);
+              }}
+            >
+              <input
+                type="file"
+                accept={ACCEPT}
+                className="visually-hidden"
+                onChange={(e) => pick(e.target.files?.[0])}
+                data-testid="upload-file"
+              />
+              <span className="upload-drop-icon" aria-hidden="true">
+                {file ? <Icon name="wave" size={20} /> : <Upload size={20} />}
+              </span>
+              {file ? (
+                <span className="upload-file">
+                  <span className="upload-file-name">{file.name}</span>
+                  <span className="dim">{formatBytes(file.size)} · choose another</span>
+                </span>
+              ) : (
+                <span className="upload-file">
+                  <span className="upload-file-name">Drop a recording here, or browse</span>
+                  <span className="dim">mp3, m4a, wav, webm, ogg or mp4 · up to 4 hours</span>
+                </span>
+              )}
+            </label>
+
+            <label className="upload-field">
+              <span>Spoken language</span>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={`upload-check${audioRefusal ? " disabled" : ""}`}>
+              <input
+                type="checkbox"
+                checked={keepAudio && !audioRefusal}
+                disabled={!!audioRefusal}
+                onChange={(e) => setKeepAudio(e.target.checked)}
+              />
+              <span>
+                <span className="upload-check-label">Keep the audio for playback</span>
+                <span className="dim">
+                  {audioRefusal ?? "Saved in this workspace, so everyone in it can play the meeting back."}
+                </span>
+              </span>
+            </label>
+          </>
+        )}
+
+        {busy && run && (
+          <div className="upload-progress" aria-live="polite">
+            <div
+              className="upload-bar"
+              role="progressbar"
+              aria-label="Upload progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(overall(run) * 100)}
+            >
+              <span style={{ width: `${Math.max(2, overall(run) * 100)}%` }} />
+            </div>
+            <ol className="upload-steps">
+              {STEPS.map((s, i) => {
+                const state = i < currentIndex ? "done" : i === currentIndex ? "active" : "todo";
+                return (
+                  <li key={s.id} className={`upload-step ${state}`}>
+                    <span className="upload-step-mark" aria-hidden="true">
+                      {state === "done" ? <Icon name="check" size={12} /> : null}
+                    </span>
+                    <span>{s.label}</span>
+                    {state === "active" && (s.id === "load" || s.id === "transcribe" || s.id === "diarize") && (
+                      <span className="dim mono">{Math.round(run.fraction * 100)}%</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+            {run.step === "load" && <p className="dim upload-note">The first upload downloads the speech model; later ones start at once.</p>}
+          </div>
+        )}
+
+        {error && (
+          <p className="err" role="alert">
+            {error}
+          </p>
+        )}
+        {saved && !busy && (
+          <p className="upload-saved">
+            {saved.note}{" "}
+            <button type="button" className="btn small ghost" onClick={() => onDone(saved.meetingId)}>
+              Open the meeting
+            </button>
+          </p>
+        )}
+
+        <div className="row end upload-actions">
+          {busy ? (
+            <button type="button" className="btn ghost" onClick={cancel}>
+              Cancel
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn ghost" onClick={close}>
+                Close
+              </button>
+              <button type="button" className="btn primary" disabled={!file} onClick={() => void start()} data-testid="upload-start">
+                <Upload size={16} aria-hidden="true" /> Transcribe
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </dialog>
+  );
+}

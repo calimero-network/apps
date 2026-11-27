@@ -97,7 +97,45 @@ export function useWorkspace(appId: string, onLost?: () => void) {
     [client, bump],
   );
 
-  return { client: client as MeroSylenceClient | null, version, act, subscribe };
+  /** The workspace's own blobs: an uploaded recording, read back for playback. */
+  const blobs = useMemo(() => workspaceBlobs(calimero, appId, after), [calimero, appId, after]);
+
+  return { client: client as MeroSylenceClient | null, version, act, subscribe, blobs };
+}
+
+export interface WorkspaceBlobs {
+  /** Uploads `bytes`; answers the blob id (64 lowercase hex digits) the contract takes. */
+  upload(bytes: Uint8Array, mime: string): Promise<{ blobId: string; size: number }>;
+  download(blobId: string): Promise<ArrayBuffer>;
+}
+
+interface BlobClient {
+  apps: { blobUpload(args: { app: string; body: Uint8Array; contentType?: string }): Promise<{ id?: string; size?: number } | undefined> };
+  downloadBlob(app: string, blobId: string): Promise<Uint8Array>;
+}
+
+/** The app instance's blobs through the signed-in client; `after` runs after each request. */
+export function workspaceBlobs(calimero: unknown, appId: string, after: () => void = () => {}): WorkspaceBlobs {
+  const c = calimero as BlobClient;
+  return {
+    async upload(bytes, mime) {
+      try {
+        const res = await c.apps.blobUpload({ app: appId, body: bytes, contentType: mime || "application/octet-stream" });
+        if (!res?.id) throw new Error("the node accepted the upload but returned no blob id");
+        return { blobId: res.id.toLowerCase(), size: res.size ?? bytes.byteLength };
+      } finally {
+        after();
+      }
+    },
+    async download(blobId) {
+      try {
+        const bytes = await c.downloadBlob(appId, blobId);
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      } finally {
+        after();
+      }
+    },
+  };
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;

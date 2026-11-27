@@ -221,3 +221,57 @@ describe("MeetingPage", () => {
     await waitFor(() => expect(scrolled).toHaveBeenCalled());
   });
 });
+
+describe("talk time and playback", () => {
+  const lines = [seg(0, "Shall we start?", "others", "Speaker 1"), seg(1, "Yes, the beta ships Friday.", "others", "Speaker 2"), seg(2, "Great.", "others", "Speaker 1")];
+
+  it("shows who talked how much, under the names given to them", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", speakerNames: [{ label: "Speaker 2", name: "Eve" }] }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    const rows = await screen.findAllByTestId("talk-row");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText("Speaker 1")).toBeTruthy();
+    expect(within(rows[1]!).getByText("Eve")).toBeTruthy();
+    expect(screen.getByText(/Uploaded by/)).toBeTruthy();
+    // No recording: no player.
+    expect(screen.queryByRole("region", { name: "Recording" })).toBeNull();
+  });
+
+  it("lets the recorder name a speaker", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload" }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+      setSpeakerName: () => meeting({ speakerNames: [{ label: "Speaker 1", name: "Sam" }] }),
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rename Speaker 1" }));
+    fireEvent.change(screen.getByLabelText("Name for Speaker 1"), { target: { value: "Sam" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.sent.some((s) => s.method === "setSpeakerName")).toBe(true));
+    expect(fake.sent.find((s) => s.method === "setSpeakerName")!.args).toEqual({ meetingId: "aa11", label: "Speaker 1", name: "Sam" });
+  });
+
+  it("plays a meeting's recording and seeks from a line", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", audio: { blob: "1".padStart(64, "0"), mime: "audio/mpeg", size: 3, durationMs: 200_000 } }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+    });
+    fake.stored.set("1".padStart(64, "0"), new Uint8Array([1, 2, 3]));
+    const created = vi.fn(() => "blob:recording");
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    expect(await screen.findByRole("region", { name: "Recording" })).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("audio")?.getAttribute("src")).toBe("blob:recording"));
+    const play = await screen.findByRole("button", { name: "Play from 1:05" });
+    act(() => fireEvent.click(play));
+    expect(screen.getByRole("slider", { name: "Seek" }).getAttribute("aria-valuetext")).toBe("1:05");
+    // Not the recorder: no rename.
+    expect(screen.queryByRole("button", { name: /^Rename Speaker/ })).toBeNull();
+  });
+});

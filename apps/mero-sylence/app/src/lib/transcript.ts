@@ -60,17 +60,18 @@ export function formatWhen(value: string | number, locale?: string): string {
   }).format(new Date(ms));
 }
 
-export type Platform = "meet" | "zoom" | "teams" | "other";
+export type Platform = "meet" | "zoom" | "teams" | "upload" | "other";
 
 const PLATFORM_NAMES: Record<Platform, string> = {
   meet: "Google Meet",
   zoom: "Zoom",
   teams: "Microsoft Teams",
+  upload: "Uploaded recording",
   other: "Call",
 };
 
 export function asPlatform(value: string): Platform {
-  return value === "meet" || value === "zoom" || value === "teams" ? value : "other";
+  return value === "meet" || value === "zoom" || value === "teams" || value === "upload" ? value : "other";
 }
 
 export function platformName(value: string): string {
@@ -145,6 +146,8 @@ export function toMarkdown(
   actions: readonly Pick<ActionView, "text" | "assignee" | "done">[],
   recorderName: string,
   locale = "en-GB",
+  /** The name given to a speaker label, if any. */
+  nameOf: (label: string) => string = (label) => label,
 ): string {
   const lines: string[] = [`# ${meeting.title}`, ""];
   const when = formatWhen(meeting.startedAt, locale);
@@ -163,7 +166,7 @@ export function toMarkdown(
   lines.push("## Transcript", "");
   if (segments.length === 0) lines.push("_No transcript yet._");
   for (const s of segments) {
-    lines.push(`**${formatClock(s.startMs)} ${speakerLabel(s.speaker, recorderName, s.name)}:** ${s.text}`, "");
+    lines.push(`**${formatClock(s.startMs)} ${nameOf(speakerLabel(s.speaker, recorderName, s.name))}:** ${s.text}`, "");
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }
