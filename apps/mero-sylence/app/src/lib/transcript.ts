@@ -207,13 +207,38 @@ export function toMarkdown(
 
 /** A file name for the export: the title in lowercase words, `.md`. */
 export function markdownFileName(title: string): string {
+  return `${fileSlug(title)}.md`;
+}
+
+function fileSlug(title: string): string {
   const slug = title
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
-  return `${slug || "meeting"}.md`;
+  return slug || "meeting";
+}
+
+/** The extension a recording of type `mime` is saved with. */
+const EXT_BY_MIME: Record<string, string> = {
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/aac": "aac",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+  "audio/opus": "opus",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+};
+
+/** A downloaded recording's file name: the meeting's title and the extension of its type. */
+export function recordingFileName(title: string, mime: string): string {
+  return `${fileSlug(title)}.${EXT_BY_MIME[mime.split(";")[0]!.trim().toLowerCase()] ?? "audio"}`;
 }
 
 /** Segments one transcript read asks for. */

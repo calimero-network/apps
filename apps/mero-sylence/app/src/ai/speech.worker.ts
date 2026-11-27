@@ -4,7 +4,8 @@
  * the browser's cache; the ONNX runtime is bundled with the page. The audio
  * never leaves this worker.
  *
- * 1. Whisper (large-v3 turbo on WebGPU, else base on the processor) over
+ * 1. Whisper (large-v3 turbo on WebGPU where the page found the device can
+ *    hold it, else base on the processor) over
  *    ~30 s windows cut at quiet moments, with sentence timestamps.
  * 2. pyannote segmentation over 10 s windows finds up to three voices in
  *    each; a WeSpeaker voice embedding of each window's voice, clustered
@@ -67,8 +68,9 @@ function downloads(stage: "load" | "voices") {
   };
 }
 
-async function loadAsr(webgpu: boolean, onProgress: ReturnType<typeof downloads>) {
-  const order = webgpu ? (["best", "balanced"] as const) : (["balanced"] as const);
+async function loadAsr(tier: "best" | "balanced", onProgress: ReturnType<typeof downloads>) {
+  // The page chose the model for this device (lib/device.ts); turbo falls back to base if it cannot load.
+  const order = tier === "best" ? (["best", "balanced"] as const) : (["balanced"] as const);
   let last: unknown;
   for (const id of order) {
     const t = TIERS[id];
@@ -191,7 +193,7 @@ self.onmessage = async (e: MessageEvent<ToSpeech>) => {
   try {
     const onProgress = downloads("load");
     progress("load", 0);
-    const asr = await loadAsr(m.webgpu, onProgress);
+    const asr = await loadAsr(m.tier, onProgress);
     const chunks = await transcribe(asr, m.audio, m.language);
     await asr.dispose();
     progress("voices", 0);

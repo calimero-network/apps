@@ -14,6 +14,7 @@ import {
   highlighter,
   markdownFileName,
   matchesAll,
+  recordingFileName,
   platformName,
   queryWords,
   keyName,
@@ -29,9 +30,10 @@ import { speakerColor, speakerLanes } from "./lib/playback";
 import { Player } from "./Player";
 import { usePlayer, usePlayingIndex } from "./usePlayer";
 import { SpeakersCard } from "./SpeakersCard";
-import { forgetRecording, useRecording } from "./useRecording";
+import { forgetRecording, recordingBlob, useRecording } from "./useRecording";
 import { PeopleCard } from "./PeopleCard";
 import { useAnalyze } from "./useAnalyze";
+import { MeetingSkeleton, TranscriptSkeleton } from "./Skeletons";
 import type { Insights } from "./generated/client";
 
 /** One meeting: its header, summary, transcript (live while recording) and action items. */
@@ -78,13 +80,7 @@ export function MeetingPage({
       </section>
     );
   }
-  if (!meeting.data) {
-    return (
-      <section className="card" aria-busy="true">
-        <p className="empty">Loading the meeting…</p>
-      </section>
-    );
-  }
+  if (!meeting.data) return <MeetingSkeleton />;
 
   const m = meeting.data;
   // The recorder's lines carry their name; "You" only while you haven't set one.
@@ -109,6 +105,19 @@ export function MeetingPage({
       focusSeq={focusSeq}
     />
   );
+}
+
+/** Hands `blob` to the browser as a download named `name`. */
+export function saveFile(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  // Long enough for the browser to start reading it.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /** Whichever insights were saved last: a run here, or the latest read. */
@@ -235,6 +244,7 @@ export function MeetingBody({
   }, [recording.url, focusStart, seek]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [savingAudio, setSavingAudio] = useState(false);
   const segmentStart = useCallback((seq: number) => segments.find((s) => s.seq === seq)?.startMs, [segments]);
 
   // Built when asked for, not on every render.
@@ -285,13 +295,21 @@ export function MeetingBody({
     }
   };
 
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([markdown()], { type: "text/markdown" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = markdownFileName(m.title);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+  const download = () => saveFile(new Blob([markdown()], { type: "text/markdown" }), markdownFileName(m.title));
+
+  /** Saves the recording itself, read the way the player reads it. */
+  const downloadRecording = async () => {
+    if (!m.audio || !recordingBlobs) return;
+    setSavingAudio(true);
+    setError(null);
+    try {
+      const blob = await recordingBlob(recordingBlobs, m.audio);
+      saveFile(blob, recordingFileName(m.title, m.audio.mime));
+    } catch (e) {
+      setError(`The recording did not download: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingAudio(false);
+    }
   };
 
   return (
@@ -332,6 +350,19 @@ export function MeetingBody({
           <button type="button" className="btn" onClick={download}>
             <Download size={16} aria-hidden="true" /> Download .md
           </button>
+          {hasAudio && (
+            <button
+              type="button"
+              className={`btn${savingAudio ? " is-busy" : ""}`}
+              onClick={() => void downloadRecording()}
+              disabled={savingAudio}
+              aria-busy={savingAudio}
+              data-testid="download-recording"
+            >
+              {savingAudio ? <span className="btn-spinner" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+              {savingAudio ? "Preparing…" : "Download recording"}
+            </button>
+          )}
           {(recorder || isOwner) && (
             <DeleteMeeting
               workspace={workspace}
@@ -430,6 +461,7 @@ export function MeetingBody({
           {findWords.length > 0 && shownSegments.length === 0 && !loadingMore && (
             <p className="empty">No line contains &ldquo;{find.trim()}&rdquo;.</p>
           )}
+          {segments.length === 0 && loadingMore && <TranscriptSkeleton />}
           {segments.length === 0 && !loadingMore && (
             <p className="empty">{m.live ? "Listening… the first lines appear here in a few seconds." : "No transcript was saved for this meeting."}</p>
           )}

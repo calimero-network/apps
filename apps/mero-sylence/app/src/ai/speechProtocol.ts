@@ -10,8 +10,8 @@ export type ToSpeech = {
   audio: Float32Array;
   /** BCP 47 code, "" to detect. */
   language: string;
-  /** Use Whisper large-v3 turbo on the GPU. */
-  webgpu: boolean;
+  /** The model: Whisper large-v3 turbo on the GPU (`best`), or Whisper base on the processor. */
+  tier: "best" | "balanced";
 };
 
 /** Speech worker → page. */

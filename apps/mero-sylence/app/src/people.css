@@ -77,18 +77,157 @@
   transition: width 0.3s var(--ease-out);
 }
 
+/* ── one person at a time: tabs, back and next, a panel that slides in ── */
+.ptabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+.ptabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ptabs::-webkit-scrollbar {
+  display: none;
+}
+.ptab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s,
+    color 0.2s;
+}
+.ptab:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.ptab.active,
+.ptab.active:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--spk) 55%, var(--border));
+  background: color-mix(in srgb, var(--spk) 10%, var(--surface));
+  color: var(--text);
+}
+.ptab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--spk);
+}
+.ptab-name {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ptab-share {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.ptabs-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ptabs-count {
+  min-width: 28px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
 .people-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 10px;
+  /* A panel sliding in from the side never widens the page. */
+  overflow-x: clip;
 }
 .person {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 12px 14px;
-  background: var(--surface);
+  padding: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--spk) 7%, var(--surface)), var(--surface) 90px);
+  overflow: hidden;
+}
+.person::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--spk);
+}
+.person[hidden] {
+  display: none;
+}
+.person-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .person.from-right:not([hidden]) {
+    animation: person-in-right 0.32s var(--ease-out);
+  }
+  .person.from-left:not([hidden]) {
+    animation: person-in-left 0.32s var(--ease-out);
+  }
+  .person:not([hidden]) .emotion-fill {
+    animation: emotion-grow 0.6s var(--ease-out) both;
+    animation-delay: calc(var(--k, 0) * 70ms + 120ms);
+    transform-origin: left center;
+  }
+  .analyze-bar > span {
+    background-image: linear-gradient(90deg, var(--ink), var(--coral), var(--ink));
+    background-size: 200% 100%;
+    animation: analyze-shimmer 1.6s linear infinite;
+  }
+}
+@keyframes person-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes person-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+@keyframes emotion-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes analyze-shimmer {
+  to {
+    background-position: -200% 0;
+  }
 }
 .person-head {
   display: flex;
@@ -98,13 +237,13 @@
 }
 .person-avatar {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--sunken);
-  color: var(--text);
+  background: var(--spk, var(--sunken));
+  color: #fff;
   font-weight: 600;
   font-size: 13px;
 }

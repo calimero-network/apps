@@ -213,99 +213,198 @@
   vertical-align: 1px;
 }
 
-/* ── talk time ──────────────────────────────────────────────────────────── */
+/* ── talk time: the share bar, speaker tabs, the picked speaker's tiles ── */
 
 .talk-bar {
   display: flex;
-  height: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--sunken);
-  gap: 2px;
+  gap: 3px;
+  height: 12px;
+  margin-bottom: 12px;
 }
-.talk-bar span {
-  min-width: 2px;
-}
-.talk-list {
-  list-style: none;
-  margin: 14px 0 0;
+.talk-bar button {
+  flex-basis: 0;
+  min-width: 6px;
+  height: 100%;
   padding: 0;
-  display: grid;
-  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--spk);
+  opacity: 0.45;
+  cursor: pointer;
+  transform-origin: left center;
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s var(--ease-out);
+}
+.talk-bar button:hover:not(:disabled) {
+  background: var(--spk);
+  opacity: 0.75;
+}
+.talk-bar button.on {
+  opacity: 1;
+  box-shadow: 0 2px 8px -2px var(--spk);
+}
+.talk-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 .talk-row {
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
-}
-.talk-row:first-child {
-  border-top: 0;
-}
-.talk-who {
   display: flex;
   align-items: center;
-  gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.talk-row.active {
+  border-color: color-mix(in srgb, var(--spk) 55%, var(--border));
+  background: color-mix(in srgb, var(--spk) 10%, var(--surface));
+}
+.talk-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.talk-tab:hover:not(:disabled) {
+  background: none;
+}
+.talk-tab .spk-dot {
+  background: var(--spk);
 }
 .talk-name {
-  font-weight: 600;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .talk-label {
-  font-size: 12px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 .talk-share {
-  margin-left: auto;
-  font-weight: 600;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.talk-row.active .talk-share {
+  color: var(--text);
+}
+.talk-pen {
+  width: 26px;
+  height: 26px;
+  margin-right: 3px;
 }
 .talk-rename {
   display: flex;
   gap: 6px;
-  flex: 1;
+  padding: 3px;
   min-width: 0;
 }
 .talk-rename input {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   height: 28px;
   font-size: 13px;
+  border-radius: 999px;
 }
-.talk-stats {
+.talk-rename .btn {
+  border-radius: 999px;
+}
+.talk-panel {
+  overflow-x: clip;
+}
+.talk-tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px 12px;
-  margin: 8px 0 0 16px;
+  gap: 6px;
+  margin: 0;
 }
-.talk-stats div {
+.talk-tiles div {
   min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-top: 2px solid color-mix(in srgb, var(--spk) 70%, transparent);
 }
-.talk-stats dt {
-  font-size: 11px;
+.talk-tiles dt {
+  font-size: 10.5px;
+  font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
-.talk-stats dd {
-  margin: 0;
-  font-size: 13px;
+.talk-tiles dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .talk-first {
-  margin: 8px 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
   padding: 0;
+  height: auto;
   border: 0;
   background: none;
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-dim);
   cursor: pointer;
 }
-.talk-first:hover {
+.talk-first:hover:not(:disabled) {
+  background: none;
   color: var(--text);
-  text-decoration: underline;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .talk-bar button {
+    animation: talk-grow 0.7s var(--ease-out) both;
+    animation-delay: calc(var(--i) * 80ms);
+  }
+  .talk-panel .talk-tiles div {
+    animation: talk-tile 0.35s var(--ease-out) both;
+    animation-delay: calc(var(--k) * 35ms);
+  }
+}
+@keyframes talk-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes talk-tile {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (max-width: 520px) {
+  .talk-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .talk-name {
+    max-width: 110px;
+  }
 }
 
 /* The side column grows with talk time and people: let it scroll with the page. */

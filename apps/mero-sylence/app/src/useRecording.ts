@@ -238,6 +238,22 @@ export async function forgetWorkspaceRecordings(appId?: string): Promise<void> {
   }
 }
 
+/**
+ * A meeting's recording as a Blob: the copy kept in this browser if there is
+ * one, else downloaded from the workspace and checked against its id (and
+ * then kept). The player and "Download recording" both read it this way.
+ */
+export async function recordingBlob(blobs: WorkspaceBlobs, audio: Pick<Audio, "blob" | "mime">): Promise<Blob> {
+  const { blob: blobId, mime } = audio;
+  const kept = await within(cached(blobs.appId, blobId), CACHE_WAIT_MS, null);
+  if (kept) return mime && kept.type !== mime ? kept.slice(0, kept.size, mime) : kept;
+  const data = await blobs.download(blobId);
+  if ((await sha256Hex(data)) !== blobId) throw new Error("the recording did not match its id");
+  const blob = new Blob([data], { type: mime || "audio/mpeg" });
+  void rememberRecording(blobs.appId, blobId, blob);
+  return blob;
+}
+
 export interface RecordingState {
   url: string | null;
   loading: boolean;
@@ -260,15 +276,7 @@ export function useRecording(blobs: WorkspaceBlobs, audio: Audio | null | undefi
     setState({ url: null, loading: true, error: null });
     void (async () => {
       try {
-        let blob = await within(cached(appId, blobId), CACHE_WAIT_MS, null);
-        if (!blob) {
-          const data = await blobs.download(blobId);
-          if ((await sha256Hex(data)) !== blobId) throw new Error("the recording did not match its id");
-          blob = new Blob([data], { type: mime || "audio/mpeg" });
-          void rememberRecording(appId, blobId, blob);
-        } else if (mime && blob.type !== mime) {
-          blob = blob.slice(0, blob.size, mime);
-        }
+        const blob = await recordingBlob(blobs, { blob: blobId, mime });
         if (!live) return;
         url = URL.createObjectURL(blob);
         setState({ url, loading: false, error: null });

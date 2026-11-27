@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { ActionView, Insights, PersonInsight } from "./generated/client";
 import type { Analyze } from "./useAnalyze";
 import { formatShare, type SpeakerStats, type TalkStats } from "./lib/stats";
 import { assignedTo, TONE_GROUPS, type Tone } from "./lib/insights";
 import { EMOTION_MODEL } from "./ai/insightsProtocol";
 import { formatClock, formatWhen } from "./lib/transcript";
+import { speakerColor } from "./lib/playback";
 import { Icon } from "./ui";
 import "./people.css";
 
@@ -90,22 +91,103 @@ export function PeopleCard({
 
       {canAnalyze && <AnalyzeControls analyze={analyze} again={!!insights} busy={busy} />}
 
-      {people.length > 0 && (
-        <ul className="people-list">
-          {people.map((p) => (
-            <Person
-              key={p.label}
-              name={displayName(p.label)}
-              label={p.label}
-              stats={p.stats}
-              insight={p.insight}
-              actions={(actions ?? []).filter((a) => assignedTo(a.assignee, displayName(p.label), p.label))}
-              onSeek={onSeek}
-            />
-          ))}
-        </ul>
-      )}
+      {people.length > 0 && <PeopleTabs people={people} stats={stats} actions={actions} displayName={displayName} onSeek={onSeek} />}
     </section>
+  );
+}
+
+type Row = { label: string; stats: SpeakerStats | null; insight: PersonInsight | null };
+
+/**
+ * One person at a time: a tab per person (their colour and name), back and
+ * next, and the chosen person's panel sliding in from the side it came from.
+ * Every panel stays in the page (the others `hidden`), so search and tests
+ * find each person's words.
+ */
+function PeopleTabs({
+  people,
+  stats,
+  actions,
+  displayName,
+  onSeek,
+}: {
+  people: Row[];
+  stats: TalkStats;
+  actions: ActionView[] | null;
+  displayName: (label: string) => string;
+  onSeek?: (ms: number) => void;
+}) {
+  const [at, setAt] = useState(0);
+  const [dir, setDir] = useState<1 | -1>(1);
+  const current = Math.min(at, people.length - 1);
+  const go = (i: number) => {
+    const next = (i + people.length) % people.length;
+    setDir(next >= current ? 1 : -1);
+    setAt(next);
+  };
+  const colorOf = (label: string) => {
+    const i = stats.speakers.findIndex((s) => s.label === label);
+    return speakerColor(i < 0 ? 7 : i);
+  };
+  return (
+    <div className="people-tabs">
+      <div className="ptabs-bar">
+        <div className="ptabs" role="tablist" aria-label="People">
+          {people.map((p, i) => (
+            <button
+              key={p.label}
+              type="button"
+              role="tab"
+              id={`ptab-${i}`}
+              aria-selected={i === current}
+              aria-controls={`ppanel-${i}`}
+              tabIndex={i === current ? 0 : -1}
+              className={i === current ? "ptab active" : "ptab"}
+              style={{ "--spk": colorOf(p.label) } as CSSProperties}
+              onClick={() => go(i)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowRight") go(current + 1);
+                if (e.key === "ArrowLeft") go(current - 1);
+              }}
+            >
+              <span className="ptab-dot" aria-hidden="true" />
+              <span className="ptab-name">{displayName(p.label)}</span>
+              {p.stats && <span className="ptab-share">{formatShare(p.stats.share)}</span>}
+            </button>
+          ))}
+        </div>
+        {people.length > 1 && (
+          <div className="ptabs-nav">
+            <button type="button" className="icon-btn" aria-label="Previous person" onClick={() => go(current - 1)}>
+              <Icon name="left" size={14} />
+            </button>
+            <span className="ptabs-count" aria-hidden="true">
+              {current + 1}/{people.length}
+            </span>
+            <button type="button" className="icon-btn" aria-label="Next person" onClick={() => go(current + 1)}>
+              <Icon name="right" size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+      <ul className="people-list">
+        {people.map((p, i) => (
+          <Person
+            key={p.label}
+            index={i}
+            active={i === current}
+            dir={dir}
+            color={colorOf(p.label)}
+            name={displayName(p.label)}
+            label={p.label}
+            stats={p.stats}
+            insight={p.insight}
+            actions={(actions ?? []).filter((a) => assignedTo(a.assignee, displayName(p.label), p.label))}
+            onSeek={onSeek}
+          />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -159,6 +241,10 @@ function AnalyzeControls({ analyze, again, busy }: { analyze: Analyze; again: bo
 }
 
 function Person({
+  index,
+  active,
+  dir,
+  color,
   name,
   label,
   stats,
@@ -166,6 +252,10 @@ function Person({
   actions,
   onSeek,
 }: {
+  index: number;
+  active: boolean;
+  dir: 1 | -1;
+  color: string;
   name: string;
   label: string;
   stats: SpeakerStats | null;
@@ -177,7 +267,15 @@ function Person({
   const emotions = (insight?.emotions ?? []).filter((e) => e.label !== "neutral").slice(0, 3);
   const initial = (name.trim()[0] ?? "?").toUpperCase();
   return (
-    <li className="person" data-testid="person">
+    <li
+      className={`person ${dir === 1 ? "from-right" : "from-left"}`}
+      data-testid="person"
+      role="tabpanel"
+      id={`ppanel-${index}`}
+      aria-labelledby={`ptab-${index}`}
+      hidden={!active}
+      style={{ "--spk": color } as CSSProperties}
+    >
       <div className="person-head">
         <span className="person-avatar" aria-hidden="true">
           {initial}
@@ -203,8 +301,8 @@ function Person({
 
       {emotions.length > 0 && (
         <ul className="emotion-bars" aria-label={`${name}'s strongest emotions`}>
-          {emotions.map((e) => (
-            <li key={e.label}>
+          {emotions.map((e, k) => (
+            <li key={e.label} style={{ "--k": k } as CSSProperties}>
               <span className="emotion-label">{e.label}</span>
               <span className="emotion-track" aria-hidden="true">
                 <span className={`emotion-fill tone-${(Object.hasOwn(TONE_GROUPS, e.label) && TONE_GROUPS[e.label]) || "neutral"}`} style={{ width: `${Math.max(4, e.share / 10)}%` }} />
@@ -215,6 +313,7 @@ function Person({
         </ul>
       )}
 
+      <div className="person-grid">
       {insight && insight.keyPoints.length > 0 && (
         <div className="person-section">
           <h3>Key points</h3>
@@ -239,6 +338,7 @@ function Person({
           </ul>
         </div>
       )}
+      </div>
 
       {stats && onSeek && (
         <button type="button" className="btn small ghost person-jump" onClick={() => onSeek(stats.firstMs)}>

@@ -1,0 +1,230 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Loading shapes, the meeting page's entrance and its small touches of
+   colour. Tokens from index.css; motion off for reduced-motion.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.visually-hidden-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── skeletons ── */
+.bone {
+  display: block;
+  flex: none;
+  max-width: 100%;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--border) 75%, var(--sunken)) 0%,
+    color-mix(in srgb, var(--border-strong) 55%, var(--surface)) 40%,
+    color-mix(in srgb, var(--border) 75%, var(--sunken)) 80%
+  );
+  background-size: 300% 100%;
+  animation: bone-shimmer 1.4s ease-in-out infinite;
+}
+.bone.round {
+  border-radius: 999px;
+}
+@keyframes bone-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.skel-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.skel-stack.grow {
+  flex: 1;
+}
+.skel-head {
+  display: grid;
+  gap: 16px;
+}
+.skel-head-main {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.skel-player {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.skel-lines,
+.skel-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.skel-lines li,
+.skel-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  animation: skel-in 0.4s var(--ease-out) both;
+}
+.skel-lines li > .bone:last-child {
+  flex: 1 1 auto;
+}
+@keyframes skel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ── the meeting arrives ── */
+.meeting-page > * {
+  animation: meeting-in 0.45s var(--ease-out) both;
+}
+.meeting-page > *:nth-child(2) {
+  animation-delay: 50ms;
+}
+.meeting-page > *:nth-child(3) {
+  animation-delay: 100ms;
+}
+.meeting-page > *:nth-child(n + 4) {
+  animation-delay: 150ms;
+}
+@keyframes meeting-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.meetings > * {
+  animation: meeting-in 0.4s var(--ease-out) both;
+}
+
+/* ── a touch of colour in the header ── */
+.meeting-head {
+  position: relative;
+  overflow: hidden;
+}
+.meeting-head::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--coral), color-mix(in srgb, var(--coral) 30%, #f2a20c), #3d7dff);
+  opacity: 0.85;
+}
+.meeting-stats.inline > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.meeting-stats.inline > span:nth-child(1) svg {
+  color: #3d7dff;
+}
+.meeting-stats.inline > span:nth-child(2) svg {
+  color: #f2a20c;
+}
+.meeting-stats.inline > span:nth-child(3) svg {
+  color: var(--coral);
+}
+
+/* ── the player while its recording loads ── */
+.player.is-loading .player-scrub,
+.player.is-loading .player-lanes {
+  position: relative;
+  overflow: hidden;
+}
+.player.is-loading .player-scrub::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--coral) 22%, transparent), transparent);
+  animation: player-sweep 1.3s ease-in-out infinite;
+}
+@keyframes player-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.player-play {
+  transition: transform 0.15s var(--ease-out), box-shadow 0.2s ease-out;
+}
+.player-play:hover:not(:disabled) {
+  transform: scale(1.06);
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--coral) 60%, transparent);
+}
+
+/* ── busy buttons ── */
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: btn-spin 0.7s linear infinite;
+}
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bone,
+  .skel-lines li,
+  .skel-list li,
+  .meeting-page > *,
+  .meetings > *,
+  .player.is-loading .player-scrub::after,
+  .btn-spinner {
+    animation: none !important;
+  }
+}
+
+/* ── action items and transcript row tools: clear in both themes ──
+   `button.danger` (the red fill) must not reach these icon buttons. */
+.row-tools .icon-btn,
+.row-tools .icon-btn.danger {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.row-tools .icon-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.row-tools .icon-btn.danger:hover:not(:disabled),
+.row-tools .icon-btn.danger:focus-visible {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+
+/* The page's one column is the screen's width: a wide child (a long word, a
+   table) scrolls or wraps inside its card instead of widening every card. */
+.meeting-page {
+  grid-template-columns: minmax(0, 1fr);
+}
+.meeting-page > * {
+  min-width: 0;
+}

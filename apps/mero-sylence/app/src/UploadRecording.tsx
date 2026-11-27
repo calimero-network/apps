@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { describeDevice, describeModel, detectDevice, uploadPlan, type DeviceInfo } from "./lib/device";
 import { Upload } from "@calimero-network/mero-icons";
 import { LANGUAGES } from "../../extension/src/lib/tiers";
 import { findActions } from "../../extension/src/lib/actionItems";
@@ -65,15 +66,6 @@ function overall(run: Run): number {
   return done;
 }
 
-async function hasWebGpu(): Promise<boolean> {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-  if (!gpu) return false;
-  try {
-    return (await gpu.requestAdapter()) != null;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Upload a recording: it is decoded and transcribed on this laptop, its
@@ -91,6 +83,7 @@ export function UploadRecording({
   createWorker = defaultSpeechWorker,
   decode = decodeTo16kMono,
   probe = probeDuration,
+  detect = detectDevice,
 }: {
   workspace: Pick<Workspace, "act" | "blobs">;
   /** The meeting is saved; `note` says what did not go as asked (the audio not kept). */
@@ -99,11 +92,31 @@ export function UploadRecording({
   createWorker?: SpeechWorkerFactory;
   decode?: typeof decodeTo16kMono;
   probe?: typeof probeDuration;
+  /** What this device can run (lib/device.ts). */
+  detect?: () => Promise<DeviceInfo>;
 }) {
   const ref = useRef<HTMLDialogElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState("en");
   const [keepAudio, setKeepAudio] = useState(true);
+  /** This device, read once the dialog opens; `null` while it is read. */
+  const [device, setDevice] = useState<DeviceInfo | null>(null);
+  /** The person asked for the big model (offered only where it fits). */
+  const [wantBest, setWantBest] = useState(false);
+  const plan = device ? uploadPlan(device, wantBest) : null;
+  /** The device check, started when the dialog opens; a run started before it ends waits for it. */
+  const deviceCheck = useRef<Promise<DeviceInfo> | null>(null);
+  useEffect(() => {
+    let live = true;
+    // Unknown: the small model, which any desktop runs.
+    const unknown: DeviceInfo = { webgpu: false, maxBufferSize: 0, memoryGb: 0, cores: 0, chromeOS: false, mobile: false, gpu: null, cached: [] };
+    const check = detect().catch(() => unknown);
+    deviceCheck.current = check;
+    void check.then((d) => live && setDevice(d));
+    return () => {
+      live = false;
+    };
+  }, [detect]);
   const [dragging, setDragging] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,8 +223,10 @@ export function UploadRecording({
       if (durationMs > MAX_DURATION_MS) throw new Error("Recordings up to 3 hours can be uploaded.");
       if (durationMs < 1_000) throw new Error("This recording is shorter than a second.");
       step("load");
-      const webgpu = await hasWebGpu();
-      step("load");
+      const checked = device ?? (await deviceCheck.current);
+      const runPlan = checked ? uploadPlan(checked, wantBest) : null;
+      if (!runPlan || !runPlan.ok) throw new Error(runPlan && !runPlan.ok ? runPlan.reason : "This device could not be checked.");
+      const tier = runPlan.tier;
 
       const { chunks, turns, modelId } = await new Promise<{
         chunks: Extract<FromSpeech, { type: "done" }>["chunks"];
@@ -236,7 +251,7 @@ export function UploadRecording({
           else reject(new Error(m.error));
         };
         w.onerror = (e) => reject(new Error(e.message || "the speech model stopped"));
-        const msg: ToSpeech = { type: "run", audio, language, webgpu };
+        const msg: ToSpeech = { type: "run", audio, language, tier };
         // The rendered buffer is the page's own: it moves to the worker, no copy.
         w.postMessage(msg, [audio.buffer]);
       });
@@ -408,6 +423,38 @@ export function UploadRecording({
                 onChange={(e) => setKeepAudio(e.target.checked)}
               />
             </label>
+            <div className={`upload-device${plan && !plan.ok ? " blocked" : ""}`} data-testid="upload-device">
+              <span className="upload-device-icon" aria-hidden="true">
+                <Icon name={plan && !plan.ok ? "x" : "sparkle"} size={14} />
+              </span>
+              <span className="upload-device-text">
+                {!device || !plan ? (
+                  <span className="dim">Checking this device…</span>
+                ) : !plan.ok ? (
+                  <>
+                    <span className="upload-check-label">This device can&apos;t transcribe recordings</span>
+                    <span className="dim">{plan.reason}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="upload-check-label">{describeModel(plan.tier, device)}</span>
+                    <span className="dim">
+                      {describeDevice(device)}
+                      {plan.slow ? " · this may take a few minutes per hour of audio" : ""}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+            {plan?.ok && plan.canBest && !device?.cached.includes("best") && (
+              <label className="upload-check">
+                <span>
+                  <span className="upload-check-label">Use the most accurate model</span>
+                  <span className="dim">Whisper large-v3 turbo on the graphics chip: a one-time 1.5 GB download.</span>
+                </span>
+                <input type="checkbox" role="switch" className="switch" checked={wantBest} onChange={(e) => setWantBest(e.target.checked)} />
+              </label>
+            )}
             </div>
           </>
         )}
@@ -485,7 +532,13 @@ export function UploadRecording({
                   Open the meeting
                 </button>
               ) : (
-                <button type="button" className="btn primary" disabled={!file} onClick={() => void start()} data-testid="upload-start">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!file || (plan !== null && !plan.ok)}
+                  onClick={() => void start()}
+                  data-testid="upload-start"
+                >
                   <Upload size={16} aria-hidden="true" /> Transcribe
                 </button>
               )}

@@ -90,7 +90,7 @@ export function Player({
 
   const ready = !!src && !problem;
   return (
-    <section className="card player" aria-label="Recording">
+    <section className={`card player${loading ? " is-loading" : ""}`} aria-label="Recording" aria-busy={loading || undefined}>
       {src && <audio {...bind} src={src} preload="metadata" />}
       <div className="player-row">
         <button
@@ -165,7 +165,7 @@ export function Player({
           ))}
         </ul>
       )}
-      {loading && <p className="player-note dim">Loading the recording…</p>}
+      {loading && <p className="player-note dim loading-note">Loading the recording…</p>}
       {problem && (
         <p className="player-note err" role="alert">
           {error ? `The recording did not load: ${error}` : problem}

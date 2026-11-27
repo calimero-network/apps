@@ -5,6 +5,7 @@ import type { Workspace } from "./useWorkspace";
 import { PersonName } from "./names";
 import { formatClock } from "./lib/transcript";
 import { Icon } from "./ui";
+import "./polish.css";
 
 /**
  * A meeting's action items: anyone in the workspace adds, ticks and edits

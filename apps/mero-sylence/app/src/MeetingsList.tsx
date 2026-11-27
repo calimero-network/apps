@@ -7,6 +7,7 @@ import { PlatformMark } from "./PlatformMark";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
 import "./playback.css";
+import { MeetingsSkeleton } from "./Skeletons";
 
 /** How long typing pauses before the transcripts are searched. */
 export const SEARCH_DELAY_MS = 250;
@@ -36,13 +37,7 @@ export function MeetingsList({
   const searching = queryWords(query).length > 0;
 
   if (error && !meetings) return <pre className="err">{error}</pre>;
-  if (!meetings) {
-    return (
-      <section className="card" aria-busy="true">
-        <p className="empty">Loading meetings…</p>
-      </section>
-    );
-  }
+  if (!meetings) return <MeetingsSkeleton />;
   if (meetings.length === 0) return <GetTheExtension onUpload={onUpload} />;
 
   return (

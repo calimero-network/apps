@@ -110,10 +110,28 @@ describe("PeopleCard", () => {
     expect(screen.getByText(/recorder can analyze/)).toBeTruthy();
   });
 
+  it("shows one person at a time and moves between them by tab and arrows", () => {
+    render(<PeopleCard insights={insights} stats={stats} actions={[action]} displayName={names} canAnalyze analyze={analyze()} />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual([expect.stringContaining("Eve"), expect.stringContaining("Speaker 2")]);
+    const [eve, other] = screen.getAllByTestId("person");
+    expect(eve!.hidden).toBe(false);
+    expect(other!.hidden).toBe(true);
+    fireEvent.click(tabs[1]!);
+    expect(eve!.hidden).toBe(true);
+    expect(other!.hidden).toBe(false);
+    expect(tabs[1]!.getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Next person" }));
+    expect(eve!.hidden).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Previous person" }));
+    expect(other!.hidden).toBe(false);
+  });
+
   it("jumps to where a person first spoke", () => {
     const onSeek = vi.fn();
     render(<PeopleCard insights={null} stats={stats} actions={[]} displayName={names} canAnalyze={false} analyze={analyze()} onSeek={onSeek} />);
-    fireEvent.click(screen.getAllByRole("button", { name: /First spoke at/ })[1]!);
+    fireEvent.click(screen.getAllByRole("tab")[1]!);
+    fireEvent.click(screen.getByRole("button", { name: /First spoke at/ }));
     expect(onSeek).toHaveBeenCalledWith(6_000);
   });
 });
