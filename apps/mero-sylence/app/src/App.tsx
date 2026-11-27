@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ManageInHomeLink, NativeApproval } from "@calimero-apps/passkey";
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 
@@ -530,6 +530,8 @@ function WorkspaceView({
   );
 }
 
+const THEMES = ["system", "light", "dark"] as const;
+
 /** Your avatar in the top bar: your name, theme, switch workspace, log out. */
 function Menu({
   me,
@@ -610,10 +612,18 @@ function Menu({
           )}
           <div className="menu-section">
             <span className="menu-label">Theme</span>
-            <div className="segmented" role="radiogroup" aria-label="theme">
-              {(["system", "light", "dark"] as const).map((t) => (
+            <div
+              className="theme-switch"
+              role="radiogroup"
+              aria-label="theme"
+              style={{ "--at": THEMES.indexOf(theme) } as CSSProperties}
+            >
+              <span className="theme-thumb" aria-hidden="true" />
+              {THEMES.map((t) => (
                 <button key={t} role="radio" aria-checked={theme === t} className={theme === t ? "active" : ""} onClick={() => setTheme(t)}>
-                  {t === "light" ? <Icon name="sun" size={14} /> : t === "dark" ? <Icon name="moon" size={14} /> : null}
+                  <span className={`theme-icon ${t}`}>
+                    <Icon name={t === "light" ? "sun" : t === "dark" ? "moon" : "monitor"} size={14} />
+                  </span>
                   {t[0]!.toUpperCase() + t.slice(1)}
                 </button>
               ))}

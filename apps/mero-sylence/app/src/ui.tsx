@@ -124,6 +124,12 @@ const paths: Record<string, ReactNode> = {
       <path d="M2.75 14a5.25 5.25 0 0 1 10.5 0" />
     </>
   ),
+  monitor: (
+    <>
+      <rect x="1.75" y="2.5" width="12.5" height="8.5" rx="1.5" />
+      <path d="M5.5 14h5M8 11v3" />
+    </>
+  ),
   home: <path d="M2.5 7 8 2.5 13.5 7v6.5h-3.5v-4H6v4H2.5V7Z" />,
   logout: <path d="M6 2.5H3.5v11H6M10.5 5l3 3-3 3M13.5 8H6.5" />,
   link: <path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2A3 3 0 0 0 7 13.2l.8-.8" />,

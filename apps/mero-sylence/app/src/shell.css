@@ -623,3 +623,109 @@
   line-height: 1.5;
   min-height: 0;
 }
+
+/* ── the theme switch: a sliding thumb under three equal options ── */
+.menu-section .theme-switch {
+  margin: 2px 4px 6px;
+}
+.theme-switch {
+  --at: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--sunken);
+  box-shadow: inset 0 0 0 1px var(--border);
+  isolation: isolate;
+}
+.theme-thumb {
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 19, 0.1),
+    0 0 0 1px var(--border);
+  transform: translateX(calc(var(--at) * 100%));
+  transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.theme-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.2s ease-out;
+}
+.theme-switch button:hover:not(:disabled) {
+  background: none;
+  color: var(--text);
+}
+.theme-switch button.active {
+  color: var(--text);
+}
+.theme-icon {
+  display: inline-grid;
+  place-items: center;
+}
+.theme-switch button.active .theme-icon.light {
+  animation: theme-spin 0.6s var(--ease-out);
+}
+.theme-switch button.active .theme-icon.dark {
+  animation: theme-swing 0.6s var(--ease-out);
+}
+.theme-switch button.active .theme-icon.system {
+  animation: theme-pop 0.45s var(--ease-out);
+}
+@keyframes theme-spin {
+  from {
+    transform: rotate(-120deg) scale(0.6);
+  }
+}
+@keyframes theme-swing {
+  0% {
+    transform: rotate(40deg) scale(0.6);
+  }
+  60% {
+    transform: rotate(-12deg) scale(1.05);
+  }
+}
+@keyframes theme-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-thumb,
+  .theme-switch button.active .theme-icon {
+    transition: none;
+    animation: none;
+  }
+}
+/* Dark: the thumb lifts off the track with a lighter tone, not the near-black surface. */
+:root[data-theme="dark"] .theme-thumb {
+  background: color-mix(in srgb, var(--text) 16%, var(--sunken));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .theme-thumb {
+    background: color-mix(in srgb, var(--text) 16%, var(--sunken));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
