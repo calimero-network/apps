@@ -1741,3 +1741,54 @@ input[type="checkbox"].switch:focus-visible {
 .actions-card .card-head .actions-find {
   margin-left: auto;
 }
+
+/* Tell voices apart: an offer above the transcript, then its progress */
+.voices-offer,
+.voices-run {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-lg);
+  border: 1px dashed var(--border-strong);
+  background: color-mix(in srgb, var(--coral) 5%, var(--surface));
+  flex-wrap: wrap;
+}
+.voices-offer .grow {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.voices-offer .small {
+  margin: 0;
+}
+.voices-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.voices-bar {
+  flex: 1 1 140px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.voices-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  transition: width 0.3s var(--ease-out);
+}
+.voices-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+}

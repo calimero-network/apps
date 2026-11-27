@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Trash } from "@calimero-network/mero-icons";
 import { AssigneeChip, useMemberNames } from "./Assignee";
-import { assignables, assigneeColor, assigneeInitials, callSpeakers, sameName, type Assignable } from "./lib/assignee";
+import { assignables, assigneeColor, assigneeInitials, callSpeakers, sameName, speakersOf, type Assignable } from "./lib/assignee";
 import { displayName } from "./lib/people";
 import { useSpaceNames } from "./names";
 import { PlatformMark } from "./PlatformMark";
@@ -53,6 +53,11 @@ export function OpenActions({ workspace, onOpen }: { workspace: Workspace; onOpe
           })
         }
         onOpen={onOpen}
+        loadSpeakers={async (meetingId) => {
+          const c = workspace.client;
+          if (!c) return [];
+          return speakersOf((await c.transcript({ meetingId, fromSeq: 0, limit: 500 })).segments);
+        }}
       />
     </>
   );
@@ -95,6 +100,11 @@ type Handlers = {
   onEdit?: (a: ActionView, text: string) => void;
   onRemove?: (a: ActionView) => void;
   onOpen: (meetingId: string) => void;
+  /**
+   * Who spoke in a call, read from its transcript: for a meeting saved before it
+   * kept its own list. Asked once per call, only when its picker opens.
+   */
+  loadSpeakers?: (meetingId: string) => Promise<{ speaker: string; name: string }[]>;
 };
 
 export function OpenActionsList({
@@ -137,11 +147,28 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
   const [view, setView] = useState<"call" | "person">("call");
   const memberNames = useMemberNames();
   const { nameOf } = useSpaceNames();
-  /** Per call: who spoke in it (saved with the meeting), then the workspace's members. */
+  /** Speakers read from transcripts, for meetings that keep no list of their own. */
+  const [read, setRead] = useState<ReadonlyMap<string, { speaker: string; name: string }[]>>(new Map());
+  const asked = useRef(new Set<string>());
+  const { loadSpeakers } = handlers;
+  const need = useCallback(
+    (meetingId: string) => {
+      const g = groups.find((x) => x.id === meetingId);
+      if (!loadSpeakers || !g?.meeting || g.meeting.speakers?.length || asked.current.has(meetingId)) return;
+      asked.current.add(meetingId);
+      loadSpeakers(meetingId)
+        .then((list) => setRead((m) => new Map(m).set(meetingId, list)))
+        // Asked again next time the picker opens.
+        .catch(() => asked.current.delete(meetingId));
+    },
+    [groups, loadSpeakers],
+  );
+  /** Per call: who spoke in it (saved with the meeting, or read from its lines), then the workspace's members. */
   const peopleOf = useMemo(() => {
     const byMeeting = new Map<string, Assignable[]>();
     for (const g of groups) {
-      const spoke = g.meeting ? callSpeakers(g.meeting, displayName(g.meeting.recorder, null, nameOf(g.meeting.recorder))) : [];
+      const meeting = g.meeting && !g.meeting.speakers?.length && read.has(g.id) ? { ...g.meeting, speakers: read.get(g.id)! } : g.meeting;
+      const spoke = meeting ? callSpeakers(meeting, displayName(meeting.recorder, null, nameOf(meeting.recorder))) : [];
       byMeeting.set(
         g.id,
         assignables(
@@ -151,7 +178,7 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
       );
     }
     return (meetingId: string) => byMeeting.get(meetingId) ?? assignables([], memberNames);
-  }, [groups, memberNames, nameOf]);
+  }, [groups, memberNames, nameOf, read]);
   const people = useMemo(() => assignables([], memberNames), [memberNames]);
   const [open, setOpen] = useState<Set<string>>(
     () => new Set(groups.slice(0, groups.length <= OPEN_AT_START ? groups.length : 2).map((g) => g.id)),
@@ -186,7 +213,7 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
         )}
       </div>
       {view === "person" ? (
-        <ByPerson groups={groups} people={people} peopleOf={peopleOf} {...handlers} />
+        <ByPerson groups={groups} people={people} peopleOf={peopleOf} need={need} {...handlers} />
       ) : (
         groups.map((g) => {
           const title = g.meeting?.title || "Meeting";
@@ -220,7 +247,7 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
               </summary>
               <ul className="action-list">
                 {g.items.map((a) => (
-                  <OpenRow key={a.id} action={a} people={peopleOf(g.id)} {...handlers}>
+                  <OpenRow key={a.id} action={a} people={peopleOf(g.id)} onPicker={() => need(g.id)} {...handlers}>
                     <span className="dim">
                       added by <PersonName account={a.createdBy} />
                     </span>
@@ -243,8 +270,9 @@ function OpenRow({
   onAssign,
   onEdit,
   onRemove,
+  onPicker,
   children,
-}: { action: ActionView; people: readonly Assignable[]; children?: React.ReactNode } & Handlers) {
+}: { action: ActionView; people: readonly Assignable[]; onPicker?: () => void; children?: React.ReactNode } & Handlers) {
   const [draft, setDraft] = useState<string | null>(null);
   if (draft !== null) {
     return (
@@ -283,7 +311,13 @@ function OpenRow({
         <span className="action-text">{a.text}</span>
       </label>
       <span className="action-meta">
-        <AssigneeChip name={a.assignee} people={people} label={a.text} onAssign={onAssign && !a.done ? (who) => onAssign(a, who) : undefined} />
+        <AssigneeChip
+          name={a.assignee}
+          people={people}
+          label={a.text}
+          onOpen={onPicker}
+          onAssign={onAssign && !a.done ? (who) => onAssign(a, who) : undefined}
+        />
         {children}
       </span>
       {(onEdit || onRemove) && (
@@ -309,8 +343,14 @@ function ByPerson({
   groups,
   people,
   peopleOf,
+  need,
   ...handlers
-}: { groups: Group[]; people: readonly Assignable[]; peopleOf: (meetingId: string) => Assignable[] } & Handlers) {
+}: {
+  groups: Group[];
+  people: readonly Assignable[];
+  peopleOf: (meetingId: string) => Assignable[];
+  need: (meetingId: string) => void;
+} & Handlers) {
   const byPerson = useMemo(() => {
     const out: { name: string; items: { action: ActionView; meeting: Group["meeting"] }[] }[] = [];
     for (const g of groups) {
@@ -345,7 +385,7 @@ function ByPerson({
           </summary>
           <ul className="action-list">
             {p.items.map(({ action: a, meeting }) => (
-              <OpenRow key={a.id} action={a} people={peopleOf(a.meetingId)} {...handlers}>
+              <OpenRow key={a.id} action={a} people={peopleOf(a.meetingId)} onPicker={() => need(a.meetingId)} {...handlers}>
                 <button type="button" className="oa-call" onClick={() => handlers.onOpen(a.meetingId)} title="Open the call">
                   <Icon name="mic" size={12} /> {meeting?.title || "Meeting"}
                 </button>

@@ -42,7 +42,7 @@ export function App() {
             <div>
               <h1 className="title">Let Sylence hear you</h1>
               <p className="subtitle">
-                Sylence transcribes your microphone as “You”, on this laptop, and saves the text to your workspace. Your browser will
+                Sylence transcribes your microphone as “You”, on this laptop, and saves the transcript and recording to your workspace. Your browser will
                 ask once.
               </p>
             </div>

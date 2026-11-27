@@ -51,15 +51,28 @@ describe("popup", () => {
   it("signed out: offers sign-in and asks the service worker", async () => {
     render(<App />);
     const button = await screen.findByRole("button", { name: "Sign in with Calimero" });
-    expect(screen.getByText(/sealed so only your team can read it/)).toBeTruthy();
+    expect(screen.getByText(/sealed so only your team can read/)).toBeTruthy();
     fireEvent.click(button);
     await waitFor(() => expect(types()).toContain("signIn"));
   });
 
-  it("signed out: offers to create an account, which asks the page to lead with sign-up", async () => {
+  it("signed out: creating an account is filled in here; the window only asks for the passkey", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Create an account" }));
-    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "signIn", intent: "signup" }));
+    const create = screen.getByRole("button", { name: "Create account" });
+    // A first workspace is needed: recording goes somewhere.
+    expect(create).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Eve" } });
+    fireEvent.change(screen.getByLabelText("Your first workspace"), { target: { value: "Launch team" } });
+    fireEvent.change(screen.getByLabelText(/Label your passkey/), { target: { value: "Work laptop" } });
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(chrome.sent).toContainEqual({
+        type: "signIn",
+        intent: "signup",
+        account: { name: "Eve", label: "Work laptop", ws: "Launch team" },
+      }),
+    );
   });
 
   it("shows a sign-in failure", async () => {
@@ -400,5 +413,18 @@ describe("popup", () => {
     expect(screen.getByRole("button", { name: "Record meeting" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: /Mic on/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Record meeting" })).toHaveProperty("disabled", false));
+  });
+
+  it("deletes a workspace only once its name is typed back", async () => {
+    chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
+    chrome.onSend = (m) =>
+      (m as { type: string }).type === "listWorkspaces" ? { ok: true, value: [{ appId: "a2", name: "Sales" }] } : { ok: true, value: null };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Sales" }));
+    const del = screen.getByRole("button", { name: "Delete workspace" });
+    expect(del).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText(/to confirm/), { target: { value: "Sales" } });
+    fireEvent.click(del);
+    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "deleteWorkspace", appId: "a2" }));
   });
 });

@@ -5,7 +5,8 @@ import { write } from "../../lib/storage";
 import { TIERS, resolveTier } from "../../lib/tiers";
 import { sizeLabel } from "../../lib/format";
 import { useCaps, useMicAllowed, type ActiveTab } from "../hooks";
-import { AlertIcon, ChevronRightIcon, ChipIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
+import { AlertIcon, ChevronRightIcon, ChipIcon, ExternalIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
+import { workspaceLink } from "../../lib/appHost";
 import { ask } from "../rpc";
 import { ModelSheet } from "./ModelSheet";
 
@@ -147,16 +148,27 @@ export function Ready({
       )}
 
       <div className="stack" style={{ marginTop: "auto", gap: 12 }}>
-        <button className="row card" style={{ padding: "8px 12px" }} onClick={onWorkspaces} aria-label="Change workspace">
-          <span className="grow">
-            <span className="label">Saving to</span>
-            <span className="name">{auth.workspace?.name}</span>
-          </span>
-          <ChevronRightIcon size={16} className="chev" />
-        </button>
+        <div className="hstack" style={{ gap: 8 }}>
+          <button className="row card grow" style={{ padding: "8px 12px" }} onClick={onWorkspaces} aria-label="Change workspace">
+            <span className="grow">
+              <span className="label">Saving to</span>
+              <span className="name">{auth.workspace?.name}</span>
+            </span>
+            <ChevronRightIcon size={16} className="chev" />
+          </button>
+          {auth.page && (
+            <button
+              className="btn open-web"
+              title="Open this workspace in the Sylence web app (you sign in there separately)"
+              onClick={() => void chrome.tabs.create({ url: workspaceLink(auth.page!, auth.workspace?.appId) })}
+            >
+              <ExternalIcon size={14} /> Web app
+            </button>
+          )}
+        </div>
         <p className="foot">
           <LockIcon size={13} />
-          <span>Transcribed on this laptop · sealed in your workspace</span>
+          <span>Transcript and recording sealed in your workspace</span>
         </p>
       </div>
     </main>

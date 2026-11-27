@@ -35,6 +35,9 @@ class FakeNode {
   signedOut = false;
   actions: Array<{ meetingId: string; text: string; assignee: string; sourceSeq: number }> = [];
   apps: Array<{ appId: string; name: string; package: string }> = [{ appId: "app1", name: "Team", package: "com.calimero.sylence" }];
+  /** Recordings uploaded as blobs, and the ones attached to meetings. */
+  blobs: Array<{ app: string; size: number; contentType: string }> = [];
+  attached: Array<{ meetingId: string; blob: string; mime: string; durationMs: number }> = [];
   private n = 0;
 
   private gate(): void {
@@ -100,6 +103,10 @@ class FakeNode {
         this.actions.push(a);
         return `a${this.actions.length}`;
       },
+      attachAudio: async (a: { meetingId: string; blob: string; mime: string; durationMs: number }) => {
+        this.attached.push(a);
+        return {};
+      },
       deleteMeeting: async (a: { meetingId: string }) => {
         this.deleted.push(a.meetingId);
         this.meetings.delete(a.meetingId);
@@ -131,13 +138,34 @@ vi.mock("../lib/session", () => ({
       throw new Error("offline");
     }
     const client = {
-      apps: { list: async () => ({ apps: node.apps }) },
+      apps: {
+        list: async () => ({ apps: node.apps }),
+        delete: async (a: { app: string }) => {
+          node.apps = node.apps.filter((x) => x.appId !== a.app);
+          return { appId: a.app, deleted: true };
+        },
+        blobUpload: async (a: { app: string; body: Uint8Array; contentType: string }) => {
+          node.blobs.push({ app: a.app, size: a.body.byteLength, contentType: a.contentType });
+          return { id: `BLOB${node.blobs.length}`, size: a.body.byteLength };
+        },
+      },
       orgs: { get: async () => ({ memberMetadata: node.names }) },
     };
     return work(client, node.app(auth.workspace?.appId ?? ""));
   },
   isSignedOut: (e: unknown) => e instanceof LoginRequired,
   describe: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+}));
+
+/** The call's recording the offscreen page kept, as the service worker will take it. */
+const callAudio = { current: null as { blob: Blob; mime: string; durationMs: number } | null };
+vi.mock("../lib/callAudio", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  takeCallAudio: async () => {
+    const a = callAudio.current;
+    callAudio.current = null;
+    return a;
+  },
 }));
 
 // ── a fake chrome ────────────────────────────────────────────────────────────
@@ -403,6 +431,46 @@ describe("service worker: a recording", () => {
     const takenAt = order.findIndex((l) => l.startsWith("tab stream id taken"));
     expect(startAt).toBeGreaterThanOrEqual(0);
     expect(takenAt).toBeGreaterThan(startAt);
+  });
+});
+
+describe("service worker: the call's recording", () => {
+  const recordAndStop = async () => {
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    await event(segment("others", 0, "Good morning everyone"));
+    await request({ type: "stop" });
+    await event({ type: "drained", durationMs: 61_000 });
+  };
+
+  it("is saved with the meeting for playback, as an uploaded recording is", async () => {
+    callAudio.current = { blob: new Blob([new Uint8Array(4_000)], { type: "audio/webm" }), mime: "audio/webm", durationMs: 60_500 };
+    await recordAndStop();
+    expect(node.blobs).toEqual([{ app: "app1", size: 4_000, contentType: "audio/webm" }]);
+    expect(node.attached).toEqual([{ meetingId: "m1", blob: "blob1", mime: "audio/webm", durationMs: 60_500 }]);
+    expect(status().audio).toEqual({ kept: true });
+  });
+
+  it("leaves the meeting without audio, and says why, when there is none or it is too large", async () => {
+    await recordAndStop();
+    expect(node.attached).toEqual([]);
+    expect(status().audio).toEqual({ kept: false, why: "No audio was recorded." });
+
+    await boot();
+    callAudio.current = { blob: new Blob([new Uint8Array(1)]), mime: "audio/webm", durationMs: 1 };
+    Object.defineProperty(callAudio.current.blob, "size", { value: 60 * 1024 * 1024 });
+    await recordAndStop();
+    expect(node.blobs).toEqual([]);
+    expect(status().audio).toMatchObject({ kept: false, why: expect.stringMatching(/longer than one workspace file holds/) });
+  });
+});
+
+describe("service worker: workspaces", () => {
+  it("deletes a workspace, and forgets it when it was the one chosen", async () => {
+    const r = await request({ type: "deleteWorkspace", appId: "app1" });
+    expect(r).toEqual({ ok: true, value: null });
+    expect(node.apps.map((x) => x.appId)).not.toContain("app1");
+    expect((h.local.get("sylence:auth") as AuthState).workspace).toBeNull();
   });
 });
 

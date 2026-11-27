@@ -28,6 +28,7 @@ import { Icon } from "./ui";
 import { talkStats } from "./lib/stats";
 import { speakerColor, speakerLanes } from "./lib/playback";
 import { AssigneePicker, useMemberNames } from "./Assignee";
+import { TellVoices } from "./TellVoices";
 import { inPopover, Popover } from "./Popover";
 import { usePresence } from "./usePresence";
 import { assignables, type Assignable } from "./lib/assignee";
@@ -441,6 +442,10 @@ export function MeetingBody({
               />
             </div>
           </div>
+          {/* Stays mounted once the lines are named, to say so; it hides itself when there is nothing to do. */}
+          {recordingBlobs && !more && (recorder || isOwner) && !!m.audio && segments.some((x) => x.speaker === "others") && (
+            <TellVoices workspace={{ act: workspace.act, blobs: recordingBlobs }} meeting={m} lines={segments} />
+          )}
           {speakers.length > 1 && (
             <div className="speaker-filter" role="group" aria-label="Speakers">
               <button type="button" className={`chip${who === null ? " active" : ""}`} aria-pressed={who === null} onClick={() => setWho(null)}>

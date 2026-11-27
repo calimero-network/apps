@@ -1,10 +1,12 @@
 /**
  * The offscreen document: captures the meeting tab (and plays it back, so the
  * call stays audible) and the microphone, cuts speech out of each, and has the
- * speech worker transcribe it. Only text leaves this page, to the service
- * worker.
+ * speech worker transcribe it. The text goes to the service worker; the call's
+ * audio, recorded compressed, waits in the extension's storage until the
+ * service worker saves it to the workspace (lib/callAudio.ts).
  */
 import tapUrl from "../audio/tap.worklet.ts?worker&url";
+import { CALL_AUDIO_BITRATE, keepCallAudio, plainMime } from "../lib/callAudio";
 import { detectCaps } from "../lib/caps";
 import { EchoGate, isMicPhantom, voicedMs } from "../lib/echo";
 import { AudioStore, echoOf, inOrder, linesOf, windowsOf, type RedoneLine } from "../lib/improve";
@@ -51,6 +53,10 @@ interface Recording {
   dropped: { echo: number; phantom: number };
   /** Each source's audio, for the transcript redone after the call. */
   stores: Map<Speaker, AudioStore>;
+  /** The call and the mic mixed, recorded compressed, saved to the workspace after Stop. */
+  mix: MediaStreamAudioDestinationNode;
+  recorder: MediaRecorder | null;
+  recorded: Blob[];
 }
 
 /** The last recording's audio, kept after it drained for `improve`; gone with this page. */
@@ -58,8 +64,10 @@ let kept: { startedAt: number; stores: Map<Speaker, AudioStore> } | null = null;
 
 let rec: Recording | null = null;
 
-async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, audible: boolean): Promise<void> {
+async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, audible: boolean, mix?: MediaStreamAudioDestinationNode): Promise<void> {
   const source = ctx.createMediaStreamSource(stream);
+  // Into the recording kept for playback (both sides of the call).
+  if (mix) source.connect(mix);
   // Capturing a tab mutes it; play it back so the call stays audible.
   if (audible) source.connect(ctx.destination);
   const node = new AudioWorkletNode(ctx, "sylence-tap", { numberOfInputs: 1, numberOfOutputs: 1 });
@@ -82,6 +90,44 @@ async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, aud
   };
 }
 
+/**
+ * Records the mixed call compressed (Opus), from the recording's start, so the
+ * transcript's times line up with it. Where the browser cannot, the call is
+ * still transcribed; it is just not kept for playback.
+ */
+function startRecorder(r: Recording): void {
+  const type = ["audio/webm;codecs=opus", "audio/webm"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
+  if (!type) return;
+  try {
+    const recorder = new MediaRecorder(r.mix.stream, { mimeType: type, audioBitsPerSecond: CALL_AUDIO_BITRATE });
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) r.recorded.push(e.data);
+    };
+    recorder.start(10_000);
+    r.recorder = recorder;
+  } catch (e) {
+    void emit({ type: "log", message: `recorder: ${e instanceof Error ? e.message : String(e)}` });
+  }
+}
+
+/** Stops the recorder and keeps the call's audio for the service worker to send. */
+async function stopRecorder(r: Recording): Promise<void> {
+  const recorder = r.recorder;
+  if (!recorder || recorder.state === "inactive") return;
+  await new Promise<void>((resolve) => {
+    recorder.onstop = () => resolve();
+    recorder.stop();
+  });
+  const blob = new Blob(r.recorded, { type: recorder.mimeType });
+  r.recorded = [];
+  try {
+    await keepCallAudio({ blob, mime: plainMime(recorder.mimeType), durationMs: Date.now() - r.startedAt });
+    void emit({ type: "log", message: `recorder: kept ${blob.size} bytes of ${recorder.mimeType}` });
+  } catch (e) {
+    void emit({ type: "log", message: `recorder: not kept (${e instanceof Error ? e.message : String(e)})` });
+  }
+}
+
 /** Queues a stretch for the model, unless it is the call leaking into the mic. */
 function enqueue(chunk: Chunk, speaker: Speaker): void {
   const r = rec;
@@ -102,6 +148,7 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
     audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: c.streamId } } as unknown as MediaTrackConstraints,
     video: false,
   });
+  const mix = ctx.createMediaStreamDestination();
   rec = {
     ctx,
     streams: [tab],
@@ -118,9 +165,13 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
     voiced: new Map(),
     dropped: { echo: 0, phantom: 0 },
     stores: new Map([["others", new AudioStore(0)]]),
+    mix,
+    recorder: null,
+    recorded: [],
   };
   kept = null;
-  await tap(ctx, tab, "others", true);
+  await tap(ctx, tab, "others", true, mix);
+  startRecorder(rec);
   if (c.mic) {
     try {
       const mic = await navigator.mediaDevices.getUserMedia({
@@ -131,7 +182,7 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
       const micOffset = Date.now() - rec.startedAt;
       rec.segmenters.set("you", new Segmenter({ offsetMs: micOffset }));
       rec.stores.set("you", new AudioStore(micOffset));
-      await tap(ctx, mic, "you", false);
+      await tap(ctx, mic, "you", false, mix);
     } catch {
       void emit({
         type: "notice",
@@ -240,6 +291,7 @@ async function stop(): Promise<void> {
     return;
   }
   r.stopping = true;
+  await stopRecorder(r);
   for (const [speaker, seg] of r.segmenters) for (const chunk of seg.flush()) enqueue(chunk, speaker);
   for (const s of r.streams) for (const t of s.getTracks()) t.stop();
   // A model still loading transcribes what was captured once it is ready

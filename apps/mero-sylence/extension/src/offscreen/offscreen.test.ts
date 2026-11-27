@@ -8,6 +8,13 @@ import type { OffscreenCommand, OffscreenEvent } from "../lib/messages";
 import type { FromWorker, ToWorker } from "../transcribe/protocol";
 
 vi.mock("../audio/tap.worklet.ts?worker&url", () => ({ default: "tap.worklet.js" }));
+const kept: { current: { size: number; mime: string } | null } = { current: null };
+vi.mock("../lib/callAudio", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  keepCallAudio: async (a: { blob: Blob; mime: string }) => {
+    kept.current = { size: a.blob.size, mime: a.mime };
+  },
+}));
 vi.mock("../lib/caps", () => ({
   detectCaps: async () => ({ webgpu: false, maxBufferSize: 0, cached: [], deviceMemoryGb: 8, cores: 8 }),
 }));
@@ -71,6 +78,10 @@ class FakeAudioContext {
   }
   createGain() {
     return { gain: { value: 1 }, connect: <T>(n: T) => n };
+  }
+  /** The mix recorded for playback (no MediaRecorder here, so nothing is recorded). */
+  createMediaStreamDestination() {
+    return { stream: {} };
   }
   async close() {
     FakeAudioContext.closed += 1;
@@ -341,6 +352,35 @@ describe("offscreen pipeline", () => {
     await flushMicrotasks();
     expect(ofType("notice")[0]!.message).toMatch(/microphone/i);
     expect(FakeWorkletNode.all).toHaveLength(1);
+  });
+
+  it("records the mixed call compressed and keeps it for the service worker on stop", async () => {
+    kept.current = null;
+    class FakeRecorder {
+      static isTypeSupported = (t: string) => t === "audio/webm;codecs=opus";
+      state = "inactive";
+      mimeType: string;
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor(_s: unknown, o: { mimeType: string }) {
+        this.mimeType = o.mimeType;
+      }
+      start() {
+        this.state = "recording";
+      }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob([new Uint8Array(1_234)]) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal("MediaRecorder", FakeRecorder);
+    expect(await capture(true)).toBe(true);
+    await command({ type: "stop" });
+    await flushMicrotasks();
+    expect(kept.current).toEqual({ size: 1_234, mime: "audio/webm" });
+    vi.unstubAllGlobals();
+    vi.stubGlobal("AudioContext", FakeAudioContext);
   });
 
   it("reports a tab that can't be captured", async () => {

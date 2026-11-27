@@ -1715,6 +1715,72 @@
         ],
         "type": "object"
       },
+      "NameSegmentsArgs": {
+        "description": "The arguments of `nameSegments`, by name.",
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          },
+          "names": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentName"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "meetingId",
+          "names"
+        ],
+        "type": "object"
+      },
+      "NameSegmentsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/NameSegmentsArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "NameSegmentsResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "NotFoundError": {
         "properties": {
           "message": {
@@ -2294,6 +2360,25 @@
         ],
         "type": "object",
         "x-calimero-abi-type": "SegmentInput"
+      },
+      "SegmentName": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "seq": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "seq",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SegmentName"
       },
       "SegmentView": {
         "properties": {
@@ -3783,6 +3868,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "The calling account."
+      }
+    },
+    "/apps/{app}/methods/nameSegments": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"nameSegments\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "nameSegments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameSegmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NameSegmentsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `nameSegments`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Names the speakers of lines already saved, as the page works them out\nfrom the recording (\"Voice 1\", \"Voice 2\" for a call whose page showed no\nnames). At most 500 lines a call; a line that is not there, or already\nhas that name, is skipped. Answers how many lines changed. The recorder\nor the instance's owner."
       }
     },
     "/apps/{app}/methods/openActions": {

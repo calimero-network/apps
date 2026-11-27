@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionView } from "./sylenceApi";
 import { OpenActionsList } from "./OpenActions";
@@ -107,5 +107,41 @@ describe("OpenActionsList", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Assignee name" }), { target: { value: "Sam" } });
     fireEvent.click(screen.getByRole("option", { name: /Assign to “Sam”/ }));
     expect(onAssign).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }), "Sam");
+  });
+
+  it("offers the call's speakers for a meeting that keeps no list, read from its lines once, when the picker opens", async () => {
+    const loadSpeakers = vi.fn(async () => [
+      { speaker: "others", name: "Speaker 1" },
+      { speaker: "others", name: "" },
+      { speaker: "you", name: "" },
+    ]);
+    render(
+      <OpenActionsList
+        actions={[a("1", "m1", "Send the deck"), a("2", "m2", "Book the room")]}
+        meetings={[
+          meeting({ id: "m1", title: "Old call", speakers: [] }),
+          meeting({ id: "m2", title: "New call", speakers: [{ speaker: "others", name: "Eve" }] }),
+        ]}
+        onToggle={() => {}}
+        onAssign={() => {}}
+        onOpen={() => {}}
+        loadSpeakers={loadSpeakers}
+      />,
+    );
+    // Nothing is read up front.
+    expect(loadSpeakers).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Assign Send the deck" }));
+    expect(loadSpeakers).toHaveBeenCalledWith("m1");
+    expect(await screen.findByRole("option", { name: /Speaker 1.*in this call/ })).toBeTruthy();
+    // The unnamed "others" is no one to give work to.
+    expect(screen.queryByRole("option", { name: /^O.*Others/ })).toBeNull();
+    // Read once: opening it again asks nothing more.
+    fireEvent.click(screen.getByRole("button", { name: "Assign Send the deck" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign Send the deck" }));
+    await waitFor(() => expect(loadSpeakers).toHaveBeenCalledTimes(1));
+    // A meeting with its own list is never read.
+    fireEvent.click(screen.getByRole("button", { name: "Assign Book the room" }));
+    expect(await screen.findByRole("option", { name: /Eve.*in this call/ })).toBeTruthy();
+    expect(loadSpeakers).not.toHaveBeenCalledWith("m2");
   });
 });

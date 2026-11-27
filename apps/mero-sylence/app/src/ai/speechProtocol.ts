@@ -4,15 +4,22 @@ import type { TimedChunk, Turn } from "../lib/upload";
 export type SpeechStage = "load" | "transcribe" | "voices" | "diarize";
 
 /** Page → speech worker. */
-export type ToSpeech = {
-  type: "run";
-  /** 16 kHz mono. */
-  audio: Float32Array;
-  /** BCP 47 code, "" to detect. */
-  language: string;
-  /** The model: Whisper large-v3 turbo on the GPU (`best`), or Whisper base on the processor. */
-  tier: "best" | "balanced";
-};
+export type ToSpeech =
+  | {
+      type: "run";
+      /** 16 kHz mono. */
+      audio: Float32Array;
+      /** BCP 47 code, "" to detect. */
+      language: string;
+      /** The model: Whisper large-v3 turbo on the GPU (`best`), or Whisper base on the processor. */
+      tier: "best" | "balanced";
+    }
+  | {
+      /** Only tell the voices apart (no transcript): the lines are there already. Answers `done` with no chunks. */
+      type: "voices";
+      /** 16 kHz mono. */
+      audio: Float32Array;
+    };
 
 /** Speech worker → page. */
 export type FromSpeech =

@@ -128,6 +128,12 @@ export interface SegmentInput {
   text: string;
 }
 
+/** The app type `SegmentName`. */
+export interface SegmentName {
+  seq: number;
+  name: string;
+}
+
 /** The app type `SegmentView`. */
 export interface SegmentView {
   seq: number;
@@ -224,6 +230,12 @@ export interface InsightsArgs {
 /** The arguments of `listActions`. */
 export interface ListActionsArgs {
   meetingId: string;
+}
+
+/** The arguments of `nameSegments`. */
+export interface NameSegmentsArgs {
+  meetingId: string;
+  names: SegmentName[];
 }
 
 /** The arguments of `removeAction`. */
@@ -439,6 +451,8 @@ export interface MeroSylenceApi {
   listMeetings(options?: ViewOptions): Promise<MeetingView[]>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<string>;
+  /** call `nameSegments`. */
+  nameSegments(args: NameSegmentsArgs, options?: CallOptions): Promise<number>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ActionView[]>;
   /** view `recordingsLeft`. */
@@ -498,6 +512,8 @@ export interface MeroSylenceRawApi {
   listMeetings(options?: ViewOptions): Promise<ViewAnswer<MeetingView[]>>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** call `nameSegments`. */
+  nameSegments(args: NameSegmentsArgs, options?: CallOptions): Promise<CallAnswer<number>>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ViewAnswer<ActionView[]>>;
   /** view `recordingsLeft`. */
@@ -556,6 +572,7 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
       listActions: (args, options = {}) => this.#view<ActionView[]>('listActions', args, options),
       listMeetings: (options = {}) => this.#view<MeetingView[]>('listMeetings', {}, options),
       myAccount: (options = {}) => this.#view<string>('myAccount', {}, options),
+      nameSegments: (args, options = {}) => this.#call<number>('nameSegments', args, options),
       openActions: (options = {}) => this.#view<ActionView[]>('openActions', {}, options),
       recordingsLeft: (options = {}) => this.#view<number>('recordingsLeft', {}, options),
       removeAction: (args, options = {}) => this.#call<null>('removeAction', args, options),
@@ -662,6 +679,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
   /** view `myAccount`. */
   async myAccount(options: ViewOptions = {}): Promise<string> {
     return (await this.#view<string>('myAccount', {}, options)).result;
+  }
+
+  /** call `nameSegments`. */
+  async nameSegments(args: NameSegmentsArgs, options: CallOptions = {}): Promise<number> {
+    return (await this.#call<number>('nameSegments', args, options)).result;
   }
 
   /** view `openActions`. */

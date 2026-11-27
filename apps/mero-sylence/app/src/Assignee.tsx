@@ -17,6 +17,7 @@ export function AssigneeChip({
   people = [],
   onAssign,
   label,
+  onOpen,
 }: {
   name: string;
   people?: readonly Assignable[];
@@ -24,6 +25,8 @@ export function AssigneeChip({
   onAssign?: (name: string) => void;
   /** What the action is, for the button's name. */
   label?: string;
+  /** The picker opened: a chance to load who can be offered. */
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const presence = usePresence(open);
@@ -74,7 +77,10 @@ export function AssigneeChip({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={who ? `Assigned to ${who}${label ? `: ${label}` : ""}. Change` : `Assign${label ? ` ${label}` : ""}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) onOpen?.();
+          setOpen((o) => !o);
+        }}
         data-testid="assignee"
       >
         {body}

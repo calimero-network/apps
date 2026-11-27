@@ -5,7 +5,9 @@
 //! decides who reaches it, and everyone who reaches it reads every meeting in
 //! it. The browser extension records a call (the meeting tab's audio and the
 //! microphone), turns speech into text on the laptop, and sends the text here
-//! in batches of segments. A live call's audio never reaches the node.
+//! in batches of segments. Its audio can be kept too, the same way as an
+//! uploaded recording's (`attachAudio`): a blob of the app, sealed with the
+//! rest of the workspace.
 //!
 //! # Uploaded recordings
 //!
@@ -140,6 +142,17 @@ pub struct MeetingRow {
     #[serde(default)]
     pub speakers: Vec<Speaker>,
 }
+
+/// One line's speaker name, as `nameSegments` sets it.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SegmentName {
+    pub seq: u32,
+    pub name: String,
+}
+
+/// Lines one `nameSegments` call may name.
+pub const MAX_NAMED: usize = 500;
 
 /// Someone who spoke in a meeting: `you` or `others`, and the name the call or
 /// the upload gave them ("Eve", "Speaker 2"); empty when there was none.
@@ -901,10 +914,8 @@ impl Sylence {
         mime: String,
         duration_ms: u32,
     ) -> app::Result<MeetingView> {
+        // Any meeting: an uploaded recording, or a call recorded by the extension.
         let mut row = self.recorders(&meeting_id)?;
-        if row.platform != "upload" {
-            return Err(refused("only an uploaded recording keeps its audio"));
-        }
         let mime = mime.trim().to_lowercase();
         if !AUDIO_TYPES.contains(&mime.as_str()) {
             return Err(invalid(format!(
@@ -1020,6 +1031,58 @@ impl Sylence {
             Audience::All,
         )?;
         self.view_of(meeting_id, row)
+    }
+
+    /// Names the speakers of lines already saved, as the page works them out
+    /// from the recording ("Voice 1", "Voice 2" for a call whose page showed no
+    /// names). At most 500 lines a call; a line that is not there, or already
+    /// has that name, is skipped. Answers how many lines changed. The recorder
+    /// or the instance's owner.
+    pub fn name_segments(
+        &mut self,
+        meeting_id: String,
+        names: Vec<SegmentName>,
+    ) -> app::Result<u32> {
+        let mut row = self.editors(&meeting_id)?;
+        if names.len() > MAX_NAMED {
+            return Err(invalid(format!("name at most {MAX_NAMED} lines at a time")));
+        }
+        let (mut low, mut high, mut changed) = (u32::MAX, 0u32, 0u32);
+        for n in names {
+            let name = clean("speaker name", &n.name, MAX_ASSIGNEE, false)?;
+            let key = (meeting_id.clone(), n.seq);
+            let Some(mut segment) = self.segments.get(&key)? else {
+                continue;
+            };
+            if segment.name == name {
+                continue;
+            }
+            segment.name = name.clone();
+            let who = Speaker {
+                speaker: segment.speaker.clone(),
+                name,
+            };
+            let _ = self.segments.insert(&key, &segment)?;
+            if row.speakers.len() < MAX_ALIASES && !row.speakers.contains(&who) {
+                row.speakers.push(who);
+            }
+            changed += 1;
+            low = low.min(n.seq);
+            high = high.max(n.seq);
+        }
+        if changed > 0 {
+            let _ = self.meetings.insert(&meeting_id, &row)?;
+            env::emit(
+                Event::TranscriptChanged {
+                    meeting_id: meeting_id.clone(),
+                    from: low,
+                    to: high + 1,
+                },
+                Audience::All,
+            )?;
+            env::emit(Event::MeetingChanged { id: meeting_id }, Audience::All)?;
+        }
+        Ok(changed)
     }
 
     /// Saves what the page worked out about each person, replacing what was

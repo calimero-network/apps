@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AuthState, Workspace } from "../../lib/messages";
-import { AlertIcon, BackIcon, CheckIcon, RefreshIcon, Spinner } from "../icons";
+import { AlertIcon, BackIcon, CheckIcon, ExternalIcon, RefreshIcon, Spinner, TrashIcon } from "../icons";
+import { workspaceLink } from "../../lib/appHost";
 import { ask } from "../rpc";
 
 export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState; onDone: () => void; canClose?: boolean }) {
@@ -21,6 +22,26 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Deleting: the workspace asked about, the name typed back, and whether it is underway.
+  const [deleting, setDeleting] = useState<Workspace | null>(null);
+  const [typed, setTyped] = useState("");
+  const [removing, setRemoving] = useState(false);
+  const remove = async () => {
+    if (!deleting || typed.trim() !== deleting.name.trim()) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      await ask({ type: "deleteWorkspace", appId: deleting.appId });
+      setDeleting(null);
+      setTyped("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   const choose = async (w: Workspace) => {
     await ask({ type: "chooseWorkspace", workspace: w });
@@ -144,9 +165,9 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
       ) : (
         <div className="list" role="radiogroup" aria-label="Workspaces">
           {list.map((w) => (
+            <div key={w.appId} className="ws-row">
             <button
-              key={w.appId}
-              className="row"
+              className="row grow"
               role="radio"
               aria-checked={auth.workspace?.appId === w.appId}
               onClick={() => void choose(w)}
@@ -159,8 +180,52 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
               </span>
               <span className="tick">{auth.workspace?.appId === w.appId ? <CheckIcon size={16} /> : null}</span>
             </button>
+            <button
+              className="icon-btn ws-delete"
+              aria-label={`Delete ${w.name}`}
+              title="Delete workspace"
+              onClick={() => {
+                setDeleting(w);
+                setTyped("");
+              }}
+            >
+              <TrashIcon size={14} />
+            </button>
+            </div>
           ))}
         </div>
+      )}
+      {deleting && (
+        <form
+          className="card stack danger-card"
+          style={{ gap: 10 }}
+          role="alertdialog"
+          aria-label={`Delete ${deleting.name}?`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void remove();
+          }}
+        >
+          <p className="strong">Delete {deleting.name}?</p>
+          <p className="small muted">
+            Every meeting, recording, transcript and action item in it is deleted for everyone. This can&apos;t be undone.
+          </p>
+          <div className="field">
+            <label htmlFor="confirm-name">
+              Type <b>{deleting.name}</b> to confirm
+            </label>
+            <input id="confirm-name" className="input" autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} disabled={removing} />
+          </div>
+          <div className="hstack" style={{ gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" className="btn ghost" onClick={() => setDeleting(null)} disabled={removing}>
+              Cancel
+            </button>
+            <button type="submit" className="btn danger" disabled={removing || typed.trim() !== deleting.name.trim()}>
+              {removing ? <Spinner size={14} /> : null}
+              {removing ? "Deleting…" : "Delete workspace"}
+            </button>
+          </div>
+        </form>
       )}
       {error && (
         <div className="banner bad" role="alert">
@@ -170,6 +235,15 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
             <RefreshIcon size={14} />
           </button>
         </div>
+      )}
+      {auth.page && (
+        <button
+          className="btn ghost sm"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => void chrome.tabs.create({ url: workspaceLink(auth.page!, auth.workspace?.appId) })}
+        >
+          <ExternalIcon size={13} /> Open in the web app
+        </button>
       )}
       {list && list.length > 0 &&
         (form ? (

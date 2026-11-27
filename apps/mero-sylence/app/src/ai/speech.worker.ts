@@ -189,6 +189,17 @@ async function diarize(audio: Float32Array, onProgress: ReturnType<typeof downlo
 
 self.onmessage = async (e: MessageEvent<ToSpeech>) => {
   const m = e.data;
+  if (m.type === "voices") {
+    // A recording whose lines are saved already: only who spoke when.
+    try {
+      progress("voices", 0);
+      const turns = await diarize(m.audio, downloads("voices"));
+      post({ type: "done", chunks: [], turns });
+    } catch (err) {
+      post({ type: "error", error: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
   if (m.type !== "run") return;
   try {
     const onProgress = downloads("load");

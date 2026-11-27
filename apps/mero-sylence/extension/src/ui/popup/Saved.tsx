@@ -26,6 +26,11 @@ export function Saved({ status }: { status: RecorderStatus }) {
           </span>
         </div>
       )}
+      {status.audio && (
+        <p className="by-line" data-testid="audio-kept">
+          {status.audio.kept ? "Recording saved with the meeting: play it back on its page." : status.audio.why}
+        </p>
+      )}
       {status.improved && (
         <p className="by-line" data-testid="improved">
           {status.improved.done

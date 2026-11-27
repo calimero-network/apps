@@ -97,6 +97,8 @@ export interface RecorderStatus {
   notes?: { model: NotesModelId; fraction: number; step: "download" | "write" } | null;
   /** The notes model wrote the summary (and the action items). */
   wroteSummary?: boolean;
+  /** The call's recording: saved to the workspace for playback, or why not. */
+  audio?: { kept: true } | { kept: false; why: string } | null;
   /** Where speaker names come from while recording: the reader that found one, and how many people the page shows. */
   speakers?: { via: string | null; participants: number; self: string | null } | null;
   /** While the transcript is redone after the call: the model's download, then the share of the recording done. */
@@ -136,11 +138,17 @@ export const KEYS = {
 
 /** Popup / side panel → service worker. */
 export type Request =
-  | { type: "signIn"; intent?: "create" | "signup"; workspace?: { name: string; self: string } }
+  | {
+      type: "signIn";
+      intent?: "create" | "signup";
+      workspace?: { name: string; self: string };
+      account?: { name: string; label: string; ws: string };
+    }
   | { type: "signOut" }
   | { type: "listWorkspaces" }
   | { type: "checkSession" }
   | { type: "chooseWorkspace"; workspace: Workspace }
+  | { type: "deleteWorkspace"; appId: string }
   | { type: "start"; tabId: number }
   | { type: "stop" }
   | { type: "dismiss" }

@@ -60,6 +60,32 @@ export function captureSignInIntent(
   const name = intent === "create" ? (params.get("name") ?? "").trim().slice(0, 80) : "";
   if (name) storage.setItem(NEW_WORKSPACE_KEY, JSON.stringify({ name, self: (params.get("self") ?? "").trim().slice(0, 48) }));
   else storage.removeItem(NEW_WORKSPACE_KEY);
+  // A new account the person filled in in the extension: the page creates it without a form.
+  if (intent === "signup" && params.has("name")) {
+    storage.setItem(
+      NEW_ACCOUNT_KEY,
+      JSON.stringify({
+        name: (params.get("name") ?? "").trim().slice(0, 48),
+        label: (params.get("label") ?? "").trim().slice(0, 32),
+        ws: (params.get("ws") ?? "").trim().slice(0, 80),
+      }),
+    );
+  } else storage.removeItem(NEW_ACCOUNT_KEY);
+}
+
+const NEW_ACCOUNT_KEY = "sylence:native-new-account";
+
+/** The account the extension asked for (`&intent=signup&name=…&label=…&ws=…`): your name, the passkey's label, a first workspace. */
+export function newAccountRequest(storage: Pick<Storage, "getItem"> = sessionStorage): { name: string; label: string; ws: string } | null {
+  try {
+    const raw = storage.getItem(NEW_ACCOUNT_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { name?: unknown; label?: unknown; ws?: unknown };
+    const s = (x: unknown) => (typeof x === "string" ? x : "");
+    return { name: s(v.name), label: s(v.label), ws: s(v.ws) };
+  } catch {
+    return null;
+  }
 }
 
 const NEW_WORKSPACE_KEY = "sylence:native-new-workspace";

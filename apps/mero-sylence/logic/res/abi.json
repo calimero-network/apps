@@ -268,6 +268,24 @@
       "public": false,
       "returns": "string"
     },
+    "nameSegments": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Names the speakers of lines already saved, as the page works them out\nfrom the recording (\"Voice 1\", \"Voice 2\" for a call whose page showed no\nnames). At most 500 lines a call; a line that is not there, or already\nhas that name, is skipped. Answers how many lines changed. The recorder\nor the instance's owner.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ],
+        [
+          "names",
+          "list<SegmentName>"
+        ]
+      ],
+      "public": false,
+      "returns": "u32"
+    },
     "openActions": {
       "allowSystem": false,
       "confirm": false,
@@ -850,6 +868,19 @@
         ],
         [
           "text",
+          "string"
+        ]
+      ],
+      "kind": "record"
+    },
+    "SegmentName": {
+      "fields": [
+        [
+          "seq",
+          "u32"
+        ],
+        [
+          "name",
           "string"
         ]
       ],

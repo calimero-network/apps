@@ -66,3 +66,16 @@ export function callSpeakers(
   }
   return out;
 }
+
+/**
+ * Who spoke in a transcript, in the order they first did: what a meeting saved
+ * before it kept its own `speakers` list is read from its lines instead.
+ */
+export function speakersOf(segments: readonly { speaker: string; name?: string }[]): { speaker: string; name: string }[] {
+  const out: { speaker: string; name: string }[] = [];
+  for (const s of segments) {
+    const name = (s.name ?? "").trim();
+    if (!out.some((o) => o.speaker === s.speaker && o.name === name)) out.push({ speaker: s.speaker, name });
+  }
+  return out;
+}

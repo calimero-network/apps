@@ -878,3 +878,39 @@ body.panel {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* a workspace row with its delete beside it */
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ws-row .ws-delete {
+  flex: none;
+  opacity: 0.45;
+  color: var(--ink-2);
+}
+.ws-row:hover .ws-delete,
+.ws-row .ws-delete:focus-visible {
+  opacity: 1;
+}
+.ws-row .ws-delete:hover {
+  color: var(--bad-ink);
+}
+.danger-card {
+  border-color: var(--bad-ink);
+}
+.btn.danger {
+  background: var(--bad-ink);
+  color: #fff;
+  border-color: transparent;
+}
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad-ink) 82%, #000);
+}
+
+.btn.open-web {
+  flex: none;
+  align-self: stretch;
+  height: auto;
+}

@@ -171,3 +171,9 @@ export const PlusIcon = (p: P) => (
     <path d="M12 5v14M5 12h14" />
   </Svg>
 );
+
+export const TrashIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 7h16M10 7V4.5h4V7M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+  </Svg>
+);

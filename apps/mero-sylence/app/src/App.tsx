@@ -18,7 +18,7 @@ import { ProfilePage } from "./ProfilePage";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
-import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, newWorkspaceRequest, signInIntent } from "./native";
+import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, newAccountRequest, newWorkspaceRequest, signInIntent } from "./native";
 import { CreateNamedWorkspace } from "./CreateNamedWorkspace";
 import { TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
@@ -80,11 +80,13 @@ export function ExtensionSignIn() {
 
   // Only a new workspace keeps the window open: a plain sign-in hands the session
   // over at once and the window closes; the extension offers workspaces itself.
+  // A new account from the extension may bring its first workspace's name.
+  const account = signingUp ? newAccountRequest() : null;
   useEffect(() => {
     if (!signedIn || needsWorkspace !== null) return;
-    setNeedsWorkspace(creating);
-  }, [signedIn, needsWorkspace, creating]);
-  const named = creating ? newWorkspaceRequest() : null;
+    setNeedsWorkspace(creating || !!account?.ws);
+  }, [signedIn, needsWorkspace, creating, account?.ws]);
+  const named = creating ? newWorkspaceRequest() : account?.ws ? { name: account.ws, self: account.name } : null;
 
   useEffect(() => {
     if (session.status !== "signed-in" || needsWorkspace !== false || started.current) return;
@@ -97,6 +99,31 @@ export function ExtensionSignIn() {
       .then((done) => setHanded(done))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [session, api.store, needsWorkspace]);
+
+  // A workspace named in the extension: no sign-in form, just the passkey prompt,
+  // started at once (the window opens focused). The panel is the fallback.
+  if (session.status === "signed-out" && account) {
+    return (
+      <Centered>
+        <PasskeyOnly
+          title="Create your passkey"
+          line={account.ws ? `For your account and “${account.ws}”.` : "For your new account."}
+          run={() => api.signUp(account.name || undefined, account.label ? { passkeyLabel: account.label } : undefined)}
+        />
+      </Centered>
+    );
+  }
+  if (session.status === "signed-out" && (named || !signingUp)) {
+    return (
+      <Centered>
+        <PasskeyOnly
+          title="Sign in with your passkey"
+          line={named ? `To create “${named.name}”.` : `For the ${PRODUCT} extension.`}
+          run={() => api.signIn()}
+        />
+      </Centered>
+    );
+  }
 
   if (session.status === "signed-in" && needsWorkspace === true && named) {
     return (
@@ -708,5 +735,40 @@ function Menu({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The window's whole job, when the extension already said what it wants: one
+ * line and the passkey prompt, started at once (the window opens focused). The
+ * full sign-in panel only if that fails (no passkey here, a cancelled prompt).
+ */
+function PasskeyOnly({ title, line, run }: { title: string; line: string; run: () => Promise<void> }) {
+  const { api } = useSessionApi();
+  const started = useRef(false);
+  const [fallback, setFallback] = useState(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    run().catch(() => setFallback(true));
+  }, [run]);
+  useEffect(() => {
+    if (api.error) setFallback(true);
+  }, [api.error]);
+  return (
+    <section className="card handoff" data-testid="extension-passkey" aria-live="polite">
+      <div className="handoff-mark" aria-hidden="true">
+        <Icon name="key" size={22} />
+      </div>
+      <h1>{title}</h1>
+      <p className="empty">{line} This window closes by itself.</p>
+      {fallback ? (
+        <SignInPanel titleId="handoff-panel-title" />
+      ) : (
+        <button type="button" className="btn primary" onClick={() => void run().catch(() => setFallback(true))} disabled={api.busy}>
+          Use passkey
+        </button>
+      )}
+    </section>
   );
 }

@@ -9,9 +9,11 @@ vi.mock("@calimero-apps/passkey/native", async (importOriginal) => ({
 
 const session = { current: { status: "signed-in", client: { id: "client" } } as Record<string, unknown> };
 const clear = vi.fn();
+const signIn = vi.fn(async () => undefined);
+const signUp = vi.fn(async () => undefined);
 const workspaces = { current: [{ appId: "w1", name: "Team", org: "o1", owner: "a" }] as unknown[] };
 vi.mock("./sessionContext", () => ({
-  useSessionApi: () => ({ api: { session: session.current, store: { clear }, busy: false } }),
+  useSessionApi: () => ({ api: { session: session.current, store: { clear }, busy: false, error: null, signIn, signUp } }),
   useMaybeSignedIn: () =>
     session.current.status === "signed-in" ? { client: session.current.client, source: "bundle", after: () => undefined } : null,
 }));
@@ -55,12 +57,30 @@ afterEach(() => {
 });
 
 describe("ExtensionSignIn", () => {
-  it("asks a signed-out person to sign in for the extension", () => {
+  it("signing in from the extension goes straight to the passkey, no form", async () => {
     session.current = { status: "signed-out", client: {} };
+    signIn.mockClear();
     render(<ExtensionSignIn />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sign in to the Sylence extension");
-    expect(screen.getByTestId("signin-panel")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sign in with your passkey");
+    expect(screen.queryByTestId("signin-panel")).toBeNull();
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
     expect(finish).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the full sign-in when the passkey prompt fails", async () => {
+    session.current = { status: "signed-out", client: {} };
+    signIn.mockRejectedValueOnce(new Error("cancelled"));
+    render(<ExtensionSignIn />);
+    expect(await screen.findByTestId("signin-panel")).toBeTruthy();
+  });
+
+  it("a new account filled in in the extension is created with one passkey prompt, then its workspace", async () => {
+    session.current = { status: "signed-out", client: {} };
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k&intent=signup&name=Eve&label=Work%20laptop&ws=Launch%20team" });
+    signUp.mockClear();
+    render(<ExtensionSignIn />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Create your passkey");
+    await waitFor(() => expect(signUp).toHaveBeenCalledWith("Eve", { passkeyLabel: "Work laptop" }));
   });
 
   it("hands a signed-in session to the extension's fixed callback and forgets it here", async () => {
@@ -107,6 +127,17 @@ describe("ExtensionSignIn", () => {
     expect(finish).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Start a new workspace" }));
     await waitFor(() => expect(finish).toHaveBeenCalledTimes(1));
+  });
+
+  it("a workspace named in the extension asks only for the passkey, started at once", async () => {
+    session.current = { status: "signed-out", client: {} };
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k&intent=create&name=Launch%20team" });
+    signIn.mockClear();
+    render(<ExtensionSignIn />);
+    expect(await screen.findByRole("heading", { name: "Sign in with your passkey" })).toBeTruthy();
+    expect(screen.getByText(/To create “Launch team”/)).toBeTruthy();
+    expect(screen.queryByTestId("signin-panel")).toBeNull();
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
   });
 
   it("a plain sign-in forgets an earlier create intent", () => {
