@@ -67,7 +67,25 @@ const SEARCH_SCAN: usize = 50_000;
 const DELETE_BATCH: u32 = 1_000;
 /// The largest audio blob a meeting may name: a node keeps blobs up to 47.25 MiB.
 pub const MAX_AUDIO_BYTES: u64 = 49_545_216;
-const MAX_MIME: usize = 100;
+/// Recordings one account may keep across the workspace (each up to [`MAX_AUDIO_BYTES`]).
+pub const MAX_RECORDINGS_PER_ACCOUNT: u32 = 100;
+/// The longest recording a meeting may name: the page refuses uploads over 4 h.
+const MAX_AUDIO_MS: u32 = 5 * 60 * 60 * 1_000;
+/// The content types a recording may have: what browsers play in `<audio>`.
+const AUDIO_TYPES: [&str; 12] = [
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/aac",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/webm",
+    "audio/ogg",
+    "audio/flac",
+    "audio/opus",
+    "video/mp4",
+    "video/webm",
+];
 /// Speaker names one meeting keeps.
 const MAX_ALIASES: usize = 50;
 /// People one insights record describes.
@@ -369,6 +387,8 @@ pub struct Sylence {
     deleting: Set<String>,
     /// People insights by meeting id.
     insights: UnorderedMap<String, Insights>,
+    /// Recordings each account keeps, by account.
+    recordings: UnorderedMap<String, u32>,
 }
 
 #[app::error]
@@ -703,6 +723,15 @@ impl Sylence {
             .count() as u32;
         if from_seq == 0 && removed > 0 {
             row.revised = true;
+            // Insights describe the transcript that was replaced.
+            if self.insights.remove(&meeting_id)?.is_some() {
+                env::emit(
+                    Event::InsightsChanged {
+                        meeting_id: meeting_id.clone(),
+                    },
+                    Audience::All,
+                )?;
+            }
         }
         let _ = self.meetings.insert(&meeting_id, &row)?;
         if removed > 0 {
@@ -798,6 +827,9 @@ impl Sylence {
                 let _ = self.meeting_actions.remove(&key)?;
             }
             let _ = self.insights.remove(&meeting_id)?;
+            if row.audio.is_some() {
+                self.release_recording(&row.recorder)?;
+            }
             let _ = self.deleting.insert(&meeting_id)?;
             env::emit(
                 Event::MeetingChanged {
@@ -842,9 +874,18 @@ impl Sylence {
         duration_ms: u32,
     ) -> app::Result<MeetingView> {
         let mut row = self.recorders(&meeting_id)?;
-        let mime = clean("mime", &mime, MAX_MIME, true)?.to_lowercase();
-        if !(mime.starts_with("audio/") || mime.starts_with("video/")) {
-            return Err(invalid("mime must be an audio or video type"));
+        if row.platform != "upload" {
+            return Err(refused("only an uploaded recording keeps its audio"));
+        }
+        let mime = mime.trim().to_lowercase();
+        if !AUDIO_TYPES.contains(&mime.as_str()) {
+            return Err(invalid(format!(
+                "mime must be one of {}",
+                AUDIO_TYPES.join(", ")
+            )));
+        }
+        if duration_ms == 0 || duration_ms > MAX_AUDIO_MS {
+            return Err(invalid("durationMs must be between 1 ms and 5 hours"));
         }
         let Some(info) = blob.info() else {
             return Err(not_found("the app holds no such blob; upload it first"));
@@ -853,6 +894,28 @@ impl Sylence {
             return Err(invalid(format!(
                 "a recording is at most {MAX_AUDIO_BYTES} bytes"
             )));
+        }
+        // The type the node serves the blob as must be the one played.
+        let stored = info
+            .mime
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_lowercase();
+        if stored != mime {
+            return Err(invalid(format!(
+                "the blob was uploaded as {stored:?}, not {mime:?}"
+            )));
+        }
+        if row.audio.is_none() {
+            let kept = self.recordings.get(&row.recorder)?.unwrap_or(0);
+            if kept >= MAX_RECORDINGS_PER_ACCOUNT {
+                return Err(refused(format!(
+                    "an account keeps at most {MAX_RECORDINGS_PER_ACCOUNT} recordings; remove one first"
+                )));
+            }
+            let _ = self.recordings.insert(&row.recorder, &(kept + 1))?;
         }
         row.audio = Some(Audio {
             blob,
@@ -875,6 +938,7 @@ impl Sylence {
     pub fn remove_audio(&mut self, meeting_id: String) -> app::Result<MeetingView> {
         let mut row = self.recorders(&meeting_id)?;
         if row.audio.take().is_some() {
+            self.release_recording(&row.recorder)?;
             let _ = self.meetings.insert(&meeting_id, &row)?;
             env::emit(
                 Event::MeetingChanged {
@@ -1309,6 +1373,20 @@ impl Sylence {
             return Err(forbidden("only the meeting's recorder may change it"));
         }
         Ok(row)
+    }
+
+    /// One recording fewer kept by `account`.
+    fn release_recording(&mut self, account: &str) -> app::Result<()> {
+        let key = account.to_owned();
+        match self.recordings.get(&key)?.unwrap_or(0) {
+            0 | 1 => {
+                let _ = self.recordings.remove(&key)?;
+            }
+            n => {
+                let _ = self.recordings.insert(&key, &(n - 1))?;
+            }
+        }
+        Ok(())
     }
 
     /// The meeting, if the caller recorded it or owns the instance.

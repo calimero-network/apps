@@ -175,8 +175,16 @@ describe("MeetingPage", () => {
     });
   });
 
-  it("loads the transcript a page at a time", async () => {
-    const { sent } = setup({ me: "cy", pages: [[seg(0, "first")], [seg(1, "second")]] });
+  it("reads an ended meeting whole, so its talk time covers every line", async () => {
+    const { sent } = setup({ me: "cy", pages: [[seg(0, "first", "others", "Eve")], [seg(1, "second", "others", "Sam")]] });
+    await screen.findByText("second");
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(sent.filter((s) => s.method === "transcript").map((s) => s.args.fromSeq)).toEqual([0, 1]);
+    expect(await screen.findAllByTestId("talk-row")).toHaveLength(2);
+  });
+
+  it("loads a live transcript a page at a time", async () => {
+    const { sent } = setup({ me: "cy", live: true, pages: [[seg(0, "first")], [seg(1, "second")]] });
     await screen.findByText("first");
     expect(screen.queryByText("second")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
@@ -257,12 +265,14 @@ describe("talk time and playback", () => {
   });
 
   it("plays a meeting's recording and seeks from a line", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const id = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
     const fake = fakeWorkspace({
-      getMeeting: () => meeting({ platform: "upload", audio: { blob: "1".padStart(64, "0"), mime: "audio/mpeg", size: 3, durationMs: 200_000 } }),
+      getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 200_000 } }),
       listActions: () => [],
       transcript: () => ({ segments: lines, next: null }),
     });
-    fake.stored.set("1".padStart(64, "0"), new Uint8Array([1, 2, 3]));
+    fake.stored.set(id, bytes);
     const created = vi.fn(() => "blob:recording");
     Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
     render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
@@ -274,4 +284,22 @@ describe("talk time and playback", () => {
     // Not the recorder: no rename.
     expect(screen.queryByRole("button", { name: /^Rename Speaker/ })).toBeNull();
   });
+});
+
+describe("speakers are keyed the same for every reader", () => {
+  const lines = [seg(0, "Hello", "you"), seg(1, "Hi there", "others", "Eve")];
+  for (const me of ["bob", "cy"]) {
+    it(`shows the name given to the recorder's lines to ${me}`, async () => {
+      const fake = fakeWorkspace({
+        getMeeting: () => meeting({ speakerNames: [{ label: "you", name: "Robert" }] }),
+        listActions: () => [],
+        transcript: () => ({ segments: lines, next: null }),
+        insights: () => ({ model: "m", updatedBy: "bob", updatedAt: "1", people: [{ label: "you", tone: "enthusiastic", profile: "Led the call.", emotions: [], keyPoints: [] }] }),
+      });
+      render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me={me} isOwner={false} onBack={() => {}} />);
+      const rows = await screen.findAllByTestId("talk-row");
+      expect(rows.some((r) => within(r).queryByText("Robert"))).toBe(true);
+      expect(await screen.findByText("Led the call.")).toBeTruthy();
+    });
+  }
 });

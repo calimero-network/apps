@@ -9,6 +9,7 @@ import { Landing, LandingPage } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
 import { UploadRecording } from "./UploadRecording";
+import { forgetWorkspaceRecordings } from "./useRecording";
 import { OpenActions } from "./OpenActions";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
@@ -202,7 +203,18 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
       </>
     );
   }
-  return <SignedInApp key={signedIn.accountId} theme={theme} setTheme={setTheme} onLogout={() => void signedIn.signOut()} />;
+  return (
+    <SignedInApp
+      key={signedIn.accountId}
+      theme={theme}
+      setTheme={setTheme}
+      onLogout={() => {
+        // Recordings kept in this browser are the signed-in person's; they go when they sign out.
+        void forgetWorkspaceRecordings();
+        void signedIn.signOut();
+      }}
+    />
+  );
 }
 
 /** Signed out: the front door, or the extension's install page (`#/install`). */

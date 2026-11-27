@@ -104,6 +104,8 @@ export function useWorkspace(appId: string, onLost?: () => void) {
 }
 
 export interface WorkspaceBlobs {
+  /** The app instance the blobs belong to (scopes anything cached locally). */
+  appId: string;
   /** Uploads `bytes`; answers the blob id (64 lowercase hex digits) the contract takes. */
   upload(bytes: Uint8Array, mime: string): Promise<{ blobId: string; size: number }>;
   download(blobId: string): Promise<ArrayBuffer>;
@@ -118,6 +120,7 @@ interface BlobClient {
 export function workspaceBlobs(calimero: unknown, appId: string, after: () => void = () => {}): WorkspaceBlobs {
   const c = calimero as BlobClient;
   return {
+    appId,
     async upload(bytes, mime) {
       try {
         const res = await c.apps.blobUpload({ app: appId, body: bytes, contentType: mime || "application/octet-stream" });

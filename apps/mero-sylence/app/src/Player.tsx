@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
-import type { PlayerState } from "./usePlayer";
+import { usePlayerTime, type PlayerState } from "./usePlayer";
 import { formatClock } from "./lib/transcript";
 import { nextRate, speakerColor, type Lane } from "./lib/playback";
 import { Icon } from "./ui";
@@ -29,7 +29,9 @@ export function Player({
   follow: boolean;
   onFollow: (on: boolean) => void;
 }) {
-  const { bind, timeMs, playing, rate, seek, toggle, skip, setRate } = player;
+  const { bind, playing, rate, seek, toggle, skip, setRate } = player;
+  const timeMs = usePlayerTime(player);
+  const problem = error ?? (player.error ? `The recording did not play: ${player.error}.` : null);
   const duration = player.durationMs || fallbackDurationMs || 1;
   const progress = Math.min(1, Math.max(0, timeMs / duration));
   const scrub = useRef<HTMLDivElement | null>(null);
@@ -75,7 +77,7 @@ export function Player({
     return () => window.removeEventListener("keydown", onKey);
   }, [src, toggle]);
 
-  const ready = !!src && !error;
+  const ready = !!src && !problem;
   return (
     <section className="card player" aria-label="Recording">
       {src && <audio {...bind} src={src} preload="metadata" />}
@@ -165,9 +167,9 @@ export function Player({
         </ul>
       )}
       {loading && <p className="player-note dim">Loading the recording…</p>}
-      {error && (
+      {problem && (
         <p className="player-note err" role="alert">
-          The recording did not load: {error}
+          {error ? `The recording did not load: ${error}` : problem}
         </p>
       )}
     </section>

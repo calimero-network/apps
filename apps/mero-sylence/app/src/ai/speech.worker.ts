@@ -24,6 +24,7 @@ import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { TIERS, whisperLanguage } from "../../../extension/src/lib/tiers";
 import { clusterVoices, cutPoints, RATE, type TimedChunk, type Turn } from "../lib/upload";
 import type { FromSpeech, SpeechStage, ToSpeech } from "./speechProtocol";
+import { revisionOf } from "./models";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -73,6 +74,7 @@ async function loadAsr(webgpu: boolean, onProgress: ReturnType<typeof downloads>
       const asr = (await pipeline("automatic-speech-recognition", t.repo, {
         device: t.device,
         dtype: t.dtype as never,
+        revision: revisionOf(t.repo),
         progress_callback: onProgress,
       })) as AutomaticSpeechRecognitionPipeline;
       post({ type: "model", modelId: t.modelId, name: t.name });
@@ -118,10 +120,10 @@ type Processor = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> & {
 
 async function diarize(audio: Float32Array, onProgress: ReturnType<typeof downloads>): Promise<Turn[]> {
   const [segProc, segModel, embProc, embModel] = await Promise.all([
-    AutoProcessor.from_pretrained(SEGMENTATION, { progress_callback: onProgress }) as Promise<Processor>,
-    AutoModelForAudioFrameClassification.from_pretrained(SEGMENTATION, { dtype: "q8" as never, progress_callback: onProgress }),
-    AutoProcessor.from_pretrained(EMBEDDING, { progress_callback: onProgress }),
-    AutoModel.from_pretrained(EMBEDDING, { dtype: "q8" as never, progress_callback: onProgress }),
+    AutoProcessor.from_pretrained(SEGMENTATION, { revision: revisionOf(SEGMENTATION), progress_callback: onProgress }) as Promise<Processor>,
+    AutoModelForAudioFrameClassification.from_pretrained(SEGMENTATION, { dtype: "q8" as never, revision: revisionOf(SEGMENTATION), progress_callback: onProgress }),
+    AutoProcessor.from_pretrained(EMBEDDING, { revision: revisionOf(EMBEDDING), progress_callback: onProgress }),
+    AutoModel.from_pretrained(EMBEDDING, { dtype: "q8" as never, revision: revisionOf(EMBEDDING), progress_callback: onProgress }),
   ]);
   progress("diarize", 0);
   const win = DIARIZE_S * RATE;

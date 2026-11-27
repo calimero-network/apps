@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckSquare, Clock, Download, FileText, Trash } from "@calimero-network/mero-icons";
 import type { MeetingView, SegmentView } from "./sylenceApi";
 import { deleteMeetingFully } from "./sylenceApi";
@@ -16,19 +16,19 @@ import {
   matchesAll,
   platformName,
   queryWords,
-  speakerLabel,
-  speakersIn,
+  keyName,
+  speakerKey,
   toMarkdown,
 } from "./lib/transcript";
 import { useTranscript } from "./useTranscript";
 import { useRead, type Workspace } from "./useWorkspace";
 import { Icon } from "./ui";
 import { talkStats } from "./lib/stats";
-import { activeIndex, speakerColor, speakerLanes } from "./lib/playback";
+import { speakerColor, speakerLanes } from "./lib/playback";
 import { Player } from "./Player";
-import { usePlayer } from "./usePlayer";
+import { usePlayer, usePlayingIndex } from "./usePlayer";
 import { SpeakersCard } from "./SpeakersCard";
-import { useRecording } from "./useRecording";
+import { forgetRecording, useRecording } from "./useRecording";
 import { PeopleCard } from "./PeopleCard";
 import { useAnalyze } from "./useAnalyze";
 import type { Insights } from "./generated/client";
@@ -53,7 +53,17 @@ export function MeetingPage({
 }) {
   const meeting = useRead(workspace.client, workspace.version, (c) => c.getMeeting({ meetingId }), [meetingId]);
   const actions = useRead(workspace.client, workspace.version, (c) => c.listActions({ meetingId }), [meetingId]);
-  const insights = useRead(workspace.client, workspace.version, (c) => c.insights({ meetingId }), [meetingId]);
+  // Insights change rarely: read them once, then on their own event only.
+  const [insightsVersion, setInsightsVersion] = useState(0);
+  const { subscribe } = workspace;
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (event.kind === "InsightsChanged" && event.data.meetingId === meetingId) setInsightsVersion((v) => v + 1);
+      }),
+    [subscribe, meetingId],
+  );
+  const insights = useRead(workspace.client, insightsVersion, (c) => c.insights({ meetingId }), [meetingId]);
   const transcript = useTranscript(workspace, meetingId);
   const { nameOf } = useSpaceNames();
 
@@ -142,14 +152,22 @@ export function MeetingBody({
   const canEdit = recorder || isOwner;
   const [find, setFind] = useState("");
   const findWords = useMemo(() => queryWords(find), [find]);
-  /** The speaker the transcript is narrowed to, or null for everyone. */
+  /** The speaker key the transcript is narrowed to, or null for everyone. */
   const [who, setWho] = useState<string | null>(null);
-  const speakers = useMemo(() => speakersIn(segments, recorderName), [segments, recorderName]);
-  // Names given to speaker labels ("Speaker 1" → "Eve").
-  const aliases = useMemo(() => new Map((m.speakerNames ?? []).map((a) => [a.label, a.name])), [m.speakerNames]);
-  const nameOf = useCallback((label: string) => aliases.get(label) ?? label, [aliases]);
-  const labelOf = useCallback((s: SegmentView) => speakerLabel(s.speaker, recorderName, s.name), [recorderName]);
+  // Names given to speakers ("Speaker 1" → "Eve"), by stable key; a re-read with the same names keeps the memo.
+  const aliasesJson = JSON.stringify(m.speakerNames ?? []);
+  const aliases = useMemo(
+    () => new Map((JSON.parse(aliasesJson) as { label: string; name: string }[]).map((a) => [a.label, a.name])),
+    [aliasesJson],
+  );
+  const nameOf = useCallback((key: string) => keyName(key, recorderName, aliases), [recorderName, aliases]);
+  const labelOf = useCallback((s: SegmentView) => speakerKey(s.speaker, s.name), []);
   const stats = useMemo(() => talkStats(segments, labelOf), [segments, labelOf]);
+  /** Speakers in the order they first spoke, with their line counts, for the filter. */
+  const speakers = useMemo(
+    () => [...stats.speakers].sort((a, b) => a.firstMs - b.firstMs).map((s) => ({ label: s.label, lines: s.lines })),
+    [stats],
+  );
   const colorOf = useMemo(() => {
     const index = new Map(stats.speakers.map((s, i) => [s.label, i]));
     return (label: string) => speakerColor(index.get(label) ?? 7);
@@ -165,14 +183,14 @@ export function MeetingBody({
   const analyze = useAnalyze({ workspace, meetingId: m.id, segments, labelOf, stats });
 
   // ── playback ──
-  const noBlobs = useMemo(() => ({ upload: () => Promise.reject(new Error("no workspace")), download: () => Promise.reject(new Error("no workspace")) }), []);
+  const noBlobs = useMemo(() => ({ appId: "", upload: () => Promise.reject(new Error("no workspace")), download: () => Promise.reject(new Error("no workspace")) }), []);
   const recording = useRecording(recordingBlobs ?? noBlobs, recordingBlobs ? m.audio : null);
   const hasAudio = !!m.audio && !!recordingBlobs;
   const player = usePlayer();
   const [follow, setFollow] = useState(true);
   const byStart = useMemo(() => [...segments].sort((a, b) => a.startMs - b.startMs || a.seq - b.seq), [segments]);
-  const playingIndex = hasAudio ? activeIndex(byStart, player.timeMs) : -1;
-  const playingSeq = playingIndex >= 0 ? byStart[playingIndex]!.seq : null;
+  const playingIndex = usePlayingIndex(player, byStart, hasAudio);
+  const playingSeq = playingIndex >= 0 ? (byStart[playingIndex]?.seq ?? null) : null;
   const lanes = useMemo(
     () => (hasAudio ? speakerLanes(segments, labelOf, stats.speakers.map((s) => s.label), m.audio?.durationMs || m.durationMs) : []),
     [hasAudio, segments, labelOf, stats, m.audio?.durationMs, m.durationMs],
@@ -181,15 +199,13 @@ export function MeetingBody({
   useEffect(() => {
     if (follow && player.playing && playingSeq !== null) playingRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [follow, player.playing, playingSeq]);
-  const seekTo = useCallback(
-    (ms: number, play = true) => {
-      player.seek(ms, play);
-    },
-    [player],
-  );
+  const { seek } = player;
+  const seekTo = useCallback((ms: number) => seek(ms, true), [seek]);
   const lastSeq = segments.length ? segments[segments.length - 1]!.seq : -1;
-  // Finding reads the whole transcript; a linked line reads up to it.
-  const wantsMore = more && !loadingMore && (findWords.length > 0 || (focusSeq !== undefined && focusSeq > lastSeq));
+  // An ended meeting is read whole: talk time, the timeline, playback and Analyze cover every line.
+  // While live, finding reads the whole transcript and a linked line reads up to it.
+  const wantsMore =
+    more && !loadingMore && (!m.live || findWords.length > 0 || (focusSeq !== undefined && focusSeq > lastSeq));
   useEffect(() => {
     if (wantsMore) onLoadMore();
   }, [wantsMore, onLoadMore]);
@@ -200,7 +216,6 @@ export function MeetingBody({
   }, [focusLoaded]);
   // A linked line (a search hit) is where playback starts.
   const focusStart = focusLoaded ? segments.find((s) => s.seq === focusSeq)?.startMs : undefined;
-  const { seek } = player;
   useEffect(() => {
     if (recording.url && focusStart !== undefined) seek(focusStart);
   }, [recording.url, focusStart, seek]);
@@ -208,23 +223,44 @@ export function MeetingBody({
   const [copied, setCopied] = useState(false);
   const segmentStart = useCallback((seq: number) => segments.find((s) => s.seq === seq)?.startMs, [segments]);
 
-  const markdown = useMemo(
-    () => toMarkdown(m, segments, actions ?? [], recorderName, undefined, nameOf),
-    [m, segments, actions, recorderName, nameOf],
-  );
+  // Built when asked for, not on every render.
+  const markdown = () => toMarkdown(m, segments, actions ?? [], recorderName, undefined, nameOf);
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = useCallback(async (fn: () => Promise<unknown>) => {
     setError(null);
     try {
       await fn();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  };
+  }, []);
+  const { act } = workspace;
+  const meetingId = m.id;
+  const saveLine = useCallback(
+    (seq: number, text: string) =>
+      run(async () => {
+        const updated = await act((c) => c.editSegment({ meetingId, seq, text }));
+        onSegmentChanged(updated);
+      }),
+    [run, act, meetingId, onSegmentChanged],
+  );
+  const makeAction = useCallback(
+    (s: SegmentView) => run(() => act((c) => c.addAction({ meetingId, text: s.text.slice(0, 500), assignee: "", sourceSeq: s.seq }))),
+    [run, act, meetingId],
+  );
+  const canSeek = hasAudio && !!recording.url;
+  // The playing line and the linked line may be the same row: one ref callback sets both.
+  const rowRef = useCallback(
+    (seq: number) => (el: HTMLLIElement | null) => {
+      if (seq === focusSeq) focusedRef.current = el;
+      if (seq === playingSeq) playingRef.current = el;
+    },
+    [focusSeq, playingSeq],
+  );
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(markdown);
+      await navigator.clipboard.writeText(markdown());
       setCopied(true);
       setTimeout(() => setCopied(false), 1_600);
     } catch {
@@ -233,7 +269,7 @@ export function MeetingBody({
   };
 
   const download = () => {
-    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+    const url = URL.createObjectURL(new Blob([markdown()], { type: "text/markdown" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = markdownFileName(m.title);
@@ -279,7 +315,17 @@ export function MeetingBody({
           <button type="button" className="btn" onClick={download}>
             <Download size={16} aria-hidden="true" /> Download .md
           </button>
-          {(recorder || isOwner) && <DeleteMeeting workspace={workspace} meetingId={m.id} onDeleted={onBack} />}
+          {(recorder || isOwner) && (
+            <DeleteMeeting
+              workspace={workspace}
+              meetingId={m.id}
+              onDeleted={() => {
+                // The recording kept in this browser goes with the meeting.
+                if (m.audio && recordingBlobs) void forgetRecording(recordingBlobs.appId, m.audio.blob);
+                onBack();
+              }}
+            />
+          )}
         </div>
       </header>
 
@@ -315,7 +361,7 @@ export function MeetingBody({
           stats={stats}
           actions={actions}
           displayName={nameOf}
-          canAnalyze={canEdit}
+          canAnalyze={canEdit && !more}
           analyze={analyze}
           onSeek={hasAudio && recording.url ? (ms) => seekTo(ms) : undefined}
         />
@@ -374,28 +420,17 @@ export function MeetingBody({
             {shownSegments.map((s) => (
               <SegmentRow
                 key={s.seq}
-                ref={s.seq === focusSeq ? focusedRef : s.seq === playingSeq ? playingRef : undefined}
+                ref={s.seq === focusSeq || s.seq === playingSeq ? rowRef(s.seq) : undefined}
                 focused={s.seq === focusSeq}
                 playing={s.seq === playingSeq}
-                onSeek={hasAudio && recording.url ? () => seekTo(s.startMs) : undefined}
+                onSeek={canSeek ? seekTo : undefined}
                 color={colorOf(labelOf(s))}
                 highlight={findWords}
                 segment={s}
                 speaker={nameOf(labelOf(s))}
                 editable={recorder}
-                onSave={(text) =>
-                  run(async () => {
-                    const updated = await workspace.act((c) => c.editSegment({ meetingId: m.id, seq: s.seq, text }));
-                    onSegmentChanged(updated);
-                  })
-                }
-                onMakeAction={() =>
-                  run(() =>
-                    workspace.act((c) =>
-                      c.addAction({ meetingId: m.id, text: s.text.slice(0, 500), assignee: "", sourceSeq: s.seq }),
-                    ),
-                  )
-                }
+                onSave={saveLine}
+                onMakeAction={makeAction}
               />
             ))}
           </ol>
@@ -549,7 +584,7 @@ function Summary({ summary, editable, onSave }: { summary: string; editable: boo
   );
 }
 
-function SegmentRow({
+const SegmentRow = memo(function SegmentRow({
   ref,
   focused = false,
   playing = false,
@@ -566,15 +601,15 @@ function SegmentRow({
   focused?: boolean;
   /** The line being said in the recording now. */
   playing?: boolean;
-  /** Play the recording from this line. */
-  onSeek?: () => void;
+  /** Play the recording from a time (this line's start). */
+  onSeek?: (ms: number) => void;
   color?: string;
   highlight?: readonly string[];
   segment: SegmentView;
   speaker: string;
   editable: boolean;
-  onSave: (text: string) => Promise<unknown>;
-  onMakeAction: () => Promise<unknown>;
+  onSave: (seq: number, text: string) => Promise<unknown>;
+  onMakeAction: (segment: SegmentView) => Promise<unknown>;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [made, setMade] = useState(false);
@@ -592,7 +627,7 @@ function SegmentRow({
       aria-current={playing ? "true" : undefined}
     >
       {onSeek ? (
-        <button type="button" className="segment-time seekable mono" onClick={onSeek} aria-label={`Play from ${formatClock(segment.startMs)}`}>
+        <button type="button" className="segment-time seekable mono" onClick={() => onSeek(segment.startMs)} aria-label={`Play from ${formatClock(segment.startMs)}`}>
           {formatClock(segment.startMs)}
         </button>
       ) : (
@@ -608,7 +643,7 @@ function SegmentRow({
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.trim()) return;
-            void onSave(draft.trim()).then(() => setDraft(null));
+            void onSave(segment.seq, draft.trim()).then(() => setDraft(null));
           }}
         >
           <textarea
@@ -642,7 +677,7 @@ function SegmentRow({
             className="icon-btn"
             aria-label="Make action item"
             title="Make action item"
-            onClick={() => void onMakeAction().then(() => setMade(true))}
+            onClick={() => void onMakeAction(segment).then(() => setMade(true))}
           >
             <Icon name={made ? "check" : "plus"} size={14} />
           </button>
@@ -661,7 +696,7 @@ function SegmentRow({
       )}
     </li>
   );
-}
+});
 
 function DeleteMeeting({
   workspace,

@@ -39,6 +39,7 @@ export function fakeWorkspace(handlers: Record<string, Handler>, app = "app-syle
       };
     },
     blobs: {
+      appId: app,
       upload: vi.fn(async (bytes: Uint8Array) => {
         const id = String(stored.size + 1).padStart(64, "0");
         stored.set(id, bytes.slice());

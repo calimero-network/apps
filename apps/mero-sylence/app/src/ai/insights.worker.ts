@@ -8,6 +8,7 @@ import { env, pipeline, type TextClassificationPipeline, type TextGenerationPipe
 import ortMjs from "@ort/ort-wasm-simd-threaded.asyncify.mjs?url";
 import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { EMOTION_MODEL, WRITERS, type FromInsightsWorker, type ToInsightsWorker, type WriterId } from "./insightsProtocol";
+import { revisionOf } from "./models";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -48,6 +49,7 @@ function loadClassifier(): Promise<TextClassificationPipeline> {
   classifier ??= pipeline("text-classification", EMOTION_MODEL.repo, {
     device: "wasm",
     dtype: EMOTION_MODEL.dtype as never,
+    revision: revisionOf(EMOTION_MODEL.repo),
     progress_callback: progressOf("model"),
   }) as Promise<TextClassificationPipeline>;
   classifier.catch(() => {
@@ -87,6 +89,7 @@ function loadWriter(model: WriterId): Promise<TextGenerationPipeline> {
     return (await pipeline("text-generation", m.repo, {
       device: "webgpu",
       dtype: m.dtype as never,
+      revision: revisionOf(m.repo),
       progress_callback: progressOf("writer"),
     })) as TextGenerationPipeline;
   })();

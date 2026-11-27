@@ -479,6 +479,7 @@
       "meetingActions": "set",
       "meetings": "unorderedMap",
       "openActions": "set",
+      "recordings": "unorderedMap",
       "segments": "unorderedMap"
     },
     "search": {
@@ -489,6 +490,7 @@
       "meetingActions": [],
       "meetings": [],
       "openActions": [],
+      "recordings": [],
       "segments": []
     },
     "version": 1

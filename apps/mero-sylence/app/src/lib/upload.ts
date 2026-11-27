@@ -14,8 +14,16 @@ export const RATE = 16_000;
 /** The largest blob a node keeps (47.25 MiB), so the largest recording saved for playback. */
 export const MAX_AUDIO_BYTES = 49_545_216;
 
-/** Longer than this is refused before decoding: the decoded audio alone would not fit in a tab. */
+/**
+ * Longer than this is refused: the decoded audio alone would not fit in a
+ * tab. `probeDuration` reads the length from the file's header first, so a
+ * long file is refused before it is decoded; the decoded length is checked
+ * again after, for files whose header gives none.
+ */
 export const MAX_DURATION_MS = 4 * 60 * 60_000;
+
+/** Files larger than this are refused before they are read at all. */
+export const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 
 /** What the file picker offers. */
 export const ACCEPT = "audio/*,video/mp4,video/webm,.mp3,.m4a,.mp4,.wav,.webm,.ogg,.oga,.opus,.aac,.flac";
@@ -252,7 +260,6 @@ export function clusterVoices(
   const dim = vectors[0]!.length;
   type Group = { sum: Float64Array; weight: number; members: number[] };
   const groups: Group[] = [];
-  const centroid = (g: Group) => g.sum;
   const add = (g: Group, i: number) => {
     const v = vectors[i]!;
     const w = weights[i] ?? 1;
@@ -264,7 +271,7 @@ export function clusterVoices(
     let best = -1;
     let bestSim = threshold;
     groups.forEach((g, k) => {
-      const s = cosine(v, centroid(g));
+      const s = cosine(v, g.sum);
       if (s >= bestSim) [best, bestSim] = [k, s];
     });
     if (best < 0) {
@@ -273,19 +280,32 @@ export function clusterVoices(
       groups.push(g);
     } else add(groups[best]!, i);
   });
-  const merge = (into: Group, from: Group) => {
-    for (let d = 0; d < dim; d++) into.sum[d]! += from.sum[d]!;
-    into.weight += from.weight;
-    into.members.push(...from.members);
+  // Pairwise likeness of the groups' centroids, kept up to date as groups
+  // merge: a merge recomputes one row, not every pair.
+  const sim: number[][] = groups.map((g, a) => groups.map((h, b) => (a === b ? -Infinity : cosine(g.sum, h.sum))));
+  /** Folds group `from` into `into` and drops `from`, keeping `sim` in step. */
+  const merge = (into: number, from: number) => {
+    const g = groups[into]!;
+    const f = groups[from]!;
+    for (let d = 0; d < dim; d++) g.sum[d]! += f.sum[d]!;
+    g.weight += f.weight;
+    g.members.push(...f.members);
+    groups.splice(from, 1);
+    sim.splice(from, 1);
+    for (const row of sim) row.splice(from, 1);
+    const k = into > from ? into - 1 : into;
+    for (let j = 0; j < groups.length; j++) {
+      const s = j === k ? -Infinity : cosine(groups[k]!.sum, groups[j]!.sum);
+      sim[k]![j] = s;
+      sim[j]![k] = s;
+    }
   };
-  const closest = (k: number, min: number): number => {
+  const closest = (k: number): number => {
     let best = -1;
-    let bestSim = min;
-    groups.forEach((g, j) => {
-      if (j === k) return;
-      const s = cosine(centroid(groups[k]!), centroid(g));
-      if (s >= bestSim) [best, bestSim] = [j, s];
-    });
+    let bestSim = -Infinity;
+    for (let j = 0; j < groups.length; j++) {
+      if (j !== k && (best < 0 || sim[k]![j]! >= bestSim)) [best, bestSim] = [j, sim[k]![j]!];
+    }
     return best;
   };
   // Merge alike groups, most alike first.
@@ -294,12 +314,11 @@ export function clusterVoices(
     let top = threshold;
     for (let a = 0; a < groups.length; a++)
       for (let b = a + 1; b < groups.length; b++) {
-        const s = cosine(centroid(groups[a]!), centroid(groups[b]!));
+        const s = sim[a]![b]!;
         if (s >= top) [pair, top] = [[a, b], s];
       }
     if (!pair) break;
-    merge(groups[pair[0]]!, groups[pair[1]]!);
-    groups.splice(pair[1], 1);
+    merge(pair[0], pair[1]);
   }
   // Fold in groups too small to be a person.
   const total = groups.reduce((n, g) => n + g.weight, 0);
@@ -310,9 +329,7 @@ export function clusterVoices(
       if (g.weight < total * minShare && (smallest < 0 || g.weight < groups[smallest]!.weight)) smallest = k;
     });
     if (smallest < 0) break;
-    const into = closest(smallest, -Infinity);
-    merge(groups[into]!, groups[smallest]!);
-    groups.splice(smallest, 1);
+    merge(closest(smallest), smallest);
   }
   const out = new Array<number>(vectors.length).fill(0);
   groups.forEach((g, k) => g.members.forEach((i) => (out[i] = k)));
@@ -321,23 +338,60 @@ export function clusterVoices(
 
 // ── Decoding ────────────────────────────────────────────────────────────────
 
-/** The file decoded to 16 kHz mono, as the speech models take it. Browser only. */
+/**
+ * The recording's length in ms from its header, through an `<audio>`
+ * element, without decoding it; null when the browser cannot tell (no DOM,
+ * an unknown format, a streaming file, or no answer in `timeoutMs`).
+ */
+export function probeDuration(file: Blob, timeoutMs = 10_000): Promise<number | null> {
+  if (typeof document === "undefined" || typeof URL.createObjectURL !== "function") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = document.createElement("audio");
+    let done = false;
+    const finish = (ms: number | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      el.removeAttribute("src");
+      el.load?.();
+      URL.revokeObjectURL(url);
+      resolve(ms);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    el.preload = "metadata";
+    el.onloadedmetadata = () => finish(Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration * 1000) : null);
+    el.onerror = () => finish(null);
+    el.src = url;
+  });
+}
+
+/**
+ * The file decoded to 16 kHz mono, as the speech models take it. Browser
+ * only. The encoded bytes are released once decoded; a mono file's samples
+ * are used as they are, and only a multi-channel one is mixed into a copy.
+ */
 export async function decodeTo16kMono(file: Blob): Promise<{ audio: Float32Array; durationMs: number }> {
-  const bytes = await file.arrayBuffer();
-  // decodeAudioData resamples to the context's rate.
+  if (file.size > MAX_FILE_BYTES) throw new Error("This file is larger than 2 GB; Sylence cannot read it in the browser.");
+  // decodeAudioData resamples to the context's rate, and takes (detaches) the bytes.
   const ctx = new OfflineAudioContext(1, 1, RATE);
   let decoded: AudioBuffer;
   try {
-    decoded = await ctx.decodeAudioData(bytes);
+    decoded = await ctx.decodeAudioData(await file.arrayBuffer());
   } catch {
     throw new Error("This browser cannot decode that file. Try an mp3, m4a, wav or webm recording.");
   }
   const n = decoded.length;
-  const audio = new Float32Array(n);
   const channels = decoded.numberOfChannels;
-  for (let c = 0; c < channels; c++) {
-    const data = decoded.getChannelData(c);
-    for (let i = 0; i < n; i++) audio[i]! += data[i]! / channels;
+  let audio: Float32Array;
+  if (channels === 1) {
+    audio = decoded.getChannelData(0);
+  } else {
+    audio = new Float32Array(n);
+    for (let c = 0; c < channels; c++) {
+      const data = decoded.getChannelData(c);
+      for (let i = 0; i < n; i++) audio[i]! += data[i]! / channels;
+    }
   }
   return { audio, durationMs: Math.round((n / RATE) * 1000) };
 }

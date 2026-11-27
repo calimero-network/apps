@@ -9,6 +9,7 @@ import {
   audioMime,
   batches,
   decodeTo16kMono,
+  probeDuration,
   formatBytes,
   isAudioFile,
   labelSpeakers,
@@ -18,6 +19,7 @@ import {
   tooLargeForAudio,
 } from "./lib/upload";
 import { Icon } from "./ui";
+import { rememberRecording } from "./useRecording";
 import type { Workspace } from "./useWorkspace";
 import "./upload.css";
 
@@ -44,7 +46,7 @@ interface Run {
 }
 
 /** `12.3 / 30.1 MB`. */
-export function formatDownload({ loaded, total }: { loaded: number; total: number }): string {
+function formatDownload({ loaded, total }: { loaded: number; total: number }): string {
   const mb = (n: number) => (n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0);
   return `${mb(loaded)} / ${mb(total)} MB`;
 }
@@ -75,14 +77,24 @@ async function hasWebGpu(): Promise<boolean> {
  * voices told apart, and it becomes a meeting (platform `upload`) with the
  * audio kept for playback when it fits in one blob.
  */
+/** The speech worker as the dialog starts it; a test passes its own. */
+export type SpeechWorkerFactory = () => Pick<Worker, "postMessage" | "terminate" | "onmessage" | "onerror">;
+const defaultSpeechWorker: SpeechWorkerFactory = () => new Worker(new URL("./ai/speech.worker.ts", import.meta.url), { type: "module" });
+
 export function UploadRecording({
   workspace,
   onDone,
   onClose,
+  createWorker = defaultSpeechWorker,
+  decode = decodeTo16kMono,
+  probe = probeDuration,
 }: {
   workspace: Pick<Workspace, "act" | "blobs">;
   onDone: (meetingId: string) => void;
   onClose: () => void;
+  createWorker?: SpeechWorkerFactory;
+  decode?: typeof decodeTo16kMono;
+  probe?: typeof probeDuration;
 }) {
   const ref = useRef<HTMLDialogElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -93,10 +105,13 @@ export function UploadRecording({
   const [error, setError] = useState<string | null>(null);
   /** What is already in the workspace when something fails after the meeting started. */
   const [saved, setSaved] = useState<{ meetingId: string; note: string } | null>(null);
-  const worker = useRef<Worker | null>(null);
+  const worker = useRef<ReturnType<SpeechWorkerFactory> | null>(null);
   /** Rejects the model run in flight, so a cancel ends `start`. */
   const stopRun = useRef<(() => void) | null>(null);
-  const cancelled = useRef(false);
+  /** The run that counts; a cancelled or replaced run sees a different number and stops. */
+  const runId = useRef(0);
+  /** The meeting the current run started, once it has. */
+  const started = useRef<{ id: string; note: string; durationMs: number } | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -104,7 +119,10 @@ export function UploadRecording({
       if (typeof el.showModal === "function") el.showModal();
       else el.setAttribute("open", "");
     }
-    return () => worker.current?.terminate();
+    return () => {
+      runId.current += 1;
+      worker.current?.terminate();
+    };
   }, []);
 
   const audioRefusal = file ? tooLargeForAudio(file.size) : null;
@@ -126,45 +144,71 @@ export function UploadRecording({
     onClose();
   }, [busy, onClose]);
 
+  /** A meeting that will not be finished is ended, so it does not stay live; best effort. */
+  const settle = (meeting: { id: string; note: string; durationMs: number }, why: string) => {
+    void workspace.act((c) => c.endMeeting({ meetingId: meeting.id, durationMs: meeting.durationMs })).catch(() => undefined);
+    setSaved({
+      meetingId: meeting.id,
+      note: meeting.note ? `${meeting.note}; ${why}` : `The meeting was started, but its transcript was not fully saved; ${why}`,
+    });
+  };
+
   const cancel = () => {
-    cancelled.current = true;
+    runId.current += 1;
     worker.current?.terminate();
     worker.current = null;
     stopRun.current?.();
+    stopRun.current = null;
     setRun(null);
-    setError(saved ? null : "Cancelled. Nothing was saved.");
+    const meeting = started.current;
+    started.current = null;
+    if (meeting) {
+      settle(meeting, "the rest was cancelled.");
+      setError(null);
+    } else {
+      setError("Cancelled. Nothing was saved.");
+    }
   };
 
   const start = async () => {
-    if (!file) return;
-    cancelled.current = false;
+    if (!file || saved) return;
+    const me = ++runId.current;
+    started.current = null;
     setError(null);
-    setSaved(null);
-    let meetingId: string | null = null;
-    let progressNote = "";
+    const live = () => me === runId.current;
     const step = (id: StepId, fraction = 0) => {
-      if (cancelled.current) throw new Cancelled();
+      if (!live()) throw new Cancelled();
       setRun({ step: id, fraction });
     };
     try {
       step("decode");
-      const { audio, durationMs } = await decodeTo16kMono(file);
+      // The length first, from the file's header: a long file is refused before it is decoded.
+      const probed = await probe(file);
+      if (probed !== null && probed > MAX_DURATION_MS) throw new Error("Recordings up to 4 hours can be uploaded.");
+      step("decode", 0.2);
+      const { audio, durationMs } = await decode(file);
       if (durationMs > MAX_DURATION_MS) throw new Error("Recordings up to 4 hours can be uploaded.");
       if (durationMs < 1_000) throw new Error("This recording is shorter than a second.");
       step("load");
       const webgpu = await hasWebGpu();
+      step("load");
 
       const { chunks, turns, modelId } = await new Promise<{
         chunks: Extract<FromSpeech, { type: "done" }>["chunks"];
         turns: Extract<FromSpeech, { type: "done" }>["turns"];
         modelId: string;
       }>((resolve, reject) => {
+        if (!live()) {
+          reject(new Cancelled());
+          return;
+        }
         stopRun.current = () => reject(new Cancelled());
-        const w = new Worker(new URL("./ai/speech.worker.ts", import.meta.url), { type: "module" });
+        const w = createWorker();
         worker.current = w;
         let modelId = "whisper";
         const stageStep: Record<SpeechStage, StepId> = { load: "load", transcribe: "transcribe", voices: "voices", diarize: "diarize" };
         w.onmessage = (e: MessageEvent<FromSpeech>) => {
+          if (!live()) return;
           const m = e.data;
           if (m.type === "progress") setRun({ step: stageStep[m.stage], fraction: m.fraction, ...(m.bytes ? { bytes: m.bytes } : {}) });
           else if (m.type === "model") modelId = m.modelId;
@@ -173,59 +217,75 @@ export function UploadRecording({
         };
         w.onerror = (e) => reject(new Error(e.message || "the speech model stopped"));
         const msg: ToSpeech = { type: "run", audio, language, webgpu };
-        w.postMessage(msg, [audio.buffer]);
+        try {
+          w.postMessage(msg, [audio.buffer]);
+        } catch {
+          // A decoded buffer's own memory may refuse to move; then it is copied.
+          w.postMessage(msg);
+        }
       });
       worker.current?.terminate();
       worker.current = null;
       stopRun.current = null;
-      if (cancelled.current) throw new Cancelled();
+      if (!live()) throw new Cancelled();
 
       const lines = labelSpeakers(assignSpeakers(chunks, turns));
       const segments = toSegmentInputs(lines);
       if (segments.length === 0) throw new Error("No speech was found in this recording.");
 
       step("save");
-      meetingId = await workspace.act((c) =>
+      const id = await workspace.act((c) =>
         c.startMeeting({ title: titleFromFile(file.name), platform: "upload", url: "", model: modelId, language }),
       );
-      const id = meetingId;
+      const meeting = { id, note: "", durationMs };
+      if (!live()) {
+        // Cancelled while the meeting was being started: it exists now, so end it.
+        settle(meeting, "the rest was cancelled.");
+        return;
+      }
+      started.current = meeting;
       const parts = batches(segments, 100);
       for (let i = 0; i < parts.length; i++) {
         step("save", (0.7 * i) / parts.length);
         await workspace.act((c) => c.appendSegments({ meetingId: id, segments: parts[i]! }));
       }
-      progressNote = "The transcript is saved";
+      meeting.note = "The transcript is saved";
       if (keepAudio && !audioRefusal) {
         step("save", 0.75);
         const bytes = new Uint8Array(await file.arrayBuffer());
         const mime = audioMime(file);
+        step("save", 0.8);
         const { blobId } = await workspace.blobs.upload(bytes, mime);
+        // The uploader has the bytes already: keep them, so playback does not download them again.
+        void rememberRecording(workspace.blobs.appId, blobId, file.slice(0, file.size, mime));
+        step("save", 0.9);
         await workspace.act((c) => c.attachAudio({ meetingId: id, blob: blobId, mime, durationMs }));
-        progressNote = "The transcript and the audio are saved";
+        meeting.note = "The transcript and the audio are saved";
       }
       step("save", 0.95);
       await workspace.act((c) => c.endMeeting({ meetingId: id, durationMs }));
 
       step("actions");
       const found = findActions(segments.map((s) => ({ seq: s.seq, speaker: s.speaker, name: s.name, text: s.text })));
-      for (const a of found) {
+      for (let i = 0; i < found.length; i++) {
+        step("actions", i / found.length);
+        const a = found[i]!;
         await workspace.act((c) => c.addAction({ meetingId: id, text: a.text, assignee: a.assignee, sourceSeq: a.sourceSeq }));
       }
+      if (!live()) return;
+      started.current = null;
       setRun(null);
       onDone(id);
     } catch (e) {
+      if (!live() || e instanceof Cancelled) return;
       worker.current?.terminate();
       worker.current = null;
+      stopRun.current = null;
       setRun(null);
-      if (e instanceof Cancelled) return;
-      const message = e instanceof Error ? e.message : String(e);
-      if (meetingId) {
-        setSaved({
-          meetingId,
-          note: progressNote ? `${progressNote}; the rest did not finish.` : "The meeting was started, but its transcript was not fully saved.",
-        });
-      }
-      setError(message);
+      const meeting = started.current;
+      started.current = null;
+      if (meeting) settle(meeting, "the rest did not finish.");
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -372,11 +432,8 @@ export function UploadRecording({
           </p>
         )}
         {saved && !busy && (
-          <p className="upload-saved">
-            {saved.note}{" "}
-            <button type="button" className="btn small ghost" onClick={() => onDone(saved.meetingId)}>
-              Open the meeting
-            </button>
+          <p className="upload-saved" role="status">
+            {saved.note}
           </p>
         )}
 
@@ -390,9 +447,16 @@ export function UploadRecording({
               <button type="button" className="btn ghost" onClick={close}>
                 Close
               </button>
-              <button type="button" className="btn primary" disabled={!file} onClick={() => void start()} data-testid="upload-start">
-                <Upload size={16} aria-hidden="true" /> Transcribe
-              </button>
+              {saved ? (
+                // Part of it is in the workspace already: open that, rather than make a second meeting.
+                <button type="button" className="btn primary" onClick={() => onDone(saved.meetingId)} data-testid="upload-open">
+                  Open the meeting
+                </button>
+              ) : (
+                <button type="button" className="btn primary" disabled={!file} onClick={() => void start()} data-testid="upload-start">
+                  <Upload size={16} aria-hidden="true" /> Transcribe
+                </button>
+              )}
             </>
           )}
         </div>

@@ -89,6 +89,25 @@ export function speakerLabel(speaker: string, recorderName: string, name = ""): 
   return n || (speaker === "you" ? recorderName : "Others");
 }
 
+/**
+ * A speaker's stable key: the name the call page showed (cleaned as in
+ * `speakerLabel`), else `you` or `others`. Unlike the label it does not depend
+ * on who is reading, so speaker names and insights are saved under it.
+ */
+export function speakerKey(speaker: string, name = ""): string {
+  const n = name.replace(/\s+/g, " ").trim().replace(/^(.{2,}?)\s*\1$/u, "$1");
+  return n || (speaker === "you" ? "you" : "others");
+}
+
+/** How a speaker key reads: the name given to it, else the recorder for `you`, "Others" for `others`. */
+export function keyName(key: string, recorderName: string, aliases?: ReadonlyMap<string, string>): string {
+  const alias = aliases?.get(key);
+  if (alias) return alias;
+  if (key === "you") return recorderName;
+  if (key === "others") return "Others";
+  return key;
+}
+
 /** The speakers in `segments`, in the order they first spoke, with their line counts. */
 export function speakersIn(
   segments: readonly Pick<SegmentView, "speaker" | "name">[],

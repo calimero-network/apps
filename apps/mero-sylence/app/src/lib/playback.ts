@@ -49,7 +49,7 @@ export function speakerLanes<T extends Timed>(
   durationMs: number,
   mergeMs = 1_500,
 ): Lane[] {
-  const total = Math.max(durationMs, ...lines.map((l) => l.endMs), 1);
+  const total = lines.reduce((n, l) => Math.max(n, l.endMs), Math.max(durationMs, 1));
   const raw = new Map<string, { from: number; to: number }[]>(order.map((label) => [label, []]));
   for (const line of [...lines].sort((a, b) => a.startMs - b.startMs)) {
     const label = labelOf(line);
