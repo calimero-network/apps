@@ -259,6 +259,20 @@
       "public": false,
       "returns": "list<MeetingView>"
     },
+    "markNotified": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "Notes that everyone in the call was told it is recorded: the extension\nposted the notice in the call's chat. The recorder only.",
+      "kind": "call",
+      "params": [
+        [
+          "meetingId",
+          "string"
+        ]
+      ],
+      "public": false,
+      "returns": "MeetingView"
+    },
     "myAccount": {
       "allowSystem": false,
       "confirm": false,
@@ -758,6 +772,10 @@
         [
           "speakers",
           "list<Speaker>"
+        ],
+        [
+          "notified",
+          "bool"
         ]
       ],
       "kind": "record"

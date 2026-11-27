@@ -38,6 +38,8 @@ class FakeNode {
   /** Recordings uploaded as blobs, and the ones attached to meetings. */
   blobs: Array<{ app: string; size: number; contentType: string }> = [];
   attached: Array<{ meetingId: string; blob: string; mime: string; durationMs: number }> = [];
+  /** Meetings marked as told: the call's chat got the recording notice. */
+  notified: string[] = [];
   private n = 0;
 
   private gate(): void {
@@ -63,6 +65,11 @@ class FakeNode {
         if (!m) throw new Error("no such meeting");
         for (const s of a.segments) if (!m.segments.has(s.seq)) m.segments.set(s.seq, s);
         return { added: a.segments.length, skipped: 0, nextSeq: m.segments.size };
+      },
+      markNotified: async (a: { meetingId: string }) => {
+        this.gate();
+        this.notified.push(a.meetingId);
+        return {};
       },
       endMeeting: async (a: { meetingId: string; durationMs: number }) => {
         this.gate();
@@ -170,7 +177,7 @@ vi.mock("../lib/callAudio", async (importOriginal) => ({
 
 // ── a fake chrome ────────────────────────────────────────────────────────────
 
-type Listener = (message: unknown, sender: { id?: string; tab?: { id: number } }, respond: (r: unknown) => void) => boolean | void;
+type Listener = (message: unknown, sender: { id?: string; tab?: { id: number }; frameId?: number }, respond: (r: unknown) => void) => boolean | void;
 
 interface Harness {
   local: Map<string, unknown>;
@@ -190,6 +197,8 @@ interface Harness {
   tab: { url: string; title: string };
   /** Tabs the speaker reader was injected into, and messages sent to tabs. */
   injected: number[];
+  /** Recording notices posted in a call's chat: the tab and the function's arguments. */
+  notices: { tabId: number; args: unknown[] }[];
   tabMessages: { tabId: number; message: unknown }[];
 }
 
@@ -212,6 +221,7 @@ function installChrome(): Harness {
     listener: null,
     tab: { url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" },
     injected: [],
+    notices: [],
     tabMessages: [],
   };
   const area = (map: Map<string, unknown>) => ({
@@ -264,7 +274,11 @@ function installChrome(): Harness {
       },
     },
     scripting: {
-      executeScript: async ({ target }: { target: { tabId: number } }) => {
+      executeScript: async ({ target, func, args }: { target: { tabId: number }; func?: unknown; args?: unknown[] }) => {
+        if (func) {
+          h.notices.push({ tabId: target.tabId, args: args ?? [] });
+          return [{ result: "posted" }];
+        }
         h.injected.push(target.tabId);
         return [];
       },
@@ -320,10 +334,24 @@ const segment = (speaker: "you" | "others", startMs: number, text: string, start
   ({ type: "segment", speaker, startMs, endMs: startMs + 2_000, text, startedAt }) as const;
 
 /** The call page's reader reporting who is talking, from tab `tab`. */
-async function speakers(at: number, speaking: string[], extra: { participants?: string[]; self?: string | null; tab?: number } = {}): Promise<void> {
+async function speakers(
+  at: number,
+  speaking: string[],
+  extra: { participants?: string[]; self?: string | null; tab?: number; frame?: number; hidden?: boolean } = {},
+): Promise<void> {
   h.listener!(
-    { source: "speakers", type: "speakers", at, platform: "meet", speaking, participants: extra.participants ?? [], self: extra.self ?? null, via: "meet-tiles" },
-    { tab: { id: extra.tab ?? 7 } },
+    {
+      source: "speakers",
+      type: "speakers",
+      at,
+      platform: "meet",
+      speaking,
+      participants: extra.participants ?? [],
+      self: extra.self ?? null,
+      via: speaking.length ? "meet-tiles" : null,
+      hidden: extra.hidden,
+    },
+    { tab: { id: extra.tab ?? 7 }, frameId: extra.frame ?? 0 },
     () => undefined,
   );
   await settle();
@@ -988,6 +1016,65 @@ describe("service worker: speaker names", () => {
     await event(segment("you", 3_000, "And me", T0));
     const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
     expect(lines.map((l) => l.name)).toEqual(["Eve", "Alex"]);
+  });
+
+  it("presenting: the call tab's other frames, saying nothing, don't cut off who is talking", async () => {
+    // Fran records a call with John and Milton, then presents: Meet adds frames
+    // that see no participants, and the call tab goes to the background.
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    const people = { participants: ["Fran", "John", "Milton"], self: "Fran" };
+    await speakers(T0, ["John"], people);
+    await event(segment("others", 0, "Before the share", T0));
+    // John keeps talking (the main frame sends nothing new); the empty frames do.
+    await speakers(T0 + 500, [], { frame: 3, hidden: true });
+    await event(segment("others", 3_200, "John while Fran presents", T0));
+    await speakers(T0 + 6_000, ["Milton"], { ...people, hidden: true });
+    await speakers(T0 + 6_300, [], { frame: 5 });
+    await event(segment("others", 9_000, "Milton while Fran presents", T0));
+    await speakers(T0 + 12_000, ["John"], people);
+    await event(segment("others", 12_100, "After the share", T0));
+    const lines = [...node.meetings.get("m1")!.segments.values()].sort((a, b) => a.seq - b.seq);
+    expect(lines.map((l) => l.name)).toEqual(["John", "John", "Milton", "John"]);
+  });
+
+  it("presenting: a frame that does see the call adds its people to the main frame's", async () => {
+    await request({ type: "start", tabId: 7 });
+    await event({ type: "model", tier: "light", state: "ready" });
+    await speakers(T0, [], { participants: ["Fran", "John"], self: "Fran" });
+    await speakers(T0 + 1_000, ["Milton"], { participants: ["Milton"], frame: 2 });
+    await event(segment("others", 1_100, "From the other frame", T0));
+    expect([...node.meetings.get("m1")!.segments.values()][0]!.name).toBe("Milton");
+    expect(status().speakers).toMatchObject({ participants: 3, self: "Fran" });
+  });
+
+  it("tells the call it's recorded: one note in the call's chat when recording starts", async () => {
+    await request({ type: "start", tabId: 7 });
+    await settle();
+    expect(h.notices).toHaveLength(1);
+    const [platform, text] = h.notices[0]!.args as [string, string];
+    expect(h.notices[0]!.tabId).toBe(7);
+    expect(platform).toBe("meet");
+    expect(text).toMatch(/^This call is being recorded and transcribed with Sylence\./);
+    expect(text).toContain("https://calimero.network");
+    // The page here is a development one: its address never goes in a call's chat.
+    expect(text).not.toContain("localhost");
+    // Posted: the meeting says the call was told.
+    await vi.waitFor(() => expect(node.notified).toEqual(["m1"]));
+  });
+
+  it("tells the call the public Sylence page, when that is the page", async () => {
+    h.local.set("sylence:auth", { ...AUTH, page: { origin: "https://abc.apps.calimero.network", version: "1.2.0" } });
+    await request({ type: "start", tabId: 7 });
+    await settle();
+    expect(h.notices[0]!.args[1]).toContain("Sylence: https://abc.apps.calimero.network/1.2.0/");
+  });
+
+  it("posts no note with the setting off", async () => {
+    h.local.set("sylence:settings", { ...DEFAULT_SETTINGS, announceRecording: false });
+    await request({ type: "start", tabId: 7 });
+    await settle();
+    expect(h.notices).toHaveLength(0);
   });
 
   it("ignores a reader in another tab, and leaves lines unnamed without one", async () => {

@@ -112,6 +112,86 @@ describe("speaker reader in the call tab", () => {
     for (const e of sent) expect(e.speaking).toEqual([]);
   });
 
+  describe("Meet while Fran presents (John and Milton in the call)", () => {
+    const URL_ = "https://meet.google.com/abc-defg-hij";
+    const tile = (id: string, name: string, extra = "") =>
+      `<div data-participant-id="${id}"><div class="zWGUib">${name}</div>${extra}<div class="bars" id="bars-${id}"></div></div>`;
+    /** Animates a tile's audio bars as Meet does while that person talks. */
+    async function talk(id: string, ms = 600) {
+      const bars = document.getElementById(`bars-${id}`)!;
+      for (let t = 0; t < ms; t += 100) {
+        bars.className = bars.className === "a" ? "b" : "a";
+        await vi.advanceTimersByTimeAsync(100);
+      }
+    }
+    /** The shared screen's picture changing all the time. */
+    async function flicker(id: string, ms = 600) {
+      const el = document.getElementById(`bars-${id}`)!;
+      for (let t = 0; t < ms; t += 50) {
+        el.style.opacity = String(Math.random());
+        await vi.advanceTimersByTimeAsync(50);
+      }
+    }
+    const spoke = () => sent.filter((e) => e.speaking.length).at(-1)?.speaking;
+
+    it("before presenting: the talking tile names John", async () => {
+      await reader(URL_, tile("f", "Fran", "<span>(You)</span>") + tile("j", "John") + tile("m", "Milton"));
+      await talk("j");
+      expect(spoke()).toEqual(["John"]);
+      expect(sent.at(-1)!.participants).toEqual(["Fran", "John", "Milton"]);
+    });
+
+    it("the screen's tile, flickering, is never a speaker, and John and Milton are still named", async () => {
+      await reader(
+        URL_,
+        tile("f", "Fran", "<span>(You)</span>") +
+          tile("spaces/x/devices/f-presentation", "Fran (Presentation)") +
+          tile("j", "John") +
+          tile("m", "Milton"),
+      );
+      const flickering = flicker("spaces/x/devices/f-presentation", 1_200);
+      await talk("j");
+      await flickering;
+      expect(spoke()).toEqual(["John"]);
+      await talk("m");
+      expect(spoke()).toEqual(["Milton"]);
+      for (const e of sent) expect(e.participants).not.toContain("Fran (Presentation)");
+    });
+
+    it("the strip of people inside the presentation's tile: each person is their own tile", async () => {
+      await reader(
+        URL_,
+        `<div data-participant-id="f" aria-label="You are presenting">
+           <div class="zWGUib">You are presenting</div><button aria-label="Stop presenting">Stop presenting</button>
+           <div class="bars" id="bars-f"></div>
+           <div class="strip">${tile("j", "John")}${tile("m", "Milton")}</div>
+         </div>`,
+      );
+      await talk("m");
+      expect(spoke()).toEqual(["Milton"]);
+      expect(sent.at(-1)!.participants).toEqual(["John", "Milton"]);
+    });
+
+    it("the Meet tab in the background (timers slowed to a crawl): the page's changes still read who talks", async () => {
+      await reader(URL_, tile("f", "Fran", "<span>(You)</span>") + tile("j", "John") + tile("m", "Milton"));
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      try {
+        // No timer fires: only the page changing, as in a throttled background tab.
+        const bars = document.getElementById("bars-j")!;
+        for (let i = 0; i < 8; i++) {
+          vi.setSystemTime(Date.now() + 100);
+          bars.className = i % 2 ? "a" : "b";
+          await Promise.resolve();
+          await new Promise<void>((r) => queueMicrotask(r));
+        }
+        expect(spoke()).toEqual(["John"]);
+        expect(sent.at(-1)!.hidden).toBe(true);
+      } finally {
+        delete (document as { hidden?: boolean }).hidden;
+      }
+    });
+  });
+
   it("sends only changes, plus a heartbeat, and stops when told", async () => {
     await reader(CALLS[2]!.url, CALLS[2]!.html);
     const first = sent.length;

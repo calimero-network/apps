@@ -81,6 +81,7 @@ export function meeting(over: Partial<import("../sylenceApi").MeetingView> = {})
     audio: null,
     speakerNames: [],
     speakers: [],
+    notified: false,
     ...over,
   };
 }

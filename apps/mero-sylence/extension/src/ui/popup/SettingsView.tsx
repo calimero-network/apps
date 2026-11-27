@@ -102,6 +102,19 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
         </div>
         <div className="row" style={{ cursor: "default" }}>
           <span className="grow">
+            <span className="name">Tell the call it’s recorded</span>
+            <span className="meta">Posts a short note in the Meet, Zoom or Teams chat when you start recording.</span>
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={settings.announceRecording}
+            aria-label="Tell the call it’s recorded"
+            onClick={() => void save({ announceRecording: !settings.announceRecording })}
+          />
+        </div>
+        <div className="row" style={{ cursor: "default" }}>
+          <span className="grow">
             <span className="name">Improve the transcript after the call</span>
             <span className="meta">
               {improveOk

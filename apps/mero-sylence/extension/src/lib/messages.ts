@@ -28,6 +28,8 @@ export interface Settings {
    * its transcript replaces the live one (lib/improve.ts). Needs WebGPU.
    */
   improveAfterCall: boolean;
+  /** When recording starts, post a short note in the call's chat saying it is recorded with Sylence. */
+  announceRecording: boolean;
   /** Shows the sign-in page setting and diagnostics (off: hidden). On by itself when a page is set. */
   developer?: boolean;
 }
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notesModel: "auto",
   speakerNames: true,
   improveAfterCall: true,
+  announceRecording: true,
 };
 
 export interface Workspace {
@@ -197,4 +200,6 @@ export interface SpeakersEvent {
   participants: string[];
   self: string | null;
   via: string | null;
+  /** The call tab is in the background (the person is presenting another tab or window). */
+  hidden?: boolean;
 }

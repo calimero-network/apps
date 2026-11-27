@@ -1,5 +1,5 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CheckSquare, Clock, Download, FileText, Trash } from "@calimero-network/mero-icons";
+import { CheckSquare, Clock, Download, FileText, MessageCircle, Trash } from "@calimero-network/mero-icons";
 import type { MeetingView, SegmentView } from "./sylenceApi";
 import { deleteMeetingFully } from "./sylenceApi";
 import { ActionItems } from "./ActionItems";
@@ -354,6 +354,11 @@ export function MeetingBody({
               <span>
                 <CheckSquare size={14} aria-hidden="true" /> {m.openActions} open
               </span>
+              {m.notified && (
+                <span data-testid="call-notified" title="Sylence posted a note in the call's chat when recording started">
+                  <MessageCircle size={14} aria-hidden="true" /> Call told it's recorded
+                </span>
+              )}
             </p>
           </div>
         </div>
