@@ -24,7 +24,9 @@ export const MAX_AUDIO_BYTES = 49_545_216;
 export const MAX_DURATION_MS = 3 * 60 * 60_000;
 
 /** Files larger than this are refused before they are read at all. */
-export const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+// Decoding holds the file, every channel at 16 kHz and the mono mix at once: 500 MB keeps a
+// long stereo recording within what a browser tab can hold.
+export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** A file whose length the header does not give is decoded only up to this size. */
 export const MAX_UNPROBED_BYTES = 400 * 1024 * 1024;
@@ -192,10 +194,24 @@ export interface SpokenLine {
  * overlaps takes the nearest one. Voice -1 when there are no turns at all.
  */
 export function assignSpeakers(chunks: readonly TimedChunk[], turns: readonly Turn[]): SpokenLine[] {
+  // Turns by start, and the longest one: a sentence only looks at turns that can reach it.
+  const sorted = [...turns].sort((a, b) => a.start - b.start);
+  const longest = sorted.reduce((n, t) => Math.max(n, t.end - t.start), 0);
+  const firstFrom = (time: number) => {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid]!.start < time) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
   return chunks.map((c) => {
     const end = Math.max(c.end, c.start);
     const overlap = new Map<number, number>();
-    for (const t of turns) {
+    for (let i = firstFrom(c.start - longest); i < sorted.length && sorted[i]!.start < end; i++) {
+      const t = sorted[i]!;
       const o = Math.min(end, t.end) - Math.max(c.start, t.start);
       if (o > 0) overlap.set(t.id, (overlap.get(t.id) ?? 0) + o);
     }
@@ -422,16 +438,25 @@ export function probeDuration(file: Blob, timeoutMs = 10_000): Promise<number | 
   });
 }
 
+/** The average of `channels`, sample by sample (every channel counts the same). */
+export function mixDown(channels: readonly Float32Array[]): Float32Array {
+  if (channels.length === 1) return channels[0]!;
+  const out = new Float32Array(channels[0]?.length ?? 0);
+  const k = 1 / channels.length;
+  for (const ch of channels) for (let i = 0; i < out.length; i++) out[i]! += ch[i]! * k;
+  return out;
+}
+
 /**
  * The file decoded to 16 kHz mono, as the speech models take it. Browser
- * only. The file is decoded at its own rate, then rendered once through a
- * one-channel 16 kHz `OfflineAudioContext`, so the browser mixes the channels
- * down and resamples natively: no mixing loop on the main thread and no
- * second copy. The encoded bytes and the decoded buffer are let go as soon as
- * they are used.
+ * only. `decodeAudioData` on a 16 kHz context resamples while it decodes.
+ * A mono file's samples are used as they are, with no copy. Stereo, quad and
+ * 5.1 are mixed down by the browser (a one-channel render, no loop here);
+ * any other layout is averaged channel by channel, since the browser would
+ * keep only the first channel. The encoded bytes are let go once decoded.
  */
 export async function decodeTo16kMono(file: Blob): Promise<{ audio: Float32Array; durationMs: number }> {
-  if (file.size > MAX_FILE_BYTES) throw new Error("This file is larger than 2 GB; Sylence cannot read it in the browser.");
+  if (file.size > MAX_FILE_BYTES) throw new Error("This file is larger than 500 MB; Sylence cannot read it in the browser. Export a compressed copy (mp3, m4a or webm).");
   const decoder = new OfflineAudioContext(1, 1, RATE);
   let decoded: AudioBuffer | null;
   try {
@@ -442,6 +467,13 @@ export async function decodeTo16kMono(file: Blob): Promise<{ audio: Float32Array
   }
   const seconds = decoded.duration;
   if (seconds * 1000 > MAX_DURATION_MS) throw new Error("Recordings up to 3 hours can be uploaded.");
+  const durationMs = Math.round(seconds * 1000);
+  const n = decoded.numberOfChannels;
+  if (n === 1) return { audio: decoded.getChannelData(0), durationMs };
+  if (n !== 2 && n !== 4 && n !== 6) {
+    const channels = Array.from({ length: n }, (_, i) => decoded!.getChannelData(i));
+    return { audio: mixDown(channels), durationMs };
+  }
   const frames = Math.max(1, Math.ceil(seconds * RATE));
   const ctx = new OfflineAudioContext(1, frames, RATE);
   const source = ctx.createBufferSource();
@@ -451,5 +483,5 @@ export async function decodeTo16kMono(file: Blob): Promise<{ audio: Float32Array
   source.start();
   const rendered = await ctx.startRendering();
   source.disconnect();
-  return { audio: rendered.getChannelData(0), durationMs: Math.round(seconds * 1000) };
+  return { audio: rendered.getChannelData(0), durationMs };
 }

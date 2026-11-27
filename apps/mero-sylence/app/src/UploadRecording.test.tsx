@@ -74,6 +74,7 @@ function setup(handlers: Record<string, Handler> = {}, opts: { decode?: typeof d
     attachAudio: track("attachAudio", () => meeting({ id: "m1" })),
     endMeeting: track("endMeeting", () => meeting({ id: "m1" })),
     addAction: track("addAction", () => "a1"),
+    recordingsLeft: () => 100,
     ...handlers,
   });
   type Upload = (bytes: Uint8Array, mime: string) => Promise<{ blobId: string; size: number }>;
@@ -250,5 +251,15 @@ describe("UploadRecording", () => {
     await waitFor(() => expect(order).toContain("endMeeting"));
     await act(async () => release());
     expect(order).not.toContain("attachAudio");
+  });
+
+  it("skips the audio without uploading it when the account is at its cap", async () => {
+    const { order, onDone } = setup({ recordingsLeft: () => 0 });
+    choose();
+    fireEvent.click(screen.getByTestId("upload-start"));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(order).not.toContain("upload");
+    expect(order).not.toContain("attachAudio");
+    expect(String(onDone.mock.calls[0]![1])).toMatch(/100 recordings/);
   });
 });

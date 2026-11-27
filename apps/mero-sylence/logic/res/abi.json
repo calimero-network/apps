@@ -482,6 +482,7 @@
   "state": {
     "fields": {
       "actions": "unorderedMap",
+      "audioOwner": "unorderedMap",
       "byTime": "set",
       "deleting": "set",
       "insights": "unorderedMap",
@@ -493,6 +494,7 @@
     },
     "search": {
       "actions": [],
+      "audioOwner": [],
       "byTime": [],
       "deleting": [],
       "insights": [],

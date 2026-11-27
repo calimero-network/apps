@@ -207,7 +207,7 @@ function Person({
             <li key={e.label}>
               <span className="emotion-label">{e.label}</span>
               <span className="emotion-track" aria-hidden="true">
-                <span className={`emotion-fill tone-${TONE_GROUPS[e.label] ?? "neutral"}`} style={{ width: `${Math.max(4, e.share / 10)}%` }} />
+                <span className={`emotion-fill tone-${(Object.hasOwn(TONE_GROUPS, e.label) && TONE_GROUPS[e.label]) || "neutral"}`} style={{ width: `${Math.max(4, e.share / 10)}%` }} />
               </span>
               <span className="emotion-value dim">{Math.round(e.share / 10)}%</span>
             </li>

@@ -354,7 +354,7 @@ function WorkspaceView({
   const [name, setName] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   /** What the last upload could not keep (its audio), shown over the meeting it opened. */
-  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<{ meetingId: string; note: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -375,7 +375,8 @@ function WorkspaceView({
   const openActions = meetings.data?.reduce((n, m) => n + m.openActions, 0) ?? 0;
   // A recording kept in this browser whose meeting is gone, or whose audio was removed or
   // replaced (here or on another device), is dropped once the list says so.
-  const keptAudio = meetings.data ? meetings.data.flatMap((m) => (m.audio ? [m.audio.blob] : [])).sort().join(",") : null;
+  // The list holds the newest 1,000 meetings: past that it cannot say what older ones keep.
+  const keptAudio = meetings.data && meetings.data.length < 1_000 ? meetings.data.flatMap((m) => (m.audio ? [m.audio.blob] : [])).sort().join(",") : null;
   useEffect(() => {
     if (keptAudio !== null) void pruneRecordings(appId, new Set(keptAudio ? keptAudio.split(",") : []));
   }, [appId, keptAudio]);
@@ -440,16 +441,16 @@ function WorkspaceView({
           onClose={() => setUploading(false)}
           onDone={(id, note) => {
             setUploading(false);
-            setUploadNote(note ?? null);
+            setUploadNote(note ? { meetingId: id, note } : null);
             go({ page: "meeting", id });
           }}
         />
       )}
       {route.page === "install" && <InstallPage onBack={() => go({ page: "meetings" })} backLabel="All meetings" />}
       {route.page === "actions" && <OpenActions workspace={workspace} onOpen={(id) => go({ page: "meeting", id })} />}
-      {route.page === "meeting" && uploadNote && (
+      {route.page === "meeting" && uploadNote?.meetingId === route.id && (
         <p className="notice" role="status">
-          {uploadNote}{" "}
+          {uploadNote.note}{" "}
           <button type="button" className="btn small ghost" onClick={() => setUploadNote(null)}>
             Dismiss
           </button>

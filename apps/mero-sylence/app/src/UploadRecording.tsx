@@ -127,6 +127,9 @@ export function UploadRecording({
     return () => {
       runId.current += 1;
       worker.current?.terminate();
+      // A terminated worker answers nothing: settle the run waiting on it.
+      stopRun.current?.();
+      stopRun.current = null;
       // Closed mid-run (a workspace switch, signing out): a meeting already started is ended, not left live.
       const meeting = started.current;
       started.current = null;
@@ -269,6 +272,9 @@ export function UploadRecording({
       if (keepAudio && !audioRefusal && mime) {
         step("save", 0.75);
         try {
+          // At the account's cap the upload would be refused after sending it all: ask first.
+          const left = await workspace.act((c) => c.recordingsLeft());
+          if (left === 0) throw new Error("you keep 100 recordings already; remove one to keep this one");
           const bytes = new Uint8Array(await file.arrayBuffer());
           step("save", 0.8);
           const { blobId } = await workspace.blobs.upload(bytes, mime);

@@ -184,3 +184,19 @@ describe("toMarkdown with names given to speakers", () => {
     expect(md).toContain("Eve:** Hello");
   });
 });
+
+describe("mergeSegments and highlighter edge cases", () => {
+  const s = (seq: number, text = "x") => ({ seq, startMs: seq, endMs: seq + 1, speaker: "others", name: "", text, edited: false });
+  it("appends a next page, merges an overlapping or unordered one", async () => {
+    const { mergeSegments } = await import("./transcript");
+    expect(mergeSegments([s(0), s(1)], [s(2), s(3)]).map((x) => x.seq)).toEqual([0, 1, 2, 3]);
+    expect(mergeSegments([s(0), s(1)], [s(1, "new"), s(2)]).map((x) => x.text)).toEqual(["x", "new", "x"]);
+    expect(mergeSegments([s(0), s(5)], [s(3), s(2)]).map((x) => x.seq)).toEqual([0, 2, 3, 5]);
+    expect(mergeSegments([s(0)], [s(2), s(2, "dup")]).map((x) => x.seq)).toEqual([0, 2]);
+  });
+  it("marks words with regex characters", async () => {
+    const { highlighter } = await import("./transcript");
+    const parts = highlighter(["c++", "(a)", "$5.00"])("Use c++ for (a) at $5.00 each");
+    expect(parts.filter((p) => p.hit).map((p) => p.text)).toEqual(["c++", "(a)", "$5.00"]);
+  });
+});

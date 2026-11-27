@@ -988,29 +988,39 @@ fn a_blob_over_the_limit_is_refused() {
 #[test]
 fn an_account_keeps_a_bounded_number_of_recordings() {
     let mut t = app();
-    let blob = t.upload_blob(&[9_u8; 32], "audio/mpeg");
+    let mut n = 0_u32;
+    let mut fresh = |t: &mut TestApp| {
+        n += 1;
+        t.upload_blob(&n.to_le_bytes(), "audio/mpeg")
+    };
+    let first = fresh(&mut t);
     let mut ids = Vec::new();
-    for _ in 0..100 {
+    for i in 0..100 {
         let id = upload_meeting(&mut t, "bob");
+        let blob = if i == 0 { first.clone() } else { fresh(&mut t) };
         attach(&mut t, "bob", &id, &blob, "audio/mpeg", 1_000).unwrap();
         ids.push(id);
     }
     let extra = upload_meeting(&mut t, "bob");
+    let b = fresh(&mut t);
     assert_eq!(
-        code(attach(&mut t, "bob", &extra, &blob, "audio/mpeg", 1_000)),
+        code(attach(&mut t, "bob", &extra, &b, "audio/mpeg", 1_000)),
         "Refused"
     );
     // Re-attaching to a meeting that has one does not count twice.
-    attach(&mut t, "bob", &ids[0], &blob, "audio/mpeg", 2_000).unwrap();
+    attach(&mut t, "bob", &ids[0], &first, "audio/mpeg", 2_000).unwrap();
     // Another account has its own allowance.
     let cy = upload_meeting(&mut t, "cy");
-    attach(&mut t, "cy", &cy, &blob, "audio/mpeg", 1_000).unwrap();
+    let b = fresh(&mut t);
+    attach(&mut t, "cy", &cy, &b, "audio/mpeg", 1_000).unwrap();
     // Removing one, or deleting a meeting, frees a place.
     call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[0] }));
-    attach(&mut t, "bob", &extra, &blob, "audio/mpeg", 1_000).unwrap();
+    let b = fresh(&mut t);
+    attach(&mut t, "bob", &extra, &b, "audio/mpeg", 1_000).unwrap();
     let another = upload_meeting(&mut t, "bob");
+    let b = fresh(&mut t);
     assert_eq!(
-        code(attach(&mut t, "bob", &another, &blob, "audio/mpeg", 1_000)),
+        code(attach(&mut t, "bob", &another, &b, "audio/mpeg", 1_000)),
         "Refused"
     );
     // The owner deleting Bob's meeting frees Bob's place, not the owner's.
@@ -1023,7 +1033,8 @@ fn an_account_keeps_a_bounded_number_of_recordings() {
     );
     assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 1);
     assert_eq!(view(&mut t, "owner", "recordingsLeft", json!({})), 100);
-    attach(&mut t, "bob", &another, &blob, "audio/mpeg", 1_000).unwrap();
+    let b = fresh(&mut t);
+    attach(&mut t, "bob", &another, &b, "audio/mpeg", 1_000).unwrap();
     // Removing twice, then deleting, never frees more than one place.
     call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
     call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
@@ -1124,4 +1135,29 @@ fn a_redone_transcript_drops_the_old_insights() {
         view(&mut t, "bob", "insights", json!({ "meetingId": id })),
         Value::Null
     );
+}
+
+#[test]
+fn a_recording_belongs_to_one_meeting() {
+    let mut t = app();
+    let a = upload_meeting(&mut t, "bob");
+    let b = upload_meeting(&mut t, "cy");
+    let blob = t.upload_blob(&[42_u8; 64], "audio/mpeg");
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 1_000).unwrap();
+    // Another meeting cannot name it, so removing it from the first removes it.
+    assert_eq!(
+        code(attach(&mut t, "cy", &b, &blob, "audio/mpeg", 1_000)),
+        "Refused"
+    );
+    // Its own meeting can attach it again.
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 2_000).unwrap();
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": a }));
+    attach(&mut t, "cy", &b, &blob, "audio/mpeg", 1_000).unwrap();
+    // Replaced or deleted, it is free again.
+    let other = t.upload_blob(&[43_u8; 64], "audio/mpeg");
+    attach(&mut t, "cy", &b, &other, "audio/mpeg", 1_000).unwrap();
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 1_000).unwrap();
+    call(&mut t, "bob", "deleteMeeting", json!({ "meetingId": a }));
+    let c = upload_meeting(&mut t, "cy");
+    attach(&mut t, "cy", &c, &blob, "audio/mpeg", 1_000).unwrap();
 }

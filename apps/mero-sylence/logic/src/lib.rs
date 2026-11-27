@@ -69,7 +69,7 @@ const DELETE_BATCH: u32 = 1_000;
 pub const MAX_AUDIO_BYTES: u64 = 49_545_216;
 /// Recordings one account may keep across the workspace (each up to [`MAX_AUDIO_BYTES`]).
 pub const MAX_RECORDINGS_PER_ACCOUNT: u32 = 100;
-/// The longest recording a meeting may name: the page refuses uploads over 4 h.
+/// The longest recording a meeting may name: the page refuses uploads over 3 h.
 const MAX_AUDIO_MS: u32 = 5 * 60 * 60 * 1_000;
 /// The content types a recording may have: what browsers play in `<audio>`.
 const AUDIO_TYPES: [&str; 12] = [
@@ -389,6 +389,8 @@ pub struct Sylence {
     insights: UnorderedMap<String, Insights>,
     /// `(recorder, meetingId)` of every meeting that keeps a recording.
     recorded: Set<(String, String)>,
+    /// The meeting each recording blob belongs to: one blob, one meeting.
+    audio_owner: UnorderedMap<String, String>,
 }
 
 #[app::error]
@@ -830,6 +832,9 @@ impl Sylence {
             let _ = self
                 .recorded
                 .remove(&(row.recorder.clone(), meeting_id.clone()))?;
+            if let Some(audio) = &row.audio {
+                let _ = self.audio_owner.remove(&audio.blob.id())?;
+            }
             let _ = self.deleting.insert(&meeting_id)?;
             env::emit(
                 Event::MeetingChanged {
@@ -908,6 +913,13 @@ impl Sylence {
                 "the blob was uploaded as {stored:?}, not {mime:?}"
             )));
         }
+        // A recording belongs to one meeting: removing it there must remove it.
+        let blob_id = blob.id();
+        if let Some(owner) = self.audio_owner.get(&blob_id)? {
+            if owner != meeting_id {
+                return Err(refused("that recording belongs to another meeting"));
+            }
+        }
         let key = (row.recorder.clone(), meeting_id.clone());
         if !self.recorded.contains(&key)? {
             if self.recordings_of(&row.recorder)? >= MAX_RECORDINGS_PER_ACCOUNT {
@@ -917,6 +929,10 @@ impl Sylence {
             }
             let _ = self.recorded.insert(&key)?;
         }
+        if let Some(old) = &row.audio {
+            let _ = self.audio_owner.remove(&old.blob.id())?;
+        }
+        let _ = self.audio_owner.insert(&blob_id, &meeting_id)?;
         row.audio = Some(Audio {
             blob,
             mime,
@@ -937,7 +953,8 @@ impl Sylence {
     /// Removes the meeting's recording; the transcript stays. The recorder only.
     pub fn remove_audio(&mut self, meeting_id: String) -> app::Result<MeetingView> {
         let mut row = self.recorders(&meeting_id)?;
-        if row.audio.take().is_some() {
+        if let Some(old) = row.audio.take() {
+            let _ = self.audio_owner.remove(&old.blob.id())?;
             let _ = self
                 .recorded
                 .remove(&(row.recorder.clone(), meeting_id.clone()))?;

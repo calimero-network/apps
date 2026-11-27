@@ -104,7 +104,7 @@ export function aggregateEmotions(lines: readonly Omit<ScoredLine, "label">[]): 
   const groups = new Map<Tone, number>();
   let emotive = 0;
   for (const [label, m] of mass) {
-    const g = TONE_GROUPS[label];
+    const g = Object.hasOwn(TONE_GROUPS, label) ? TONE_GROUPS[label] : undefined;
     if (!g || g === "neutral") continue;
     groups.set(g, (groups.get(g) ?? 0) + m);
     emotive += m;

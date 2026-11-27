@@ -69,8 +69,14 @@ function openDb(): Promise<IDBDatabase> | null {
       if (db.objectStoreNames.contains("blobs")) db.deleteObjectStore("blobs");
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
+    /** Set once a blocked open was given up: a late success is closed, not leaked. */
+    let gaveUp = false;
     req.onsuccess = () => {
       const db = req.result;
+      if (gaveUp) {
+        db.close();
+        return;
+      }
       // Another tab upgrading the store: let it, and open again next time.
       db.onversionchange = () => {
         db.close();
@@ -84,6 +90,7 @@ function openDb(): Promise<IDBDatabase> | null {
     };
     // A tab with an older version holds the store open: no cache this time, rather than no playback.
     req.onblocked = () => {
+      gaveUp = true;
       dbPromise = null;
       reject(new Error("the recording cache is held by another tab"));
     };
@@ -163,11 +170,15 @@ async function rows(store: IDBObjectStore): Promise<CacheRow[]> {
  * Keeps `data`, the blob `blobId` of workspace `appId`, then drops the least
  * recently played recordings past the cap. One larger than the cap is not kept.
  */
+/** Bumped by every forget: a write started before one is dropped, not landed after it. */
+let generation = 0;
+
 export async function rememberRecording(appId: string, blobId: string, data: Blob): Promise<void> {
   if (data.size > CACHE_CAP_BYTES) return;
+  const started = generation;
   try {
     const db = await openDb();
-    if (!db) return;
+    if (!db || started !== generation) return;
     const key = keyOf(appId, blobId);
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
@@ -181,6 +192,7 @@ export async function rememberRecording(appId: string, blobId: string, data: Blo
 
 /** Drops one kept recording (its meeting was deleted, or its audio removed). */
 export async function forgetRecording(appId: string, blobId: string): Promise<void> {
+  generation += 1;
   try {
     const db = await openDb();
     if (!db) return;
@@ -211,6 +223,7 @@ export async function pruneRecordings(appId: string, keep: ReadonlySet<string>):
 
 /** Drops every kept recording of workspace `appId`, or of every workspace (signing out). */
 export async function forgetWorkspaceRecordings(appId?: string): Promise<void> {
+  generation += 1;
   try {
     const db = await openDb();
     if (!db) return;

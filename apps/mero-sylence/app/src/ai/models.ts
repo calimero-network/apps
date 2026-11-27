@@ -51,6 +51,8 @@ export function pinnedFetch(base: typeof fetch = fetch): typeof fetch {
   return ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const pinned = pinnedUrl(url);
-    return base(pinned === url ? input : pinned, init);
+    if (pinned === url) return base(input, init);
+    // A Request keeps its method, headers and signal under the pinned address.
+    return base(typeof input === "string" || input instanceof URL ? pinned : new Request(pinned, input), init);
   }) as typeof fetch;
 }

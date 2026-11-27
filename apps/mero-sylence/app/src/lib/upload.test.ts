@@ -185,3 +185,36 @@ describe("CONTRACT_AUDIO_TYPES", () => {
     expect(types).toEqual([...CONTRACT_AUDIO_TYPES]);
   });
 });
+
+describe("mixDown", () => {
+  it("returns a mono channel as it is", async () => {
+    const { mixDown } = await import("./upload");
+    const one = new Float32Array([0.1, 0.2]);
+    expect(mixDown([one])).toBe(one);
+  });
+  it("averages every channel, however many there are", async () => {
+    const { mixDown } = await import("./upload");
+    const out = mixDown([new Float32Array([0.3, 0]), new Float32Array([0, 0.3]), new Float32Array([0.3, 0.3])]);
+    expect(Array.from(out).map((v) => Math.round(v * 100) / 100)).toEqual([0.2, 0.2]);
+  });
+});
+
+describe("assignSpeakers over many turns", () => {
+  it("matches the brute-force answer", async () => {
+    const { assignSpeakers } = await import("./upload");
+    const turns = Array.from({ length: 400 }, (_, i) => ({ start: i * 2.5, end: i * 2.5 + (i % 7 === 0 ? 9 : 2), id: i % 3 }));
+    const chunks = Array.from({ length: 300 }, (_, i) => ({ start: i * 3.3, end: i * 3.3 + 2.8, text: `s${i}` }));
+    const brute = chunks.map((c) => {
+      const o = new Map<number, number>();
+      for (const t of turns) {
+        const v = Math.min(c.end, t.end) - Math.max(c.start, t.start);
+        if (v > 0) o.set(t.id, (o.get(t.id) ?? 0) + v);
+      }
+      let id = -1;
+      let most = -1;
+      for (const [k, v] of o) if (v > most) [id, most] = [k, v];
+      return id;
+    });
+    expect(assignSpeakers(chunks, [...turns].reverse()).map((l) => l.speakerIndex)).toEqual(brute);
+  });
+});
