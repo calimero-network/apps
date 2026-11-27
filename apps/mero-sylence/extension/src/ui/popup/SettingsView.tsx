@@ -3,18 +3,27 @@ import { readLog } from "../../lib/diagnostics";
 import { validOverride } from "../../lib/format";
 import { KEYS, type AuthState, type Settings } from "../../lib/messages";
 import { write } from "../../lib/storage";
-import { LANGUAGES, TIERS, TIER_ORDER, type TierId } from "../../lib/tiers";
+import { LANGUAGES, TIERS, TIER_ORDER, canImproveAfterCall, tierBlock, type TierId } from "../../lib/tiers";
 import { useCaps } from "../hooks";
 import { NotesSettings } from "./NotesSettings";
-import { BackIcon, ChevronRightIcon, SignOutIcon } from "../icons";
+import { BackIcon, SignOutIcon } from "../icons";
 import { ask } from "../rpc";
 
 export function SettingsView({ auth, settings, onBack }: { auth: AuthState | null; settings: Settings; onBack: () => void }) {
   const caps = useCaps();
   const save = (s: Partial<Settings>) => write("local", KEYS.settings, { ...settings, ...s });
   const [override, setOverride] = useState(settings.pageOverride);
-  const [advanced, setAdvanced] = useState(!!settings.pageOverride);
+  const developer = settings.developer ?? !!settings.pageOverride;
   const overrideOk = validOverride(override);
+  // The second pass runs the 1.5 GB model: only where it is allowed and already downloaded.
+  const improveOk = canImproveAfterCall(caps);
+  const improveWhy = !caps
+    ? "Checking this laptop…"
+    : tierBlock("best", caps)
+      ? `Off on this laptop. ${tierBlock("best", caps)}`
+      : "Unlocks once Whisper large-v3 turbo is downloaded (Speech model, on the record screen).";
+  // Action items come from the transcript, so a speech model must be on the laptop.
+  const actionsOk = !!caps?.cached?.length;
 
   return (
     <main className="body">
@@ -95,29 +104,35 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
           <span className="grow">
             <span className="name">Improve the transcript after the call</span>
             <span className="meta">
-              {caps && !caps.webgpu
-                ? "Needs a graphics chip (WebGPU), which this browser doesn't offer. The live transcript is kept."
-                : "When you stop, Whisper large-v3 turbo goes over the whole recording again and replaces the live lines. The audio stays on this laptop and is deleted after."}
+              {improveOk
+                ? "When you stop, Whisper large-v3 turbo goes over the whole recording again and replaces the live lines. The audio stays on this laptop and is deleted after."
+                : improveWhy}
             </span>
           </span>
           <button
             className="switch"
             role="switch"
-            aria-checked={settings.improveAfterCall}
+            aria-checked={improveOk && settings.improveAfterCall}
             aria-label="Improve the transcript after the call"
+            disabled={!improveOk}
             onClick={() => void save({ improveAfterCall: !settings.improveAfterCall })}
           />
         </div>
         <div className="row" style={{ cursor: "default" }}>
           <span className="grow">
             <span className="name">Find action items</span>
-            <span className="meta">From phrases like “I’ll…”, “can you…”, “we need to…”, added when the meeting ends. Smart notes (Experimental) finds more.</span>
+            <span className="meta">
+              {actionsOk
+                ? "From phrases like “I’ll…”, “can you…”, “we need to…”, added when the meeting ends. Smart notes (Experimental) finds more. Off here, you can still find them later on the meeting's page."
+                : "Unlocks once a speech model is downloaded. You can also find them later on the meeting's page."}
+            </span>
           </span>
           <button
             className="switch"
             role="switch"
-            aria-checked={settings.autoActions}
+            aria-checked={actionsOk && settings.autoActions}
             aria-label="Find action items"
+            disabled={!actionsOk}
             onClick={() => void save({ autoActions: !settings.autoActions })}
           />
         </div>
@@ -125,17 +140,8 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
 
       <NotesSettings settings={settings} caps={caps} />
 
-      <button
-        className="btn ghost sm"
-        style={{ alignSelf: "flex-start", marginLeft: -4 }}
-        onClick={() => setAdvanced(!advanced)}
-        aria-expanded={advanced}
-      >
-        <ChevronRightIcon size={13} style={{ transform: advanced ? "rotate(90deg)" : "none", transition: "transform 150ms" }} />
-        {advanced ? "Hide advanced" : "Advanced"}
-      </button>
-      {advanced && (
-        <div className="card stack" style={{ gap: 16 }}>
+      {developer && (
+        <div className="card stack" style={{ gap: 16 }} data-testid="developer">
           <div className="field">
             <label htmlFor="override">Sign-in page</label>
             <input
@@ -165,6 +171,16 @@ export function SettingsView({ auth, settings, onBack }: { auth: AuthState | nul
           <SignOutIcon size={14} /> Log out
         </button>
       )}
+      <label className="dev-toggle">
+        <span>Developer mode</span>
+        <button
+          className="switch sm"
+          role="switch"
+          aria-checked={developer}
+          aria-label="Developer mode"
+          onClick={() => void save({ developer: !developer, ...(developer ? { pageOverride: "" } : {}) })}
+        />
+      </label>
     </main>
   );
 }

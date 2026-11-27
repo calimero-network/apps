@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIERS, fallingBehind, isEnglish, pickTier, resolveTier, stepDown, tierFits, whisperLanguage, type Capabilities } from "./tiers";
+import { canImproveAfterCall, tierBlock } from "./tiers";
 
 const caps = (c: Partial<Capabilities> = {}): Capabilities => ({
   webgpu: false,
@@ -70,5 +71,37 @@ describe("model tiers", () => {
     expect(TIERS.best.device).toBe("webgpu");
     expect(TIERS.ultralight.sizeMb).toBeLessThan(TIERS.light.sizeMb);
     expect(TIERS.light.sizeMb).toBeLessThan(TIERS.balanced.sizeMb);
+  });
+});
+
+describe("what a device may run", () => {
+  const strong = { webgpu: true, maxBufferSize: 4 * 2 ** 30, deviceMemoryGb: 8, cores: 10 };
+  it("allows the big model only where every signal says it fits", () => {
+    expect(tierBlock("best", strong)).toBeNull();
+    expect(tierBlock("best", { ...strong, chromeOS: true })).toMatch(/Chromebook/);
+    expect(tierBlock("best", { ...strong, deviceMemoryGb: 4 })).toMatch(/8 GB/);
+    expect(tierBlock("best", { ...strong, deviceMemoryGb: 0 })).toMatch(/8 GB/);
+    expect(tierBlock("best", { ...strong, cores: 4 })).toMatch(/cores/);
+    expect(tierBlock("best", { ...strong, webgpu: false })).toMatch(/WebGPU/);
+    expect(tierBlock("best", { ...strong, maxBufferSize: 256 * 2 ** 20 })).toMatch(/can't hold/);
+  });
+  it("keeps Whisper base off small machines and everything off phones", () => {
+    expect(tierBlock("balanced", { ...strong, webgpu: false, deviceMemoryGb: 2 })).toMatch(/4 GB/);
+    expect(tierBlock("balanced", { ...strong, cores: 2 })).toMatch(/cores/);
+    expect(tierBlock("balanced", { ...strong, deviceMemoryGb: 0, cores: 0 })).toBeNull();
+    expect(tierBlock("ultralight", { ...strong, deviceMemoryGb: 2, cores: 2 })).toBeNull();
+    expect(tierBlock("ultralight", { ...strong, mobile: true })).toMatch(/Phones/);
+  });
+  it("never picks a model the device must not run, even when it is downloaded", () => {
+    const chromebook = { ...strong, chromeOS: true, cached: ["best" as const] };
+    expect(pickTier(chromebook, "en")).not.toBe("best");
+    expect(resolveTier("best", chromebook, "en")).not.toBe("best");
+    expect(pickTier({ ...strong, cached: ["best" as const] }, "en")).toBe("best");
+  });
+  it("unlocks the second pass only with the big model allowed and downloaded", () => {
+    expect(canImproveAfterCall(null)).toBe(false);
+    expect(canImproveAfterCall({ ...strong, cached: [] })).toBe(false);
+    expect(canImproveAfterCall({ ...strong, cached: ["best"] })).toBe(true);
+    expect(canImproveAfterCall({ ...strong, chromeOS: true, cached: ["best"] })).toBe(false);
   });
 });

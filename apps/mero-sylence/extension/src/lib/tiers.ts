@@ -83,6 +83,47 @@ export interface Capabilities {
   cores: number;
   /** Tiers whose model files are already in the browser's cache. */
   cached?: TierId[];
+  /** A Chromebook: integrated graphics that report WebGPU but cannot hold the big model. */
+  chromeOS?: boolean;
+  /** A phone or tablet. */
+  mobile?: boolean;
+}
+
+/** The least a laptop needs for each model, so none is ever downloaded onto one it would lock up. */
+export const MIN_MEMORY_GB = 4;
+export const MIN_CORES = 4;
+
+/**
+ * Why `tier` must not run on this device, or `null` when it may. Unknown
+ * memory or cores count as small for the big model (it needs every signal to
+ * say yes) and as enough for the small ones (any desktop runs them).
+ *
+ * - Whisper large-v3 turbo (1.5 GB, GPU): a WebGPU adapter that takes 1 GB
+ *   buffers, 8 GB of memory, 8 cores, and not a Chromebook.
+ * - Whisper base: 4 GB of memory and 4 cores.
+ * - Moonshine base and tiny: any laptop.
+ * - Nothing on a phone or tablet.
+ */
+export function tierBlock(tier: TierId, caps: Capabilities): string | null {
+  if (caps.mobile) return "Phones and tablets can't run the speech models.";
+  if (tier === "best") {
+    if (!caps.webgpu) return "Needs a graphics chip (WebGPU), which this browser doesn't offer.";
+    if (caps.chromeOS) return "Too heavy for a Chromebook: it can lock the laptop up.";
+    if (caps.deviceMemoryGb < 8) return "Needs 8 GB of memory or more.";
+    if (caps.cores < 8) return "Needs 8 or more processor cores.";
+    if (caps.maxBufferSize !== 0 && caps.maxBufferSize < 1 << 30) return "This graphics chip can't hold the model.";
+    return null;
+  }
+  if (tier === "balanced") {
+    if (caps.deviceMemoryGb > 0 && caps.deviceMemoryGb < MIN_MEMORY_GB) return `Needs ${MIN_MEMORY_GB} GB of memory or more.`;
+    if (caps.cores > 0 && caps.cores < MIN_CORES) return `Needs ${MIN_CORES} or more processor cores.`;
+  }
+  return null;
+}
+
+/** Whether the second pass after a call may run: the big model is allowed here and already downloaded. */
+export function canImproveAfterCall(caps: Capabilities | null): boolean {
+  return !!caps && tierBlock("best", caps) === null && !!caps.cached?.includes("best");
 }
 
 /** English (or auto-detect on an English browser) may use the English-only models. */
@@ -102,7 +143,7 @@ export function pickTier(caps: Capabilities, language: string): TierId {
   const bigBuffers = caps.maxBufferSize === 0 || caps.maxBufferSize >= 1 << 30;
   // The big model is a 1.5 GB download: Auto uses it once it is on the laptop
   // (Settings, Download), so a first call never waits on it and records nothing.
-  if (caps.webgpu && bigBuffers && memory >= 8 && caps.cached?.includes("best")) return "best";
+  if (caps.webgpu && bigBuffers && memory >= 8 && tierBlock("best", caps) === null && caps.cached?.includes("best")) return "best";
   if (!isEnglish(language)) return "balanced";
   if (memory <= 4 || (caps.cores > 0 && caps.cores <= 2)) return "ultralight";
   return "light";
@@ -113,7 +154,7 @@ export function tierFits(tier: TierId, caps: Capabilities, language: string): bo
   const t = TIERS[tier];
   if (!t.multilingual && !isEnglish(language)) return false;
   if (t.device === "webgpu" && !caps.webgpu) return false;
-  return true;
+  return tierBlock(tier, caps) === null;
 }
 
 /** The next lighter model that can still transcribe `language`, or `null` at the bottom. */

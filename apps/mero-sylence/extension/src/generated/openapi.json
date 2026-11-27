@@ -505,6 +505,111 @@
         ],
         "type": "object"
       },
+      "AttachAudioArgs": {
+        "description": "The arguments of `attachAudio`, by name.",
+        "properties": {
+          "blob": {
+            "$ref": "#/components/schemas/BlobRef"
+          },
+          "durationMs": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "meetingId": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId",
+          "blob",
+          "mime",
+          "durationMs"
+        ],
+        "type": "object"
+      },
+      "AttachAudioRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/AttachAudioArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "AttachAudioResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/MeetingView"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "Audio": {
+        "properties": {
+          "blob": {
+            "$ref": "#/components/schemas/BlobRef"
+          },
+          "durationMs": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "size": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "blob",
+          "mime",
+          "size",
+          "durationMs"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Audio"
+      },
+      "BlobRef": {
+        "type": "string",
+        "x-calimero-abi-type": "BlobRef"
+      },
       "CallEvent": {
         "oneOf": [
           {
@@ -514,6 +619,21 @@
               },
               "kind": {
                 "const": "ActionChanged"
+              }
+            },
+            "required": [
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/InsightsChangedEvent"
+              },
+              "kind": {
+                "const": "InsightsChanged"
               }
             },
             "required": [
@@ -927,6 +1047,25 @@
         ],
         "type": "object"
       },
+      "EmotionShare": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "share": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "label",
+          "share"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "EmotionShare"
+      },
       "EndMeetingArgs": {
         "description": "The arguments of `endMeeting`, by name.",
         "properties": {
@@ -999,6 +1138,26 @@
               },
               "event": {
                 "const": "ActionChanged"
+              },
+              "id": {
+                "description": "`<index>:<seq>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/InsightsChangedEvent"
+              },
+              "event": {
+                "const": "InsightsChanged"
               },
               "id": {
                 "description": "`<index>:<seq>`.",
@@ -1114,6 +1273,131 @@
           },
           "result": {
             "$ref": "#/components/schemas/MeetingView"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "Insights": {
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonInsight"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "description": "A u64 as a decimal string (0..=18446744073709551615).",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string",
+            "x-calimero-type": "u64"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "people",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Insights"
+      },
+      "InsightsArgs": {
+        "description": "The arguments of `insights`, by name.",
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId"
+        ],
+        "type": "object"
+      },
+      "InsightsChangedEvent": {
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId"
+        ],
+        "type": "object"
+      },
+      "InsightsInput": {
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonInsight"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "model",
+          "people"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "InsightsInput"
+      },
+      "InsightsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/InsightsArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "InsightsResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Insights"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1261,6 +1545,16 @@
       },
       "MeetingView": {
         "properties": {
+          "audio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Audio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "durationMs": {
             "maximum": 4294967295,
             "minimum": 0,
@@ -1312,6 +1606,18 @@
             "type": "integer",
             "x-calimero-type": "u32"
           },
+          "speakerNames": {
+            "items": {
+              "$ref": "#/components/schemas/SpeakerName"
+            },
+            "type": "array"
+          },
+          "speakers": {
+            "items": {
+              "$ref": "#/components/schemas/Speaker"
+            },
+            "type": "array"
+          },
           "startedAt": {
             "description": "A u64 as a decimal string (0..=18446744073709551615).",
             "pattern": "^(0|[1-9][0-9]*)$",
@@ -1351,7 +1657,10 @@
           "nextSeq",
           "revised",
           "live",
-          "openActions"
+          "openActions",
+          "audio",
+          "speakerNames",
+          "speakers"
         ],
         "type": "object",
         "x-calimero-abi-type": "MeetingView"
@@ -1402,6 +1711,72 @@
         "required": [
           "index",
           "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "NameSegmentsArgs": {
+        "description": "The arguments of `nameSegments`, by name.",
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          },
+          "names": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentName"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "meetingId",
+          "names"
+        ],
+        "type": "object"
+      },
+      "NameSegmentsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/NameSegmentsArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "NameSegmentsResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
           "receipt"
         ],
         "type": "object"
@@ -1470,6 +1845,40 @@
         ],
         "type": "object"
       },
+      "PersonInsight": {
+        "properties": {
+          "emotions": {
+            "items": {
+              "$ref": "#/components/schemas/EmotionShare"
+            },
+            "type": "array"
+          },
+          "keyPoints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "label": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "tone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "tone",
+          "profile",
+          "emotions",
+          "keyPoints"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "PersonInsight"
+      },
       "Receipt": {
         "description": "The answering node's signature over the app, the index and the result's hash.",
         "properties": {
@@ -1501,6 +1910,59 @@
           "node",
           "key",
           "signature"
+        ],
+        "type": "object"
+      },
+      "RecordingsLeftArgs": {
+        "description": "The arguments of `recordingsLeft`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "RecordingsLeftRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RecordingsLeftArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "RecordingsLeftResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
         ],
         "type": "object"
       },
@@ -1561,6 +2023,62 @@
           },
           "result": {
             "type": "null"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "RemoveAudioArgs": {
+        "description": "The arguments of `removeAudio`, by name.",
+        "properties": {
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId"
+        ],
+        "type": "object"
+      },
+      "RemoveAudioRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RemoveAudioArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "RemoveAudioResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/MeetingView"
           }
         },
         "required": [
@@ -1843,6 +2361,25 @@
         "type": "object",
         "x-calimero-abi-type": "SegmentInput"
       },
+      "SegmentName": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "seq": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "seq",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SegmentName"
+      },
       "SegmentView": {
         "properties": {
           "edited": {
@@ -1948,6 +2485,137 @@
         ],
         "type": "object"
       },
+      "SetInsightsArgs": {
+        "description": "The arguments of `setInsights`, by name.",
+        "properties": {
+          "insights": {
+            "$ref": "#/components/schemas/InsightsInput"
+          },
+          "meetingId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId",
+          "insights"
+        ],
+        "type": "object"
+      },
+      "SetInsightsRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetInsightsArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetInsightsResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Insights"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "SetSpeakerNameArgs": {
+        "description": "The arguments of `setSpeakerName`, by name.",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "meetingId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "meetingId",
+          "label",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SetSpeakerNameRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/SetSpeakerNameArgs"
+          },
+          "idempotencyKey": {
+            "description": "A retry with the same key is answered once, from the first run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "SetSpeakerNameResponse": {
+        "properties": {
+          "events": {
+            "description": "The events the call emitted that the caller is in the audience of.",
+            "items": {
+              "$ref": "#/components/schemas/CallEvent"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "$ref": "#/components/schemas/MeetingView"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "events",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "SetSummaryArgs": {
         "description": "The arguments of `setSummary`, by name.",
         "properties": {
@@ -2007,6 +2675,38 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "Speaker": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "speaker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "speaker",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Speaker"
+      },
+      "SpeakerName": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "SpeakerName"
       },
       "StartMeetingArgs": {
         "description": "The arguments of `startMeeting`, by name.",
@@ -2433,6 +3133,73 @@
         "x-calimero-publisher-description": "Stores a batch of segments. Numbers already stored are skipped, so a\nbatch can be resent safely. The recorder only."
       }
     },
+    "/apps/{app}/methods/attachAudio": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"attachAudio\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "attachAudio",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachAudioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachAudioResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `attachAudio`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Gives the meeting its recording: blob `blob`, which the caller uploaded\nto the app first. Replaces any earlier one (whose blob the node then\ncollects). The recorder only."
+      }
+    },
     "/apps/{app}/methods/deleteMeeting": {
       "post": {
         "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"deleteMeeting\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
@@ -2835,6 +3602,73 @@
         "x-calimero-publisher-description": "One meeting."
       }
     },
+    "/apps/{app}/methods/insights": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"insights\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "insights",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsightsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `insights`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        },
+        "x-calimero-publisher-description": "A meeting's people insights, if any were saved."
+      }
+    },
     "/apps/{app}/methods/listActions": {
       "post": {
         "description": "A view: runs as `POST /apps/{app}/views` with `method: \"listActions\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
@@ -3036,6 +3870,73 @@
         "x-calimero-publisher-description": "The calling account."
       }
     },
+    "/apps/{app}/methods/nameSegments": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"nameSegments\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "nameSegments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameSegmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NameSegmentsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `nameSegments`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Names the speakers of lines already saved, as the page works them out\nfrom the recording (\"Voice 1\", \"Voice 2\" for a call whose page showed no\nnames). At most 500 lines a call; a line that is not there, or already\nhas that name, is skipped. Answers how many lines changed. The recorder\nor the instance's owner."
+      }
+    },
     "/apps/{app}/methods/openActions": {
       "post": {
         "description": "A view: runs as `POST /apps/{app}/views` with `method: \"openActions\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
@@ -3103,6 +4004,73 @@
         "x-calimero-publisher-description": "Every action item not yet done, across meetings, newest meeting first."
       }
     },
+    "/apps/{app}/methods/recordingsLeft": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"recordingsLeft\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "recordingsLeft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordingsLeftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingsLeftResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `recordingsLeft`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        },
+        "x-calimero-publisher-description": "How many more recordings the caller may keep (see [`MAX_RECORDINGS_PER_ACCOUNT`])."
+      }
+    },
     "/apps/{app}/methods/removeAction": {
       "post": {
         "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"removeAction\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
@@ -3168,6 +4136,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "Removes an action item. Its author, the meeting's recorder or the\ninstance's owner."
+      }
+    },
+    "/apps/{app}/methods/removeAudio": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"removeAudio\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "removeAudio",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveAudioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveAudioResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `removeAudio`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Removes the meeting's recording; the transcript stays. The recorder only."
       }
     },
     "/apps/{app}/methods/renameMeeting": {
@@ -3369,6 +4404,140 @@
           "public": false
         },
         "x-calimero-publisher-description": "Ticks an action item off, or back on. Anyone who reaches the app."
+      }
+    },
+    "/apps/{app}/methods/setInsights": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setInsights\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setInsights",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetInsightsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetInsightsResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setInsights`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Saves what the page worked out about each person, replacing what was\nthere. No people clears them. The recorder or the instance's owner."
+      }
+    },
+    "/apps/{app}/methods/setSpeakerName": {
+      "post": {
+        "description": "A call: runs as `POST /apps/{app}/intents` with `method: \"setSpeakerName\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "setSpeakerName",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSpeakerNameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetSpeakerNameResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "call `setSpeakerName`",
+        "tags": [
+          "call"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "call",
+          "public": false
+        },
+        "x-calimero-publisher-description": "Names speaker `label` (\"Speaker 1\") as `name` (\"Eve\") in this meeting;\nan empty name removes it. The recorder or the instance's owner."
       }
     },
     "/apps/{app}/methods/setSummary": {

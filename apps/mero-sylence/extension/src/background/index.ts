@@ -6,11 +6,12 @@
  * a restarted worker carries on with what was waiting.
  */
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
+import { callAudioBytes, takeCallAudio, unkeptCallAudio } from "../lib/callAudio";
 import { PACKAGE, meetingLink, servedPage, isLocalPage } from "../lib/appHost";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
 import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
-import { openAuthWindow } from "../lib/authWindow";
-import { newHandoff, openHandoff, signInUrl, type SignInIntent } from "../lib/handoff";
+import { openAuthWindow, focusAuthWindow } from "../lib/authWindow";
+import { newHandoff, openHandoff, signInUrl, type SignInIntent, type NewWorkspace, type NewAccount } from "../lib/handoff";
 import {
   DEFAULT_SETTINGS,
   IDLE,
@@ -31,7 +32,7 @@ import { UploadQueue, type QueueState, type QueueStore, type QueuedSegment } fro
 import { describe, isSignedOut, withClient } from "../lib/session";
 import { read, write } from "../lib/storage";
 import { log } from "../lib/diagnostics";
-import { resolveTier, TIERS, type Capabilities } from "../lib/tiers";
+import { resolveTier, TIERS, type Capabilities, canImproveAfterCall, tierBlock } from "../lib/tiers";
 import { nameFor, pushChange, type SpeakerChange } from "../lib/speakers";
 
 const OFFSCREEN = "offscreen.html";
@@ -232,11 +233,67 @@ async function lineName(speaker: "you" | "others", startedAt: number | undefined
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
 
-async function signIn(intent?: SignInIntent): Promise<AuthState> {
+/**
+ * A workspace being created in the sign-in window: the page it opened may
+ * borrow the extension's session for it, once, so the person signs in only
+ * once. Chrome says which page asks (`sender.origin`); the one-time `state`
+ * of this window must match too.
+ */
+let lending: { origin: string; state: string } | null = null;
+
+chrome.runtime.onMessageExternal?.addListener((message: unknown, sender, respond) => {
+  const m = message as { type?: string; state?: string } | null;
+  if (m?.type !== "lendSession") return false;
+  const asked = lending;
+  const origin = sender.origin ?? (sender.url ? new URL(sender.url).origin : "");
+  if (!asked || origin !== asked.origin || m.state !== asked.state) {
+    respond({ ok: false });
+    return false;
+  }
+  lending = null;
+  void auth().then((a) => respond(a ? { ok: true, session: a.session } : { ok: false }));
+  return true;
+});
+
+/** The sign-in under way, if any (one window at a time). */
+let signingIn: Promise<AuthState> | null = null;
+
+/**
+ * Sign in, or, while a sign-in window is already open, bring that window to the
+ * front and wait for it: pressing Sign in or Create an account twice never opens
+ * a second window. (Each sign-in seals its session to its own key, so a second
+ * one could not use the first window's answer anyway.)
+ */
+async function signIn(intent?: SignInIntent, workspace?: NewWorkspace, account?: NewAccount): Promise<AuthState> {
+  if (signingIn) {
+    if (await focusAuthWindow()) return signingIn;
+    signingIn = null;
+  }
+  const run = openSignIn(intent, workspace, account);
+  signingIn = run;
+  try {
+    return await run;
+  } finally {
+    if (signingIn === run) signingIn = null;
+    // A lend the page never asked for ends with its window.
+    lending = null;
+  }
+}
+
+async function openSignIn(intent?: SignInIntent, workspace?: NewWorkspace, account?: NewAccount): Promise<AuthState> {
   const s = await settings();
   const page = await servedPage(s.pageOverride);
   const request = await newHandoff();
-  const url = signInUrl(page.origin, page.version, request, intent);
+  // Starting a workspace: the ones there now, so the new one can be told apart after.
+  const makesWorkspace = intent === "create" || (intent === "signup" && !!account?.ws.trim());
+  const before = makesWorkspace ? new Set((await listWorkspaces().catch(() => [])).map((w) => w.appId)) : null;
+  // The browser window the popup was opened over: it is focused again, and the popup reopened on it, after.
+  const home = await Promise.resolve()
+    .then(() => chrome.windows.getLastFocused())
+    .catch(() => undefined);
+  const url = signInUrl(page.origin, page.version, request, intent, workspace, account);
+  // Signed in already: the page may borrow this session for the create.
+  lending = intent === "create" && workspace?.name.trim() && (await auth()) ? { origin: page.origin, state: request.state } : null;
   const answer = await openAuthWindow(url, `https://${chrome.runtime.id}.chromiumapp.org/`);
   if (!answer) throw new Error("Sign-in was cancelled.");
   const session = await openHandoff(request, answer);
@@ -257,7 +314,35 @@ async function signIn(intent?: SignInIntent): Promise<AuthState> {
   };
   await saveAuth(next);
   await write("session", KEYS.signedOutReason, null);
-  return next;
+  let done = next;
+  if (before) {
+    // The window created a workspace: choose it, so the popup opens on it.
+    const made = (await listWorkspaces().catch(() => [])).find((w) => !before.has(w.appId));
+    if (made) {
+      done = { ...next, workspace: made };
+      await saveAuth(done);
+    }
+  }
+  reopenPopup(home?.id);
+  return done;
+}
+
+/**
+ * The popup closed when the sign-in window took focus; open it again so the
+ * person carries on where they were. Chrome allows this from Chrome 127; where
+ * it does not, the toolbar icon is one click away.
+ */
+function reopenPopup(windowId?: number): void {
+  void (async () => {
+    // Back to the window the person was in, then the popup over it once that window has focus.
+    try {
+      if (windowId !== undefined) await chrome.windows.update(windowId, { focused: true });
+      await new Promise((r) => setTimeout(r, 150));
+      await chrome.action?.openPopup?.(windowId !== undefined ? { windowId } : undefined);
+    } catch {
+      // An older browser, or no window to show it on: the toolbar icon is one click away.
+    }
+  })();
 }
 
 /**
@@ -321,6 +406,11 @@ async function start(tabId: number): Promise<void> {
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
     lastCaps = caps;
     const tier = resolveTier(s.tier, caps, s.language);
+    // Never record into a model that is not on the laptop: downloading it mid-call
+    // is what overwhelms a small machine, and the call would go untranscribed.
+    if (!(caps.cached ?? []).includes(tier)) {
+      throw new Error(`Download the speech model first (${TIERS[tier].name}): open the model chip below.`);
+    }
     await log(
       `start: platform=${platform} tier=${tier} choice=${s.tier} lang=${s.language || "auto"} mic=${s.mic} webgpu=${caps.webgpu} mem=${caps.deviceMemoryGb} cores=${caps.cores} cached=${(caps.cached ?? []).join(",") || "none"}`,
     );
@@ -564,6 +654,33 @@ async function improveTranscript(meeting: { id: string; appId: string }, languag
   return null;
 }
 
+/**
+ * Uploads the call's recording (kept by the offscreen page) as a blob of the
+ * workspace and attaches it to the meeting: the page then plays it back with
+ * the line being said highlighted, as for an uploaded recording.
+ */
+async function saveCallAudio(meeting: { id: string; appId: string }, durationMs: number): Promise<RecorderStatus["audio"]> {
+  try {
+    const audio = await takeCallAudio();
+    const why = unkeptCallAudio(audio);
+    if (why || !audio) return { kept: false, why: why ?? "No audio was recorded." };
+    const bytes = await callAudioBytes(audio.blob);
+    const uploaded = (await withTries(() =>
+      onNode((client) => client.apps.blobUpload({ app: meeting.appId, body: bytes, contentType: audio.mime }), meeting.appId),
+    )) as { id?: string } | null;
+    if (!uploaded?.id) throw new Error("the node accepted the recording but returned no id");
+    const ms = Math.max(1, Math.min(audio.durationMs || durationMs, 0xffffffff));
+    await onNode(
+      (_c, app) => app.attachAudio({ meetingId: meeting.id, blob: uploaded.id!.toLowerCase(), mime: audio.mime, durationMs: ms }),
+      meeting.appId,
+    );
+    return { kept: true };
+  } catch (e) {
+    await log(`audio: ${describe(e)}`);
+    return { kept: false, why: `The recording couldn't be saved: ${describe(e)}` };
+  }
+}
+
 /** Everything transcribed: send the rest, end the meeting, close the offscreen page. */
 function finish(durationMs: number): Promise<void> {
   stopping ??= (async () => {
@@ -591,8 +708,16 @@ function finish(durationMs: number): Promise<void> {
       link = meetingLink(a.page, meeting.appId, meeting.id);
       const s = await settings();
       if (all && !error && s.improveAfterCall) {
-        if (!lastCaps?.webgpu) {
-          improved = { done: false, why: "This browser doesn't offer WebGPU, which the second pass needs." };
+        // Never downloads the big model here: it runs only where it is allowed and already on the laptop.
+        if (!lastCaps || !canImproveAfterCall(lastCaps)) {
+          improved = {
+            done: false,
+            why: !lastCaps?.webgpu
+              ? "This browser doesn't offer WebGPU, which the second pass needs."
+              : lastCaps && tierBlock("best", lastCaps)
+                ? `The second pass is off on this laptop: ${tierBlock("best", lastCaps)}`
+                : "The second pass needs Whisper large-v3 turbo downloaded first (Settings, Speech model).",
+          };
         } else {
           try {
             const why = await improveTranscript(meeting, s.language, durationMs);
@@ -639,7 +764,10 @@ function finish(durationMs: number): Promise<void> {
         }
       }
     }
-    await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} actions=${actions} error=${error ?? "none"}`);
+    // The recording, saved with the meeting for playback, as an uploaded one is.
+    let audio: RecorderStatus["audio"] = null;
+    if (a && meeting && !error) audio = await saveCallAudio(meeting, durationMs);
+    await log(`finish: duration=${durationMs}ms uploaded=${all} pending=${q?.pending ?? 0} actions=${actions} audio=${audio?.kept ?? "none"} error=${error ?? "none"}`);
     if (all && q) await q.clear();
     queue = all ? null : q;
     recordingTab = null;
@@ -652,6 +780,7 @@ function finish(durationMs: number): Promise<void> {
       wroteSummary,
       notesBy,
       improved,
+      audio,
       improve: null,
       notes: null,
       pending: q && !all ? q.pending : 0,
@@ -749,7 +878,7 @@ let offscreenEvents: Promise<unknown> = Promise.resolve();
 async function handle(req: Request): Promise<unknown> {
   switch (req.type) {
     case "signIn":
-      return signIn(req.intent);
+      return signIn(req.intent, req.workspace, req.account);
     case "signOut":
       await saveAuth(null);
       return null;
@@ -757,6 +886,13 @@ async function handle(req: Request): Promise<unknown> {
       return listWorkspaces();
     case "checkSession":
       return checkSession();
+    case "deleteWorkspace": {
+      // The node allows the workspace's owner or an admin of its organization.
+      await onNode((client) => client.apps.delete({ app: req.appId }));
+      const a = await auth();
+      if (a && a.workspace?.appId === req.appId) await saveAuth({ ...a, workspace: null });
+      return null;
+    }
     case "chooseWorkspace": {
       const a = await auth();
       if (!a) throw new Error("Sign in first.");
@@ -770,9 +906,15 @@ async function handle(req: Request): Promise<unknown> {
     case "dismiss":
       await setStatus(() => IDLE);
       return null;
-    case "preload":
+    case "preload": {
       await ensureOffscreen();
+      // A model this device must not run is never downloaded, whoever asks.
+      const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
+      lastCaps = caps;
+      const blocked = tierBlock(req.tier, caps);
+      if (blocked) throw new Error(`${TIERS[req.tier].name} isn't available on this device. ${blocked}`);
       return toOffscreen({ target: "offscreen", type: "preload", tier: req.tier });
+    }
     case "preloadNotes":
       await ensureOffscreen();
       return toOffscreen({ target: "offscreen", type: "preloadNotes", model: req.model });

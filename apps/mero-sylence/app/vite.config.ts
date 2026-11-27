@@ -4,9 +4,18 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
-import { installableApp } from "@calimero-apps/install/vite";
 import { extensionDownload } from "./extensionDownload";
 import type { Plugin } from "vite";
+import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+
+/** onnxruntime-web's dist/, as transformers.js resolves it (pnpm keeps it beside transformers). */
+function ortDir(): string {
+  const transformers = realpathSync(join(import.meta.dirname, "node_modules/@huggingface/transformers"));
+  const fromTransformers = createRequire(join(transformers, "package.json"));
+  return dirname(fromTransformers.resolve("onnxruntime-web"));
+}
 
 /**
  * Link-preview crawlers need an absolute image URL. The build is relative
@@ -30,7 +39,17 @@ function absoluteSocialImage(): Plugin {
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [absoluteSocialImage(), extensionDownload(), installableApp({ cacheId: "mero-sylence" }), servedAssetsFallback(), react()],
+  plugins: [absoluteSocialImage(), extensionDownload(), servedAssetsFallback(), react()],
+  // The ONNX runtime the speech worker loads (src/ai/speech.worker.ts imports
+  // its files by URL), bundled with the page so no code is fetched at run time.
+  // A path, not a package-like name: Vite would otherwise try to pre-bundle the
+  // runtime's loader in dev and answer 404 for it.
+  resolve: { alias: [{ find: /^\/ort-dist\//, replacement: `${ortDir()}/` }] },
+  worker: { format: "es" },
+  // Dev only: the speech worker imports transformers.js. Discovered late, it
+  // was re-bundled mid-run and the worker got Vite's "outdated" 504.
+  optimizeDeps: { include: ["@huggingface/transformers"] },
+  build: { chunkSizeWarningLimit: 4_000 },
   server: {
     // 5173 exactly: the origin `merod local` trusts passkey ceremonies from
     // (`pnpm dev:local mero-sylence` passes it too). `strictPort` so a busy port

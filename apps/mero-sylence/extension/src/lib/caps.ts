@@ -2,6 +2,8 @@ import { TIERS, type TierId } from "./tiers";
 import { NOTES_MODELS, type NotesModelId } from "./notes";
 import type { Capabilities } from "./tiers";
 
+type NavLike = Navigator & { userAgentData?: { mobile?: boolean; platform?: string } };
+
 interface GpuLike {
   requestAdapter(): Promise<{ limits?: { maxBufferSize?: number } } | null>;
 }
@@ -27,6 +29,8 @@ export async function detectCaps(nav: Navigator = navigator): Promise<Capabiliti
     cachedNotes: await cachedNotes(),
     deviceMemoryGb: typeof n.deviceMemory === "number" ? n.deviceMemory : 0,
     cores: typeof n.hardwareConcurrency === "number" ? n.hardwareConcurrency : 0,
+    chromeOS: /CrOS/.test(n.userAgent ?? "") || /chrome ?os/i.test((n as NavLike).userAgentData?.platform ?? ""),
+    mobile: (n as NavLike).userAgentData?.mobile === true || /Android|iPhone|iPad|iPod/.test(n.userAgent ?? ""),
   };
 }
 

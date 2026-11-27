@@ -164,3 +164,39 @@ describe("toMarkdown", () => {
     expect(highlightParts("plain", [])).toEqual([{ text: "plain", hit: false }]);
   });
 });
+
+describe("toMarkdown with names given to speakers", () => {
+  it("writes the name the page shows, for `you` and `others` too", async () => {
+    const { toMarkdown, speakerKey } = await import("./transcript");
+    const names = new Map([["others", "Eve"], ["you", "Robert"]]);
+    const md = toMarkdown(
+      { title: "T", platform: "meet", startedAt: "0", durationMs: 0, summary: "" },
+      [
+        { seq: 0, startMs: 0, endMs: 1, speaker: "you", name: "", text: "Hi", edited: false },
+        { seq: 1, startMs: 2, endMs: 3, speaker: "others", name: "", text: "Hello", edited: false },
+      ],
+      [],
+      "Bob",
+      "en-GB",
+      (s) => names.get(speakerKey(s.speaker, s.name)) ?? s.speaker,
+    );
+    expect(md).toContain("Robert:** Hi");
+    expect(md).toContain("Eve:** Hello");
+  });
+});
+
+describe("mergeSegments and highlighter edge cases", () => {
+  const s = (seq: number, text = "x") => ({ seq, startMs: seq, endMs: seq + 1, speaker: "others", name: "", text, edited: false });
+  it("appends a next page, merges an overlapping or unordered one", async () => {
+    const { mergeSegments } = await import("./transcript");
+    expect(mergeSegments([s(0), s(1)], [s(2), s(3)]).map((x) => x.seq)).toEqual([0, 1, 2, 3]);
+    expect(mergeSegments([s(0), s(1)], [s(1, "new"), s(2)]).map((x) => x.text)).toEqual(["x", "new", "x"]);
+    expect(mergeSegments([s(0), s(5)], [s(3), s(2)]).map((x) => x.seq)).toEqual([0, 2, 3, 5]);
+    expect(mergeSegments([s(0)], [s(2), s(2, "dup")]).map((x) => x.seq)).toEqual([0, 2]);
+  });
+  it("marks words with regex characters", async () => {
+    const { highlighter } = await import("./transcript");
+    const parts = highlighter(["c++", "(a)", "$5.00"])("Use c++ for (a) at $5.00 each");
+    expect(parts.filter((p) => p.hit).map((p) => p.text)).toEqual(["c++", "(a)", "$5.00"]);
+  });
+});

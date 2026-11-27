@@ -80,6 +80,15 @@ describe("served-page handoff", () => {
     expect(signInUrl("http://localhost:5173", null, req, "create")).toBe(
       `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=create`,
     );
+    // A workspace named in the extension rides along, encoded; only with `create`.
+    expect(signInUrl("http://localhost:5173", null, req, "create", { name: "Launch & co", self: "Eve" })).toBe(
+      `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=create&lend=1&name=Launch%20%26%20co&self=Eve`,
+    );
+    expect(signInUrl("http://localhost:5173", null, req, "signup", { name: "X", self: "" })).not.toContain("name=");
+    // A new account filled in in the extension: name, passkey label and first workspace.
+    expect(signInUrl("http://localhost:5173", null, req, "signup", undefined, { name: "Eve", label: "Work laptop", ws: "Launch team" })).toBe(
+      `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=signup&name=Eve&label=Work%20laptop&ws=Launch%20team`,
+    );
     // A version can't end the path.
     expect(signInUrl("https://a.b", "1/../x", req)).toContain("/1%2F..%2Fx/#");
   });

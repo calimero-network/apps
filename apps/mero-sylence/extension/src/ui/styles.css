@@ -823,3 +823,94 @@ body.panel {
   height: 1px;
   background: var(--line);
 }
+
+/* the first-workspace screen's closing note */
+.slogan {
+  padding: 14px;
+  border-radius: var(--r-lg, 12px);
+  background: var(--ink, #111113);
+  color: var(--surface, #fff);
+}
+.slogan-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff5b35;
+}
+.slogan-line {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.slogan-points {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.78;
+}
+
+/* "Download the speech model first", above Record */
+.need {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+}
+
+/* Developer mode: a quiet switch at the very bottom of Settings */
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 2px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* a workspace row with its delete beside it */
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ws-row .ws-delete {
+  flex: none;
+  opacity: 0.45;
+  color: var(--ink-2);
+}
+.ws-row:hover .ws-delete,
+.ws-row .ws-delete:focus-visible {
+  opacity: 1;
+}
+.ws-row .ws-delete:hover {
+  color: var(--bad-ink);
+}
+.danger-card {
+  border-color: var(--bad-ink);
+}
+.btn.danger {
+  background: var(--bad-ink);
+  color: #fff;
+  border-color: transparent;
+}
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad-ink) 82%, #000);
+}
+
+.btn.open-web {
+  flex: none;
+  align-self: stretch;
+  height: auto;
+}

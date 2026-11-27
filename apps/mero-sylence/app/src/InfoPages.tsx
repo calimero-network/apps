@@ -9,7 +9,7 @@ export const INFO_DOCS: { doc: InfoDoc; label: string; title: string }[] = [
   { doc: "terms", label: "Terms", title: "Sylence terms of use" },
 ];
 
-const UPDATED = "November 26, 2026";
+const UPDATED = "November 27, 2026";
 const ISSUES_URL = "https://github.com/calimero-network/apps/issues";
 
 function Ext({ href, children }: { href: string; children: ReactNode }) {
@@ -76,8 +76,10 @@ const FAQ: { q: string; a: ReactNode }[] = [
     q: "Where does the audio go?",
     a: (
       <p>
-        Nowhere. Speech becomes text on your laptop: a large Whisper model on the GPU where your laptop has one, a
-        smaller model on the CPU otherwise. The audio is never uploaded, stored or shared. Only the text is saved.
+        To your own workspace, sealed. Speech becomes text on your laptop first: a large Whisper model on the GPU where
+        your laptop has one, a smaller model on the CPU otherwise. The audio and the transcript are then saved to your
+        workspace on a Calimero node that runs in a secure enclave, so only your workspace's members can play or read
+        them. Calimero and the cloud host cannot.
       </p>
     ),
   },
@@ -85,8 +87,9 @@ const FAQ: { q: string; a: ReactNode }[] = [
     q: "Where are transcripts kept, and who can read them?",
     a: (
       <p>
-        In the workspace you pick, which runs on your organization's Calimero nodes. The members of that workspace can
-        read the transcripts, search them and tick off action items. Calimero does not read them.
+        In the workspace you pick, on your organization's Calimero nodes, which run in secure enclaves: sealed hardware
+        that keeps the data encrypted while it is stored and used. Only the members of that workspace can read the
+        transcripts, play the audio, search them and tick off action items. Calimero cannot read them.
       </p>
     ),
   },
@@ -105,6 +108,27 @@ const FAQ: { q: string; a: ReactNode }[] = [
       <p>
         While it records, Sylence reads which participant the call page shows as speaking, and labels each line with
         that name. Each speaker also gets a colour, always shown next to their name.
+      </p>
+    ),
+  },
+  {
+    q: "Can I upload a recording instead?",
+    a: (
+      <p>
+        Yes. On the meetings page, choose Upload and pick an mp3, m4a, wav, ogg or mp4 file. Sylence transcribes it on
+        your laptop, tells the voices apart (Speaker 1, Speaker 2, and so on, which you can rename), and saves it as a
+        meeting with the audio attached. Play it back and the line being said is highlighted; click any line to jump
+        there. Recordings over about 50 MB are still transcribed, but saved without their audio.
+      </p>
+    ),
+  },
+  {
+    q: "What do the people insights show?",
+    a: (
+      <p>
+        For each person in a meeting: talk time and share, words, turns, longest stretch, pace and questions asked.
+        Choose Analyze for more: each person's tone, a short profile, their key points and their action items. The
+        models run on your laptop, and only their results are saved to the workspace.
       </p>
     ),
   },
@@ -162,7 +186,7 @@ function Faq() {
       <Head
         eyebrow="FAQ"
         title="Questions, answered"
-        lede="How Sylence records, where your transcripts live, and what stays on your laptop."
+        lede="How Sylence records, where your recordings and transcripts live, and who can read them."
       />
       <div className="faq">
         {FAQ.map((item) => (
@@ -194,7 +218,7 @@ function Privacy() {
       <Head
         eyebrow="Privacy"
         title="Privacy policy"
-        lede={`The short version: the audio stays on your laptop, and the text goes only to your own workspace. Last updated ${UPDATED}.`}
+        lede={`The short version: the audio and the transcript go only to your own workspace, sealed in a secure enclave that only its members can read. Last updated ${UPDATED}.`}
       />
       <div className="prose">
         <p>
@@ -204,13 +228,15 @@ function Privacy() {
         <h2>Audio</h2>
         <p>
           Sylence captures the audio of the tab you record and, if you allow it, your microphone. The audio is turned
-          into text on your device and is never sent, stored or shared.
+          into text on your device. The audio is then saved with the transcript to your workspace, in a secure enclave,
+          and is never shared with anyone outside it.
         </p>
         <h2>What is saved, and where</h2>
         <p>
-          The transcript text, the speaker names the call page shows, the meeting's title, platform and link, any
-          summary, and action items are saved to the Calimero workspace you chose, on your organization's Calimero
-          nodes. Calimero does not read them. Who can read them is decided by your workspace's members and permissions.
+          The audio, the transcript text, the speaker names the call page shows, the meeting's title, platform and link,
+          any summary, and action items are saved to the Calimero workspace you chose, on your organization's Calimero
+          nodes. Those nodes run in secure enclaves, which keep the data encrypted so that neither Calimero nor the cloud
+          host can read it. Who can read it is decided by your workspace's members and permissions.
         </p>
         <h2>On your device</h2>
         <p>
@@ -225,7 +251,7 @@ function Privacy() {
         </p>
         <h2>Deleting data</h2>
         <p>
-          Delete a meeting on the Sylence page to remove its transcript and action items from the workspace. Removing
+          Delete a meeting on the Sylence page to remove its audio, transcript and action items from the workspace. Removing
           the extension deletes everything it keeps in your browser.
         </p>
         <h2>Changes and contact</h2>

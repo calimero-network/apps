@@ -1,0 +1,305 @@
+/* Upload a recording: the dialog, its drop zone and the step list. Tokens from index.css. */
+
+.dialog.upload-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.upload-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upload-dialog .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.upload-drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--sunken);
+  cursor: pointer;
+  transition:
+    border-color 150ms var(--ease-out),
+    background 150ms var(--ease-out);
+}
+.upload-drop:hover,
+.upload-drop.dragging {
+  border-color: var(--text-dim);
+  background: var(--hover);
+}
+.upload-drop:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.upload-drop.has-file {
+  border-style: solid;
+  background: var(--surface);
+}
+.upload-drop-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--coral) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--coral) 25%, var(--border));
+  color: var(--coral);
+}
+.upload-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+.upload-file-name {
+  font-weight: 550;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Language and keeping the audio: one quiet card, a row each. */
+.upload-options {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.upload-field,
+.upload-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+.upload-check {
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.upload-field select {
+  flex: none;
+  width: 160px;
+  height: 30px;
+  font-size: 13px;
+}
+.upload-check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.upload-check .dim {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.upload-check-label {
+  font-weight: 550;
+  color: var(--text);
+}
+.upload-check.disabled {
+  cursor: default;
+}
+.upload-check.disabled .upload-check-label {
+  color: var(--text-dim);
+}
+.upload-lede {
+  font-size: 13px;
+  margin: -4px 0 0;
+}
+
+@media (max-width: 420px) {
+  .upload-field select {
+    width: 130px;
+  }
+}
+
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.upload-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.upload-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink);
+  transition: width 300ms var(--ease-out);
+}
+.upload-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.upload-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--faint);
+}
+.upload-step .mono {
+  margin-left: auto;
+  font-size: 12px;
+}
+.upload-step-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+.upload-step.done {
+  color: var(--text-2);
+}
+.upload-step.done .upload-step-mark {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
+}
+.upload-step.active {
+  color: var(--text);
+  font-weight: 550;
+}
+.upload-step.active .upload-step-mark {
+  border-color: var(--coral);
+  border-width: 2px;
+  animation: upload-pulse 1.2s ease-in-out infinite;
+}
+@keyframes upload-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--coral) 18%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .upload-step.active .upload-step-mark {
+    animation: none;
+  }
+  .upload-bar > span {
+    transition: none;
+  }
+}
+.upload-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.upload-saved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.upload-actions {
+  gap: 8px;
+}
+.upload-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .upload-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .upload-actions .btn {
+    justify-content: center;
+  }
+}
+.upload-step.active {
+  flex-wrap: wrap;
+}
+.upload-step-bar {
+  /* The row's width less the 28px it is indented by: 100% would spill out of the dialog. */
+  flex: 1 0 calc(100% - 28px);
+  max-width: calc(100% - 28px);
+  height: 4px;
+  margin-left: 28px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.upload-step-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  border-radius: inherit;
+  transition: width 200ms var(--ease-out);
+}
+
+/* What this device runs: the model and why, or why it cannot. */
+.upload-device {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--coral) 5%, var(--surface));
+  font-size: 13px;
+}
+.upload-device-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--coral) 15%, transparent);
+  color: var(--coral);
+}
+.upload-device-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.upload-device-text .dim {
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.upload-device.blocked {
+  background: var(--danger-soft);
+}
+.upload-device.blocked .upload-device-icon {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}

@@ -417,6 +417,10 @@ button.ghost.danger-text,
 .menu-item.danger-text {
   color: var(--danger);
 }
+.menu-item.danger-text:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 .icon {
   flex: none;
 }
@@ -472,6 +476,11 @@ button.ghost.danger-text,
   background: var(--danger);
   color: #fff;
   border-color: transparent;
+}
+/* Its own hover: the generic one would paint a near-white fill under white text. */
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+  color: #fff;
 }
 .btn.danger-ghost {
   background: var(--surface);
@@ -771,16 +780,20 @@ td.mono {
 .menu {
   position: relative;
 }
+/* The account button is the round profile icon itself: square, no padding, so it stays a circle. */
 .menu-button {
   background: none;
   color: var(--text);
+  width: 32px;
+  min-width: 32px;
   height: 32px;
-  padding: 0 8px 0 2px;
-  border-radius: 999px;
+  padding: 0;
+  border-radius: 50%;
   border: 0;
+  flex: none;
 }
 .menu-button:hover:not(:disabled) {
-  background: var(--hover);
+  background: none;
 }
 .menu-name {
   font-weight: 500;
@@ -826,6 +839,9 @@ td.mono {
   background: none;
   color: var(--text);
   font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   justify-content: flex-start;
   width: 100%;
   height: 32px;
@@ -1066,8 +1082,10 @@ dialog.dialog[open] {
   font-size: 13px;
   line-height: 1.55;
 }
-.dialog-body input {
+.dialog-body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
   width: 100%;
+  /* Inputs grow along a row (flex: 1 1 160px); in the dialog's column that would make them 160px tall. */
+  flex: none;
 }
 .dialog-body > button {
   width: 100%;
@@ -2042,4 +2060,11 @@ button.text-close,
 button.text-close:hover:not(:disabled) {
   background: none;
   color: var(--text);
+}
+
+/* The shared sign-in panel's fields sit in a column: they must not grow tall
+   (inputs grow along a row here, flex: 1 1 160px). */
+.cp-passkey input:not([type="checkbox"]):not([type="radio"]) {
+  flex: none;
+  width: 100%;
 }

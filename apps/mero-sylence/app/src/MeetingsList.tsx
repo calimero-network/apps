@@ -6,6 +6,8 @@ import { formatClock, formatDuration, formatWhen, highlightParts, platformName, 
 import { PlatformMark } from "./PlatformMark";
 import { PersonName } from "./names";
 import { Icon } from "./ui";
+import "./playback.css";
+import { MeetingsSkeleton } from "./Skeletons";
 
 /** How long typing pauses before the transcripts are searched. */
 export const SEARCH_DELAY_MS = 250;
@@ -20,11 +22,14 @@ export function MeetingsList({
   error,
   onOpen,
   searchTranscripts,
+  onUpload,
 }: {
   meetings: MeetingView[] | null;
   error?: string | null;
   onOpen: (id: string, seq?: number) => void;
   searchTranscripts?: (query: string) => Promise<SearchResult>;
+  /** Opens the upload dialog: a recording becomes a meeting. */
+  onUpload?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => (meetings ? searchMeetings(meetings, query) : null), [meetings, query]);
@@ -32,26 +37,27 @@ export function MeetingsList({
   const searching = queryWords(query).length > 0;
 
   if (error && !meetings) return <pre className="err">{error}</pre>;
-  if (!meetings) {
-    return (
-      <section className="card" aria-busy="true">
-        <p className="empty">Loading meetings…</p>
-      </section>
-    );
-  }
-  if (meetings.length === 0) return <GetTheExtension />;
+  if (!meetings) return <MeetingsSkeleton />;
+  if (meetings.length === 0) return <GetTheExtension onUpload={onUpload} />;
 
   return (
     <section className="meetings" aria-label="Meetings">
-      <div className="search">
-        <Icon name="search" />
-        <input
-          type="search"
-          aria-label="Search meetings"
-          placeholder="Search meetings"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      <div className="meetings-toolbar">
+        <div className="search">
+          <Icon name="search" />
+          <input
+            type="search"
+            aria-label="Search meetings"
+            placeholder="Search meetings"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        {onUpload && (
+          <button type="button" className="btn" onClick={onUpload}>
+            <Icon name="upload" /> Upload recording
+          </button>
+        )}
       </div>
       {searching && shown && shown.length === 0 && (!lines.hits || lines.hits.length === 0) && !lines.loading && (
         <p className="empty" data-testid="no-match">
@@ -189,7 +195,7 @@ export function LiveBadge() {
 }
 
 /** The empty workspace: what the extension does, and how to start. */
-export function GetTheExtension() {
+export function GetTheExtension({ onUpload }: { onUpload?: () => void } = {}) {
   return (
     <section className="card get-extension" data-testid="empty-meetings">
       <div className="get-extension-mark" aria-hidden="true">
@@ -198,7 +204,7 @@ export function GetTheExtension() {
       <h2>Record your first meeting</h2>
       <p className="empty">
         The Sylence extension listens to a call in your browser and turns speech into text on your
-        own laptop. The audio never leaves it; only the transcript is saved here, for your team.
+        own laptop. The recording and transcript are saved here, in a secure enclave only your team can read.
       </p>
       <ol className="steps">
         <li>
@@ -220,9 +226,16 @@ export function GetTheExtension() {
           </span>
         </li>
       </ol>
-      <a className="btn primary" href="#/install">
-        <Icon name="puzzle" /> Get the extension
-      </a>
+      <div className="get-extension-actions">
+        <a className="btn primary" href="#/install">
+          <Icon name="puzzle" /> Get the extension
+        </a>
+        {onUpload && (
+          <button type="button" className="btn" onClick={onUpload}>
+            <Icon name="upload" /> Upload a recording
+          </button>
+        )}
+      </div>
     </section>
   );
 }

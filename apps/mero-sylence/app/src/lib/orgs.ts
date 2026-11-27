@@ -1,5 +1,6 @@
 import { type AppInfo, type CalimeroClient, type PasskeyProvider } from "@calimero-network/mero-js";
 import {
+  INVITE_PARAMS,
   appPeople,
   appTarget,
   finishAppOrg,
@@ -221,4 +222,17 @@ function storage(): KeyValueStorage | null {
   } catch {
     return null;
   }
+}
+
+/** The invite link someone pasted, if it is one: an http(s) URL carrying an invite token. */
+export function inviteUrl(text: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(text.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const hashQuery = new URLSearchParams(url.hash.includes("?") ? url.hash.slice(url.hash.indexOf("?") + 1) : url.hash.replace(/^#/, ""));
+  return url.searchParams.get(INVITE_PARAMS.token) || hashQuery.get(INVITE_PARAMS.token) ? url : null;
 }

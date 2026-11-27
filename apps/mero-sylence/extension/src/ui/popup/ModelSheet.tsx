@@ -1,7 +1,8 @@
 import { sizeLabel } from "../../lib/format";
 import { KEYS, type RecorderStatus, type Settings } from "../../lib/messages";
 import { write } from "../../lib/storage";
-import { LANGUAGES, TIERS, TIER_ORDER, pickTier, tierFits, type Capabilities, type TierId } from "../../lib/tiers";
+import { LANGUAGES, TIERS, TIER_ORDER, pickTier, tierBlock, tierFits, type Capabilities, type TierId } from "../../lib/tiers";
+import { describeCaps } from "../hooks";
 import { BackIcon, CheckIcon, DownloadIcon } from "../icons";
 import { ask } from "../rpc";
 
@@ -33,6 +34,11 @@ export function ModelSheet({
         </h1>
       </div>
       <p className="small muted">Runs on this laptop. It downloads once and stays in your browser.</p>
+      {caps && (
+        <p className="small muted" data-testid="device">
+          This laptop: {describeCaps(caps)}. Models it can&apos;t run well are turned off, so none can lock it up.
+        </p>
+      )}
 
       <div className="field">
         <label htmlFor="language">Spoken language</label>
@@ -55,7 +61,9 @@ export function ModelSheet({
         </button>
         {TIER_ORDER.map((id) => {
           const t = TIERS[id];
+          const blocked = caps ? tierBlock(id, caps) : null;
           const fits = caps ? tierFits(id, caps, settings.language) : true;
+          const have = !!caps?.cached?.includes(id);
           return (
             <button
               key={id}
@@ -69,10 +77,10 @@ export function ModelSheet({
               <span className="grow">
                 <span className="name">{t.name}</span>
                 <span className="meta">
-                  {fits ? t.blurb : t.device === "webgpu" ? "Needs WebGPU, which this browser doesn't offer." : "English only."}
+                  {blocked ?? (fits ? t.blurb : t.device === "webgpu" ? "Needs WebGPU, which this browser doesn't offer." : "English only.")}
                 </span>
               </span>
-              <span className="end">{sizeLabel(t.sizeMb)}</span>
+              <span className="end">{have ? "Downloaded" : sizeLabel(t.sizeMb)}</span>
               <span className="tick">{settings.tier === id ? <CheckIcon size={16} /> : null}</span>
             </button>
           );
@@ -80,6 +88,7 @@ export function ModelSheet({
       </div>
 
       {selected &&
+        !(caps && tierBlock(selected, caps)) &&
         (loading && status.model ? (
           <div className="stack" style={{ gap: 6 }}>
             <span className="small muted">
@@ -90,9 +99,15 @@ export function ModelSheet({
             </div>
           </div>
         ) : (
-          <button className="btn block" onClick={() => void ask({ type: "preload", tier: selected })}>
-            <DownloadIcon size={14} /> Download {TIERS[selected].name} now · {sizeLabel(TIERS[selected].sizeMb)}
-          </button>
+          caps?.cached?.includes(selected) ? (
+            <p className="small muted" data-testid="model-ready">
+              <CheckIcon size={13} /> {TIERS[selected].name} is downloaded and ready.
+            </p>
+          ) : (
+            <button className="btn block" onClick={() => void ask({ type: "preload", tier: selected })}>
+              <DownloadIcon size={14} /> Download {TIERS[selected].name} now · {sizeLabel(TIERS[selected].sizeMb)}
+            </button>
+          )
         ))}
     </main>
   );

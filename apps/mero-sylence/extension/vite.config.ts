@@ -57,6 +57,9 @@ export default defineConfig({
   worker: { format: "es" },
   test: {
     environment: "jsdom",
+    // A shared CI runner runs every package's suite at once; the long-call and
+    // popup tests need more than the default 5 s there.
+    testTimeout: 30_000,
     setupFiles: ["@calimero-apps/test-setup", "./src/test/setup.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "**/e2e/**"],
   },

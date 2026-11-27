@@ -73,7 +73,7 @@ export function InstallPage({
         <h1 id="install-title">Install Sylence for Chrome and Brave</h1>
         <p className="lede">
           The extension records the call in your browser tab and turns speech into text on your laptop. No bot joins the
-          call and the audio never leaves your machine.
+          call, and the recording is kept in a secure enclave only your team can read.
         </p>
         <div className="row install-cta">
           <a

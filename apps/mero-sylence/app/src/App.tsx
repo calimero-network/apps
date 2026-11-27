@@ -1,24 +1,32 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ManageInHomeLink, NativeApproval, NodeShield } from "@calimero-apps/passkey";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ManageInHomeLink, NativeApproval } from "@calimero-apps/passkey";
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
-import { InstallAppIconButton } from "@calimero-apps/install";
 
+import { AppFooter } from "./AppFooter";
+import { Tutorial, tutorialSeen } from "./Tutorial";
+import { usePresence } from "./usePresence";
 import { InfoPage } from "./InfoPages";
 import { InstallPage } from "./InstallPage";
 import { Landing, LandingPage } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
+import { UploadRecording } from "./UploadRecording";
+import { forgetWorkspaceRecordings, pruneRecordings } from "./useRecording";
 import { OpenActions } from "./OpenActions";
+import { PeoplePage } from "./PeoplePage";
+import { ProfilePage } from "./ProfilePage";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
-import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, signInIntent } from "./native";
-import { PersonName, TeamNamespace, useSpaceNames } from "./names";
+import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, newAccountRequest, newWorkspaceRequest, signInIntent } from "./native";
+import { CreateNamedWorkspace } from "./CreateNamedWorkspace";
+import { TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
 import { PRODUCT, type SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi, useSignedIn } from "./sessionContext";
-import { Avatar, Icon, useTheme, type Theme } from "./ui";
+import { Icon, useTheme, type Theme } from "./ui";
 import { useActiveWorkspace } from "./useActiveWorkspace";
+import "./shell.css";
 import { useRead, useWorkspace } from "./useWorkspace";
 
 export function App({ deps }: { deps?: SessionDeps } = {}) {
@@ -70,25 +78,15 @@ export function ExtensionSignIn() {
   const creating = signInIntent() === "create";
   const signingUp = signInIntent() === "signup";
 
+  // Only a new workspace keeps the window open: a plain sign-in hands the session
+  // over at once and the window closes; the extension offers workspaces itself.
+  // A new account from the extension may bring its first workspace's name.
+  const account = signingUp ? newAccountRequest() : null;
   useEffect(() => {
     if (!signedIn || needsWorkspace !== null) return;
-    if (creating) {
-      setNeedsWorkspace(true);
-      return;
-    }
-    let live = true;
-    listWorkspaces(signedIn.client, signedIn.source)
-      .then((rows) => {
-        if (live) setNeedsWorkspace(rows.length === 0);
-      })
-      .catch(() => {
-        if (live) setNeedsWorkspace(false);
-      })
-      .finally(signedIn.after);
-    return () => {
-      live = false;
-    };
-  }, [signedIn, needsWorkspace, creating]);
+    setNeedsWorkspace(creating || !!account?.ws);
+  }, [signedIn, needsWorkspace, creating, account?.ws]);
+  const named = creating ? newWorkspaceRequest() : account?.ws ? { name: account.ws, self: account.name } : null;
 
   useEffect(() => {
     if (session.status !== "signed-in" || needsWorkspace !== false || started.current) return;
@@ -101,6 +99,39 @@ export function ExtensionSignIn() {
       .then((done) => setHanded(done))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [session, api.store, needsWorkspace]);
+
+  // A workspace named in the extension: no sign-in form, just the passkey prompt,
+  // started at once (the window opens focused). The panel is the fallback.
+  if (session.status === "signed-out" && account) {
+    return (
+      <Centered>
+        <PasskeyOnly
+          title="Create your passkey"
+          line={account.ws ? `For your account and “${account.ws}”.` : "For your new account."}
+          run={() => api.signUp(account.name || undefined, account.label ? { passkeyLabel: account.label } : undefined)}
+        />
+      </Centered>
+    );
+  }
+  if (session.status === "signed-out" && (named || !signingUp)) {
+    return (
+      <Centered>
+        <PasskeyOnly
+          title="Sign in with your passkey"
+          line={named ? `To create “${named.name}”.` : `For the ${PRODUCT} extension.`}
+          run={() => api.signIn()}
+        />
+      </Centered>
+    );
+  }
+
+  if (session.status === "signed-in" && needsWorkspace === true && named) {
+    return (
+      <Centered>
+        <CreateNamedWorkspace request={named} onDone={() => setNeedsWorkspace(false)} />
+      </Centered>
+    );
+  }
 
   if (session.status === "signed-in" && needsWorkspace === true) {
     return (
@@ -172,7 +203,15 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
   const [signingIn, setSigningIn] = useState(false);
-  const [route] = useRoute();
+  const [route, go] = useRoute();
+  // Signed in, the sign-in popup is done with: logging out later must not reopen it.
+  useEffect(() => {
+    if (signedIn) setSigningIn(false);
+  }, [signedIn]);
+  // Signed in, `#/home` is the landing page with the way back to the dashboard.
+  if (route.page === "home" && signedIn) {
+    return <Landing onDashboard={() => go({ page: "meetings" })} />;
+  }
   // FAQ, privacy and terms read the same signed in or out, in the landing's frame.
   if (route.page === "doc") {
     return (
@@ -186,7 +225,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   }
   if (api.session.status === "connecting") {
     return (
-      <Shell shield={false}>
+      <Shell>
         <div className="card">
           <p className="empty">Connecting…</p>
         </div>
@@ -201,7 +240,18 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
       </>
     );
   }
-  return <SignedInApp key={signedIn.accountId} theme={theme} setTheme={setTheme} onLogout={() => void signedIn.signOut()} />;
+  return (
+    <SignedInApp
+      key={signedIn.accountId}
+      theme={theme}
+      setTheme={setTheme}
+      onLogout={() => {
+        // Recordings kept in this browser are the signed-in person's; they go when they sign out.
+        void forgetWorkspaceRecordings();
+        void signedIn.signOut();
+      }}
+    />
+  );
 }
 
 /** Signed out: the front door, or the extension's install page (`#/install`). */
@@ -226,7 +276,12 @@ export function Welcome({ onSignIn, onInstall }: { onSignIn: () => void; onInsta
 function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t: Theme) => void; onLogout: () => void }) {
   const { active, open, leaving } = useActiveWorkspace();
   const [lostNotice, setLostNotice] = useState(false);
-  const { client, source, after } = useSignedIn();
+  const { client, source, after, accountId } = useSignedIn();
+  const [route, go] = useRoute();
+  // How Sylence works: by itself the first time on this browser, then from the menu.
+  const [tutorial, setTutorial] = useState(() => !tutorialSeen());
+  const showTutorial = useCallback(() => setTutorial(true), []);
+  const tutorialDialog = <Tutorial open={tutorial} onClose={() => setTutorial(false)} />;
 
   // A link to another workspace (`#/w/<appId>/...`, from the extension) opens it,
   // if this account reaches it; the picker shows otherwise.
@@ -252,18 +307,31 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
 
   if (!active) {
     return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />}>
-        {lostNotice && (
-          <div className="card" role="status">
-            <p className="empty">You no longer have access to that workspace.</p>
-          </div>
+      <Shell
+        right={<Menu me={accountId} theme={theme} setTheme={setTheme} onLogout={onLogout} onShowTutorial={showTutorial} />}
+        footer={<AppFooter workspace={false} onShowTutorial={showTutorial} />}
+        enter="out"
+      >
+        {tutorialDialog}
+        {route.page === "install" ? (
+          <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Your workspaces" />
+        ) : route.page === "profile" ? (
+          <ProfilePage workspaceName={null} onLogout={onLogout} />
+        ) : (
+          <>
+            {lostNotice && (
+              <div className="card" role="status">
+                <p className="empty">You no longer have access to that workspace.</p>
+              </div>
+            )}
+            <WorkspacePicker
+              onOpen={(w) => {
+                setLostNotice(false);
+                open(w);
+              }}
+            />
+          </>
         )}
-        <WorkspacePicker
-          onOpen={(w) => {
-            setLostNotice(false);
-            open(w);
-          }}
-        />
       </Shell>
     );
   }
@@ -285,28 +353,48 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
           open(null);
         }}
         onLogout={onLogout}
+        onShowTutorial={showTutorial}
       />
+      {tutorialDialog}
     </TeamNamespace>
   );
 }
 
-/** `shield`: the node badge, for signed-in pages; a visitor has no node to judge yet. */
-function Shell({ children, left, right, shield = true }: { children: ReactNode; left?: ReactNode; right?: ReactNode; shield?: boolean }) {
+/**
+ * The signed-in frame: the brand (it opens the home page), the workspace's
+ * name, the account menu; the footer under everything. The node's security
+ * badge lives on the Profile page, not up here.
+ */
+function Shell({
+  children,
+  left,
+  right,
+  footer,
+  enter,
+}: {
+  children: ReactNode;
+  left?: ReactNode;
+  right?: ReactNode;
+  footer?: ReactNode;
+  /** How the page arrives: `in` opening a workspace, `out` back to all of them. */
+  enter?: "in" | "out";
+}) {
   return (
-    <div className="wrap">
-      <header className="topbar">
-        <div className="brand">
-          <img src="./favicon.svg" alt="" width={26} height={26} />
-          <span className="brand-name">{PRODUCT}</span>
-          {left}
-        </div>
-        <div className="topbar-right">
-          {shield && <NodeShield compactBelow={720} />}
-          <InstallAppIconButton />
-          {right}
-        </div>
-      </header>
-      {children}
+    <div className="app-frame">
+      <div className="wrap">
+        <header className="topbar">
+          <div className="brand">
+            <a className="brand-link" href="#/home" title={`${PRODUCT} home page`}>
+              <img src="./favicon.svg" alt="" width={26} height={26} />
+              <span className="brand-name">{PRODUCT}</span>
+            </a>
+            {left}
+          </div>
+          <div className="topbar-right">{right}</div>
+        </header>
+        {enter ? <div className={`view-enter ${enter}`}>{children}</div> : children}
+      </div>
+      {footer}
     </div>
   );
 }
@@ -319,6 +407,7 @@ function WorkspaceView({
   onSwitchWorkspace,
   onLost,
   onLogout,
+  onShowTutorial,
 }: {
   appId: string;
   org: string | null;
@@ -327,13 +416,22 @@ function WorkspaceView({
   onSwitchWorkspace: () => void;
   onLost: () => void;
   onLogout: () => void;
+  onShowTutorial: () => void;
 }) {
   const { client: calimero, source, accountId, after } = useSignedIn();
-  const workspace = useWorkspace(appId, onLost);
+  const lostHere = useCallback(() => {
+    // Recordings of a workspace this account no longer reaches are not kept.
+    void forgetWorkspaceRecordings(appId);
+    onLost();
+  }, [appId, onLost]);
+  const workspace = useWorkspace(appId, lostHere);
   const [route, go] = useRoute();
   const meetings = useRead(workspace.client, workspace.version, (c) => c.listMeetings(), []);
   const [owner, setOwner] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  /** What the last upload could not keep (its audio), shown over the meeting it opened. */
+  const [uploadNote, setUploadNote] = useState<{ meetingId: string; note: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -352,6 +450,13 @@ function WorkspaceView({
   }, [calimero, source, appId, after]);
 
   const openActions = meetings.data?.reduce((n, m) => n + m.openActions, 0) ?? 0;
+  // A recording kept in this browser whose meeting is gone, or whose audio was removed or
+  // replaced (here or on another device), is dropped once the list says so.
+  // The list holds the newest 1,000 meetings: past that it cannot say what older ones keep.
+  const keptAudio = meetings.data && meetings.data.length < 1_000 ? meetings.data.flatMap((m) => (m.audio ? [m.audio.blob] : [])).sort().join(",") : null;
+  useEffect(() => {
+    if (keptAudio !== null) void pruneRecordings(appId, new Set(keptAudio ? keptAudio.split(",") : []));
+  }, [appId, keptAudio]);
   const searchClient = workspace.client;
   const searchTranscripts = useCallback(
     async (query: string) => {
@@ -367,17 +472,32 @@ function WorkspaceView({
 
   return (
     <Shell
-      left={
-        name ? (
-          <span className="team-name">
-            <span className="slash">/</span>
-            {name}
-          </span>
-        ) : null
+      right={
+        <Menu
+          me={accountId}
+          theme={theme}
+          setTheme={setTheme}
+          org={org}
+          onSwitchWorkspace={onSwitchWorkspace}
+          onLogout={onLogout}
+          onShowTutorial={onShowTutorial}
+        />
       }
-      right={<Menu me={accountId} theme={theme} setTheme={setTheme} org={org} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
+      footer={<AppFooter onShowTutorial={onShowTutorial} />}
+      enter="in"
     >
-      {route.page !== "meeting" && route.page !== "install" && (
+      <div className="ws-bar" data-testid="workspace-bar">
+        <span className="ws-dot" aria-hidden="true">
+          {(name || "W").slice(0, 1).toUpperCase()}
+        </span>
+        <span className="ws-bar-name" data-testid="workspace-switcher" title={name}>
+          {name || "Workspace"}
+        </span>
+        <button type="button" className="ws-bar-switch" onClick={onSwitchWorkspace}>
+          <Icon name="list" size={14} /> Switch workspace
+        </button>
+      </div>
+      {(route.page === "meetings" || route.page === "actions" || route.page === "people") && (
         <nav className="tabs" role="tablist">
           <button
             role="tab"
@@ -396,18 +516,48 @@ function WorkspaceView({
             Open action items
             {openActions > 0 && <span className="count">{openActions}</span>}
           </button>
+          <button
+            role="tab"
+            aria-selected={route.page === "people"}
+            className={route.page === "people" ? "tab active" : "tab"}
+            onClick={() => go({ page: "people" })}
+          >
+            People
+          </button>
         </nav>
       )}
+      {route.page === "people" && <PeoplePage appId={appId} workspaceName={name} onLeft={onSwitchWorkspace} />}
+      {route.page === "profile" && <ProfilePage workspaceName={name} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
       {route.page === "meetings" && (
         <MeetingsList
           meetings={meetings.data}
           error={meetings.error}
           onOpen={(id, seq) => go(seq === undefined ? { page: "meeting", id } : { page: "meeting", id, seq })}
           searchTranscripts={searchTranscripts}
+          onUpload={() => setUploading(true)}
+        />
+      )}
+      {uploading && (
+        <UploadRecording
+          workspace={workspace}
+          onClose={() => setUploading(false)}
+          onDone={(id, note) => {
+            setUploading(false);
+            setUploadNote(note ? { meetingId: id, note } : null);
+            go({ page: "meeting", id });
+          }}
         />
       )}
       {route.page === "install" && <InstallPage onBack={() => go({ page: "meetings" })} backLabel="All meetings" />}
       {route.page === "actions" && <OpenActions workspace={workspace} onOpen={(id) => go({ page: "meeting", id })} />}
+      {route.page === "meeting" && uploadNote?.meetingId === route.id && (
+        <p className="notice" role="status">
+          {uploadNote.note}{" "}
+          <button type="button" className="btn small ghost" onClick={() => setUploadNote(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
       {route.page === "meeting" && (
         <MeetingPage
           key={route.id}
@@ -423,6 +573,10 @@ function WorkspaceView({
   );
 }
 
+const THEMES = ["system", "light", "dark"] as const;
+/** The longest name a person can give themselves. */
+const NAME_MAX = 48;
+
 /** Your avatar in the top bar: your name, theme, switch workspace, log out. */
 function Menu({
   me,
@@ -431,6 +585,7 @@ function Menu({
   setTheme,
   onSwitchWorkspace,
   onLogout,
+  onShowTutorial,
 }: {
   me?: string | null;
   org?: string | null;
@@ -438,10 +593,12 @@ function Menu({
   setTheme: (t: Theme) => void;
   onSwitchWorkspace?: () => void;
   onLogout: () => void;
+  onShowTutorial?: () => void;
 }) {
   const { api } = useSessionApi();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const menuPresence = usePresence(open);
   const ref = useRef<HTMLDivElement>(null);
   const { nameOf, publish } = useSpaceNames();
 
@@ -462,33 +619,54 @@ function Menu({
   return (
     <div className="menu" ref={ref}>
       <button className="menu-button" aria-label="account menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {me ? <Avatar account={me} size={30} /> : <Icon name="menu" />}
-        {me && (
-          <span className="menu-name" data-testid="my-name">
-            <PersonName account={me} />
-          </span>
-        )}
+        <span className="profile-icon">
+          <Icon name="user" size={18} />
+        </span>
       </button>
-      {open && (
-        <div className="menu-panel glass-float" role="menu">
-          {me && org && (
+      {menuPresence.mounted && (
+        <div className={`menu-panel glass-float${menuPresence.closing ? " closing" : ""}`} role="menu">
+          {me && (org || nameOf(me)) && (
             <div className="menu-section">
               {renaming === null ? (
-                <button className="menu-item" onClick={() => setRenaming(nameOf(me) ?? "")}>
-                  <Icon name="pen" /> {nameOf(me) ? "Change your name" : "Set your name"}
-                </button>
+                <div className="menu-name-row" data-testid="my-name">
+                  <span className={nameOf(me) ? "menu-name-text" : "menu-name-text dim"} title={nameOf(me) ?? undefined}>
+                    {nameOf(me) ?? "Set your name"}
+                  </span>
+                  {org && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={nameOf(me) ? "Change your name" : "Set your name"}
+                      onClick={() => setRenaming(nameOf(me) ?? "")}
+                    >
+                      <Icon name="pen" size={14} />
+                    </button>
+                  )}
+                </div>
               ) : (
                 <form
-                  className="row"
+                  className="menu-name-row editing"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    publish(me, renaming);
+                    if (!renaming.trim()) return;
+                    publish(me, renaming.trim().slice(0, NAME_MAX));
                     setRenaming(null);
                   }}
+                  onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setRenaming(null))}
                 >
-                  <input aria-label="your name" autoFocus maxLength={64} value={renaming} onChange={(e) => setRenaming(e.target.value)} />
-                  <button type="submit" className="btn small primary">
-                    Save
+                  <input
+                    aria-label="your name"
+                    autoFocus
+                    maxLength={NAME_MAX}
+                    placeholder="Your name"
+                    value={renaming}
+                    onChange={(e) => setRenaming(e.target.value)}
+                  />
+                  <button type="submit" className="icon-btn" aria-label="Save name" disabled={!renaming.trim()}>
+                    <Icon name="check" size={14} />
+                  </button>
+                  <button type="button" className="icon-btn" aria-label="Cancel" onClick={() => setRenaming(null)}>
+                    <Icon name="x" size={14} />
                   </button>
                 </form>
               )}
@@ -496,21 +674,53 @@ function Menu({
           )}
           <div className="menu-section">
             <span className="menu-label">Theme</span>
-            <div className="segmented" role="radiogroup" aria-label="theme">
-              {(["system", "light", "dark"] as const).map((t) => (
+            <div
+              className="theme-switch"
+              role="radiogroup"
+              aria-label="theme"
+              style={{ "--at": THEMES.indexOf(theme) } as CSSProperties}
+            >
+              <span className="theme-thumb" aria-hidden="true" />
+              {THEMES.map((t) => (
                 <button key={t} role="radio" aria-checked={theme === t} className={theme === t ? "active" : ""} onClick={() => setTheme(t)}>
-                  {t === "light" ? <Icon name="sun" size={14} /> : t === "dark" ? <Icon name="moon" size={14} /> : null}
+                  <span className={`theme-icon ${t}`}>
+                    <Icon name={t === "light" ? "sun" : t === "dark" ? "moon" : "monitor"} size={14} />
+                  </span>
                   {t[0]!.toUpperCase() + t.slice(1)}
                 </button>
               ))}
             </div>
           </div>
           <div className="menu-section">
+            {me && (
+              <a className="menu-item home-link" href="#/profile" onClick={() => setOpen(false)}>
+                <Icon name="user" /> Profile
+              </a>
+            )}
+            {me && org && (
+              <a className="menu-item home-link" href="#/people" onClick={() => setOpen(false)}>
+                <Icon name="users" /> People and invites
+              </a>
+            )}
             <a className="menu-item home-link" href="#/install" onClick={() => setOpen(false)}>
-              Get the extension
+              <Icon name="puzzle" /> Get the extension
             </a>
+            {onShowTutorial && (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  setOpen(false);
+                  onShowTutorial();
+                }}
+              >
+                <Icon name="sparkle" /> Show tutorial
+              </button>
+            )}
             <a className="menu-item home-link" href="#/faq" onClick={() => setOpen(false)}>
-              Help and FAQ
+              <Icon name="help" /> Help and FAQ
+            </a>
+            <a className="menu-item home-link" href="#/home" onClick={() => setOpen(false)}>
+              <Icon name="home" /> {PRODUCT} home page
             </a>
             <ManageInHomeLink session={api.session} org={org} className="menu-item home-link" />
             {onSwitchWorkspace && (
@@ -519,11 +729,46 @@ function Menu({
               </button>
             )}
             <button className="menu-item danger-text" onClick={onLogout}>
-              Log out
+              <Icon name="logout" /> Log out
             </button>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The window's whole job, when the extension already said what it wants: one
+ * line and the passkey prompt, started at once (the window opens focused). The
+ * full sign-in panel only if that fails (no passkey here, a cancelled prompt).
+ */
+function PasskeyOnly({ title, line, run }: { title: string; line: string; run: () => Promise<void> }) {
+  const { api } = useSessionApi();
+  const started = useRef(false);
+  const [fallback, setFallback] = useState(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    run().catch(() => setFallback(true));
+  }, [run]);
+  useEffect(() => {
+    if (api.error) setFallback(true);
+  }, [api.error]);
+  return (
+    <section className="card handoff" data-testid="extension-passkey" aria-live="polite">
+      <div className="handoff-mark" aria-hidden="true">
+        <Icon name="key" size={22} />
+      </div>
+      <h1>{title}</h1>
+      <p className="empty">{line} This window closes by itself.</p>
+      {fallback ? (
+        <SignInPanel titleId="handoff-panel-title" />
+      ) : (
+        <button type="button" className="btn primary" onClick={() => void run().catch(() => setFallback(true))} disabled={api.busy}>
+          Use passkey
+        </button>
+      )}
+    </section>
   );
 }

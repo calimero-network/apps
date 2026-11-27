@@ -8,7 +8,24 @@
 export const AUTH_WINDOW = { width: 460, height: 720 } as const;
 
 type Tabs = Pick<typeof chrome.tabs, "onUpdated">;
-type Windows = Pick<typeof chrome.windows, "create" | "remove" | "onRemoved" | "getLastFocused">;
+type Windows = Pick<typeof chrome.windows, "create" | "remove" | "onRemoved" | "getLastFocused"> &
+  Partial<Pick<typeof chrome.windows, "update">>;
+
+/** The sign-in window open now, if any: a second sign-in brings it forward instead of opening another. */
+let openWindowId: number | null = null;
+
+/** Brings the open sign-in window to the front; false when none is open. */
+export async function focusAuthWindow(windows: Pick<typeof chrome.windows, "update"> = chrome.windows): Promise<boolean> {
+  if (openWindowId === null) return false;
+  try {
+    await windows.update(openWindowId, { focused: true, drawAttention: true });
+    return true;
+  } catch {
+    // Closed under us: there is none to bring forward.
+    openWindowId = null;
+    return false;
+  }
+}
 
 export interface AuthWindowDeps {
   tabs: Tabs;
@@ -38,12 +55,14 @@ export async function openAuthWindow(
   const windowId = win?.id;
   const tabId = win?.tabs?.[0]?.id;
   if (windowId === undefined) throw new Error("Could not open the sign-in window.");
+  openWindowId = windowId;
 
   return new Promise<string | null>((resolve) => {
     let done = false;
     const finish = (answer: string | null) => {
       if (done) return;
       done = true;
+      if (openWindowId === windowId) openWindowId = null;
       deps.tabs.onUpdated.removeListener(onUpdated);
       deps.windows.onRemoved.removeListener(onRemoved);
       if (answer !== null) void deps.windows.remove(windowId).catch(() => undefined);

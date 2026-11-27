@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { AssigneeChip, useMemberNames } from "./Assignee";
+import { assignables, type Assignable } from "./lib/assignee";
 import { Trash } from "@calimero-network/mero-icons";
 import type { ActionView } from "./sylenceApi";
 import type { Workspace } from "./useWorkspace";
 import { PersonName } from "./names";
 import { formatClock } from "./lib/transcript";
 import { Icon } from "./ui";
+import { findActions } from "../../extension/src/lib/actionItems";
+import type { SegmentView } from "./sylenceApi";
+import "./polish.css";
 
 /**
  * A meeting's action items: anyone in the workspace adds, ticks and edits
@@ -19,6 +24,8 @@ export function ActionItems({
   recorder,
   isOwner,
   segmentStart,
+  speakers = [],
+  segments,
 }: {
   workspace: Pick<Workspace, "act">;
   meetingId: string;
@@ -28,7 +35,13 @@ export function ActionItems({
   isOwner: boolean;
   /** Where a source segment starts, for the "from 3:05" link; `undefined` when not loaded. */
   segmentStart?: (seq: number) => number | undefined;
+  /** The call's speakers by the name shown, with their colour: offered first when assigning. */
+  speakers?: readonly { name: string; color: string }[];
+  /** The transcript, to find action items in after the call (the extension's switch may have been off). */
+  segments?: readonly SegmentView[];
 }) {
+  const memberNames = useMemberNames();
+  const people = useMemo(() => assignables(speakers, memberNames), [speakers, memberNames]);
   const [text, setText] = useState("");
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,12 +69,43 @@ export function ActionItems({
   };
 
   const open = actions?.filter((a) => !a.done).length ?? 0;
+  const [finding, setFinding] = useState(false);
+  const [foundNote, setFoundNote] = useState<string | null>(null);
+  /** Finds action items in the transcript ("I'll…", "can you…"), skipping ones already there. */
+  const find = async () => {
+    if (!segments?.length) return;
+    setFinding(true);
+    setFoundNote(null);
+    await run(async () => {
+      const found = findActions(
+        segments.map((s) => ({ seq: s.seq, speaker: s.speaker, name: s.name, text: s.text })),
+        (actions ?? []).map((a) => a.text),
+      );
+      for (const a of found) {
+        await workspace.act((c) => c.addAction({ meetingId, text: a.text, assignee: a.assignee, sourceSeq: a.sourceSeq }));
+      }
+      setFoundNote(found.length ? `Found ${found.length} new` : "Nothing new found");
+    });
+    setFinding(false);
+  };
 
   return (
     <section className="card actions-card" aria-labelledby="actions-title">
       <div className="card-head">
         <h2 id="actions-title">Action items</h2>
         {actions && <span className="pill">{open} open</span>}
+        {segments && segments.length > 0 && (
+          <button
+            type="button"
+            className="btn small ghost actions-find"
+            onClick={() => void find()}
+            disabled={finding}
+            title="Find action items in the transcript"
+            data-testid="find-actions"
+          >
+            <Icon name="sparkle" size={14} /> {finding ? "Finding…" : (foundNote ?? "Find in transcript")}
+          </button>
+        )}
       </div>
       {actions === null && <p className="empty">Loading…</p>}
       {actions && actions.length === 0 && (
@@ -76,6 +120,7 @@ export function ActionItems({
               canRemove={a.createdBy === me || recorder === me || isOwner}
               from={a.sourceSeq !== null ? segmentStart?.(a.sourceSeq) : undefined}
               onToggle={() => run(() => workspace.act((c) => c.setActionDone({ actionId: a.id, done: !a.done })))}
+              people={people}
               onEdit={(t, who) => run(() => workspace.act((c) => c.editAction({ actionId: a.id, text: t, assignee: who })))}
               onRemove={() => run(() => workspace.act((c) => c.removeAction({ actionId: a.id })))}
             />
@@ -96,14 +141,7 @@ export function ActionItems({
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <input
-          aria-label="Assignee"
-          placeholder="Who (optional)"
-          maxLength={100}
-          value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
-          className="assignee-input"
-        />
+        <AssigneeChip name={assignee} people={people} onAssign={setAssignee} label="the new action item" />
         <button type="submit" className="btn primary" disabled={busy || !text.trim()}>
           <Icon name="plus" /> Add
         </button>
@@ -121,18 +159,20 @@ function ActionRow({
   action,
   canRemove,
   from,
+  people,
   onToggle,
   onEdit,
   onRemove,
 }: {
   action: ActionView;
+  people: readonly Assignable[];
   canRemove: boolean;
   from?: number;
   onToggle: () => void;
   onEdit: (text: string, assignee: string) => Promise<unknown>;
   onRemove: () => void;
 }) {
-  const [draft, setDraft] = useState<{ text: string; assignee: string } | null>(null);
+  const [draft, setDraft] = useState<{ text: string } | null>(null);
 
   if (draft) {
     return (
@@ -142,7 +182,7 @@ function ActionRow({
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.text.trim()) return;
-            void onEdit(draft.text.trim(), draft.assignee.trim()).then(() => setDraft(null));
+            void onEdit(draft.text.trim(), action.assignee).then(() => setDraft(null));
           }}
         >
           <input
@@ -152,13 +192,6 @@ function ActionRow({
             value={draft.text}
             onChange={(e) => setDraft({ ...draft, text: e.target.value })}
             onKeyDown={(e) => e.key === "Escape" && setDraft(null)}
-          />
-          <input
-            aria-label="Action item assignee"
-            maxLength={100}
-            placeholder="Who"
-            value={draft.assignee}
-            onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
           />
           <button type="submit" className="btn small primary">
             Save
@@ -178,7 +211,7 @@ function ActionRow({
         <span className="action-text">{action.text}</span>
       </label>
       <span className="action-meta">
-        {action.assignee && <span className="pill">{action.assignee}</span>}
+        <AssigneeChip name={action.assignee} people={people} label={action.text} onAssign={(who) => void onEdit(action.text, who)} />
         {from !== undefined && <span className="dim">from {formatClock(from)}</span>}
         <span className="dim">
           added by <PersonName account={action.createdBy} />
@@ -189,7 +222,7 @@ function ActionRow({
           type="button"
           className="icon-btn"
           aria-label={`Edit ${action.text}`}
-          onClick={() => setDraft({ text: action.text, assignee: action.assignee })}
+          onClick={() => setDraft({ text: action.text })}
         >
           <Icon name="pen" size={14} />
         </button>

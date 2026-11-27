@@ -37,6 +37,8 @@ test.beforeAll(async () => {
     channel: "chromium",
     args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
   });
+  // The tutorial opens by itself on a first sign-in; these runs are past it.
+  await context.addInitScript(() => localStorage.setItem("mero-sylence:tutorial-seen", "1"));
 });
 test.afterAll(async () => {
   await context.close();
@@ -57,7 +59,7 @@ test("the popup opens signed out, with no console errors", async () => {
   });
   await page.goto(`chrome-extension://${ID}/popup.html`);
   await expect(page.getByRole("button", { name: "Sign in with Calimero" })).toBeVisible();
-  await expect(page.getByText(/Audio is never uploaded/)).toBeVisible();
+  await expect(page.getByText(/sealed so only your team can read/)).toBeVisible();
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByLabel("Speech model")).toBeVisible();
   expect(errors).toEqual([]);

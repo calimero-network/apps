@@ -24,6 +24,17 @@ export interface AppendResult {
   nextSeq: number;
 }
 
+/** The app type `Audio`. */
+export interface Audio {
+  blob: BlobRef;
+  mime: string;
+  size: number;
+  durationMs: number;
+}
+
+/** The app type `BlobRef`. */
+export type BlobRef = string;
+
 /** The app type `DeleteResult`. */
 export interface DeleteResult {
   remaining: number;
@@ -33,6 +44,26 @@ export interface DeleteResult {
 export interface DropResult {
   removed: number;
   remaining: number;
+}
+
+/** The app type `EmotionShare`. */
+export interface EmotionShare {
+  label: string;
+  share: number;
+}
+
+/** The app type `Insights`. */
+export interface Insights {
+  model: string;
+  people: PersonInsight[];
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** The app type `InsightsInput`. */
+export interface InsightsInput {
+  model: string;
+  people: PersonInsight[];
 }
 
 /** The app type `MeetingView`. */
@@ -54,6 +85,18 @@ export interface MeetingView {
   revised: boolean;
   live: boolean;
   openActions: number;
+  audio: Audio | null;
+  speakerNames: SpeakerName[];
+  speakers: Speaker[];
+}
+
+/** The app type `PersonInsight`. */
+export interface PersonInsight {
+  label: string;
+  tone: string;
+  profile: string;
+  emotions: EmotionShare[];
+  keyPoints: string[];
 }
 
 /** The app type `SearchHit`. */
@@ -85,6 +128,12 @@ export interface SegmentInput {
   text: string;
 }
 
+/** The app type `SegmentName`. */
+export interface SegmentName {
+  seq: number;
+  name: string;
+}
+
 /** The app type `SegmentView`. */
 export interface SegmentView {
   seq: number;
@@ -94,6 +143,18 @@ export interface SegmentView {
   name: string;
   text: string;
   edited: boolean;
+}
+
+/** The app type `Speaker`. */
+export interface Speaker {
+  speaker: string;
+  name: string;
+}
+
+/** The app type `SpeakerName`. */
+export interface SpeakerName {
+  label: string;
+  name: string;
 }
 
 /** The app type `TranscriptPage`. */
@@ -114,6 +175,14 @@ export interface AddActionArgs {
 export interface AppendSegmentsArgs {
   meetingId: string;
   segments: SegmentInput[];
+}
+
+/** The arguments of `attachAudio`. */
+export interface AttachAudioArgs {
+  meetingId: string;
+  blob: BlobRef;
+  mime: string;
+  durationMs: number;
 }
 
 /** The arguments of `deleteMeeting`. */
@@ -153,14 +222,30 @@ export interface GetMeetingArgs {
   meetingId: string;
 }
 
+/** The arguments of `insights`. */
+export interface InsightsArgs {
+  meetingId: string;
+}
+
 /** The arguments of `listActions`. */
 export interface ListActionsArgs {
   meetingId: string;
 }
 
+/** The arguments of `nameSegments`. */
+export interface NameSegmentsArgs {
+  meetingId: string;
+  names: SegmentName[];
+}
+
 /** The arguments of `removeAction`. */
 export interface RemoveActionArgs {
   actionId: string;
+}
+
+/** The arguments of `removeAudio`. */
+export interface RemoveAudioArgs {
+  meetingId: string;
 }
 
 /** The arguments of `renameMeeting`. */
@@ -179,6 +264,19 @@ export interface SearchArgs {
 export interface SetActionDoneArgs {
   actionId: string;
   done: boolean;
+}
+
+/** The arguments of `setInsights`. */
+export interface SetInsightsArgs {
+  meetingId: string;
+  insights: InsightsInput;
+}
+
+/** The arguments of `setSpeakerName`. */
+export interface SetSpeakerNameArgs {
+  meetingId: string;
+  label: string;
+  name: string;
 }
 
 /** The arguments of `setSummary`. */
@@ -232,6 +330,11 @@ export interface ActionChangedEvent {
   meetingId: string;
 }
 
+/** The fields of the event `InsightsChanged`. */
+export interface InsightsChangedEvent {
+  meetingId: string;
+}
+
 /** The fields of the event `MeetingChanged`. */
 export interface MeetingChangedEvent {
   id: string;
@@ -247,6 +350,7 @@ export interface TranscriptChangedEvent {
 /** An event of the app, as a call's answer (`events`) and the event stream carry it. */
 export type AppEvent =
   | { kind: 'ActionChanged'; data: ActionChangedEvent }
+  | { kind: 'InsightsChanged'; data: InsightsChangedEvent }
   | { kind: 'MeetingChanged'; data: MeetingChangedEvent }
   | { kind: 'TranscriptChanged'; data: TranscriptChangedEvent };
 
@@ -325,6 +429,8 @@ export interface MeroSylenceApi {
   addAction(args: AddActionArgs, options?: CallOptions): Promise<string>;
   /** call `appendSegments`. */
   appendSegments(args: AppendSegmentsArgs, options?: CallOptions): Promise<AppendResult>;
+  /** call `attachAudio`. */
+  attachAudio(args: AttachAudioArgs, options?: CallOptions): Promise<MeetingView>;
   /** call `deleteMeeting`. */
   deleteMeeting(args: DeleteMeetingArgs, options?: CallOptions): Promise<DeleteResult>;
   /** call `dropSegments`. */
@@ -337,22 +443,34 @@ export interface MeroSylenceApi {
   endMeeting(args: EndMeetingArgs, options?: CallOptions): Promise<MeetingView>;
   /** view `getMeeting`. */
   getMeeting(args: GetMeetingArgs, options?: ViewOptions): Promise<MeetingView>;
+  /** view `insights`. */
+  insights(args: InsightsArgs, options?: ViewOptions): Promise<Insights | null>;
   /** view `listActions`. */
   listActions(args: ListActionsArgs, options?: ViewOptions): Promise<ActionView[]>;
   /** view `listMeetings`. */
   listMeetings(options?: ViewOptions): Promise<MeetingView[]>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<string>;
+  /** call `nameSegments`. */
+  nameSegments(args: NameSegmentsArgs, options?: CallOptions): Promise<number>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ActionView[]>;
+  /** view `recordingsLeft`. */
+  recordingsLeft(options?: ViewOptions): Promise<number>;
   /** call `removeAction`. */
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<null>;
+  /** call `removeAudio`. */
+  removeAudio(args: RemoveAudioArgs, options?: CallOptions): Promise<MeetingView>;
   /** call `renameMeeting`. */
   renameMeeting(args: RenameMeetingArgs, options?: CallOptions): Promise<MeetingView>;
   /** view `search`. */
   search(args: SearchArgs, options?: ViewOptions): Promise<SearchResult>;
   /** call `setActionDone`. */
   setActionDone(args: SetActionDoneArgs, options?: CallOptions): Promise<ActionView>;
+  /** call `setInsights`. */
+  setInsights(args: SetInsightsArgs, options?: CallOptions): Promise<Insights | null>;
+  /** call `setSpeakerName`. */
+  setSpeakerName(args: SetSpeakerNameArgs, options?: CallOptions): Promise<MeetingView>;
   /** call `setSummary`. */
   setSummary(args: SetSummaryArgs, options?: CallOptions): Promise<MeetingView>;
   /** call `startMeeting`. */
@@ -372,6 +490,8 @@ export interface MeroSylenceRawApi {
   addAction(args: AddActionArgs, options?: CallOptions): Promise<CallAnswer<string>>;
   /** call `appendSegments`. */
   appendSegments(args: AppendSegmentsArgs, options?: CallOptions): Promise<CallAnswer<AppendResult>>;
+  /** call `attachAudio`. */
+  attachAudio(args: AttachAudioArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** call `deleteMeeting`. */
   deleteMeeting(args: DeleteMeetingArgs, options?: CallOptions): Promise<CallAnswer<DeleteResult>>;
   /** call `dropSegments`. */
@@ -384,22 +504,34 @@ export interface MeroSylenceRawApi {
   endMeeting(args: EndMeetingArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** view `getMeeting`. */
   getMeeting(args: GetMeetingArgs, options?: ViewOptions): Promise<ViewAnswer<MeetingView>>;
+  /** view `insights`. */
+  insights(args: InsightsArgs, options?: ViewOptions): Promise<ViewAnswer<Insights | null>>;
   /** view `listActions`. */
   listActions(args: ListActionsArgs, options?: ViewOptions): Promise<ViewAnswer<ActionView[]>>;
   /** view `listMeetings`. */
   listMeetings(options?: ViewOptions): Promise<ViewAnswer<MeetingView[]>>;
   /** view `myAccount`. */
   myAccount(options?: ViewOptions): Promise<ViewAnswer<string>>;
+  /** call `nameSegments`. */
+  nameSegments(args: NameSegmentsArgs, options?: CallOptions): Promise<CallAnswer<number>>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ViewAnswer<ActionView[]>>;
+  /** view `recordingsLeft`. */
+  recordingsLeft(options?: ViewOptions): Promise<ViewAnswer<number>>;
   /** call `removeAction`. */
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<CallAnswer<null>>;
+  /** call `removeAudio`. */
+  removeAudio(args: RemoveAudioArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** call `renameMeeting`. */
   renameMeeting(args: RenameMeetingArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** view `search`. */
   search(args: SearchArgs, options?: ViewOptions): Promise<ViewAnswer<SearchResult>>;
   /** call `setActionDone`. */
   setActionDone(args: SetActionDoneArgs, options?: CallOptions): Promise<CallAnswer<ActionView>>;
+  /** call `setInsights`. */
+  setInsights(args: SetInsightsArgs, options?: CallOptions): Promise<CallAnswer<Insights | null>>;
+  /** call `setSpeakerName`. */
+  setSpeakerName(args: SetSpeakerNameArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** call `setSummary`. */
   setSummary(args: SetSummaryArgs, options?: CallOptions): Promise<CallAnswer<MeetingView>>;
   /** call `startMeeting`. */
@@ -429,20 +561,27 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
     this.raw = {
       addAction: (args, options = {}) => this.#call<string>('addAction', args, options),
       appendSegments: (args, options = {}) => this.#call<AppendResult>('appendSegments', args, options),
+      attachAudio: (args, options = {}) => this.#call<MeetingView>('attachAudio', args, options),
       deleteMeeting: (args, options = {}) => this.#call<DeleteResult>('deleteMeeting', args, options),
       dropSegments: (args, options = {}) => this.#call<DropResult>('dropSegments', args, options),
       editAction: (args, options = {}) => this.#call<ActionView>('editAction', args, options),
       editSegment: (args, options = {}) => this.#call<SegmentView>('editSegment', args, options),
       endMeeting: (args, options = {}) => this.#call<MeetingView>('endMeeting', args, options),
       getMeeting: (args, options = {}) => this.#view<MeetingView>('getMeeting', args, options),
+      insights: (args, options = {}) => this.#view<Insights | null>('insights', args, options),
       listActions: (args, options = {}) => this.#view<ActionView[]>('listActions', args, options),
       listMeetings: (options = {}) => this.#view<MeetingView[]>('listMeetings', {}, options),
       myAccount: (options = {}) => this.#view<string>('myAccount', {}, options),
+      nameSegments: (args, options = {}) => this.#call<number>('nameSegments', args, options),
       openActions: (options = {}) => this.#view<ActionView[]>('openActions', {}, options),
+      recordingsLeft: (options = {}) => this.#view<number>('recordingsLeft', {}, options),
       removeAction: (args, options = {}) => this.#call<null>('removeAction', args, options),
+      removeAudio: (args, options = {}) => this.#call<MeetingView>('removeAudio', args, options),
       renameMeeting: (args, options = {}) => this.#call<MeetingView>('renameMeeting', args, options),
       search: (args, options = {}) => this.#view<SearchResult>('search', args, options),
       setActionDone: (args, options = {}) => this.#call<ActionView>('setActionDone', args, options),
+      setInsights: (args, options = {}) => this.#call<Insights | null>('setInsights', args, options),
+      setSpeakerName: (args, options = {}) => this.#call<MeetingView>('setSpeakerName', args, options),
       setSummary: (args, options = {}) => this.#call<MeetingView>('setSummary', args, options),
       startMeeting: (args, options = {}) => this.#call<string>('startMeeting', args, options),
       transcript: (args, options = {}) => this.#view<TranscriptPage>('transcript', args, options),
@@ -487,6 +626,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
     return (await this.#call<AppendResult>('appendSegments', args, options)).result;
   }
 
+  /** call `attachAudio`. */
+  async attachAudio(args: AttachAudioArgs, options: CallOptions = {}): Promise<MeetingView> {
+    return (await this.#call<MeetingView>('attachAudio', args, options)).result;
+  }
+
   /** call `deleteMeeting`. */
   async deleteMeeting(args: DeleteMeetingArgs, options: CallOptions = {}): Promise<DeleteResult> {
     return (await this.#call<DeleteResult>('deleteMeeting', args, options)).result;
@@ -517,6 +661,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
     return (await this.#view<MeetingView>('getMeeting', args, options)).result;
   }
 
+  /** view `insights`. */
+  async insights(args: InsightsArgs, options: ViewOptions = {}): Promise<Insights | null> {
+    return (await this.#view<Insights | null>('insights', args, options)).result;
+  }
+
   /** view `listActions`. */
   async listActions(args: ListActionsArgs, options: ViewOptions = {}): Promise<ActionView[]> {
     return (await this.#view<ActionView[]>('listActions', args, options)).result;
@@ -532,14 +681,29 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
     return (await this.#view<string>('myAccount', {}, options)).result;
   }
 
+  /** call `nameSegments`. */
+  async nameSegments(args: NameSegmentsArgs, options: CallOptions = {}): Promise<number> {
+    return (await this.#call<number>('nameSegments', args, options)).result;
+  }
+
   /** view `openActions`. */
   async openActions(options: ViewOptions = {}): Promise<ActionView[]> {
     return (await this.#view<ActionView[]>('openActions', {}, options)).result;
   }
 
+  /** view `recordingsLeft`. */
+  async recordingsLeft(options: ViewOptions = {}): Promise<number> {
+    return (await this.#view<number>('recordingsLeft', {}, options)).result;
+  }
+
   /** call `removeAction`. */
   async removeAction(args: RemoveActionArgs, options: CallOptions = {}): Promise<null> {
     return (await this.#call<null>('removeAction', args, options)).result;
+  }
+
+  /** call `removeAudio`. */
+  async removeAudio(args: RemoveAudioArgs, options: CallOptions = {}): Promise<MeetingView> {
+    return (await this.#call<MeetingView>('removeAudio', args, options)).result;
   }
 
   /** call `renameMeeting`. */
@@ -555,6 +719,16 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
   /** call `setActionDone`. */
   async setActionDone(args: SetActionDoneArgs, options: CallOptions = {}): Promise<ActionView> {
     return (await this.#call<ActionView>('setActionDone', args, options)).result;
+  }
+
+  /** call `setInsights`. */
+  async setInsights(args: SetInsightsArgs, options: CallOptions = {}): Promise<Insights | null> {
+    return (await this.#call<Insights | null>('setInsights', args, options)).result;
+  }
+
+  /** call `setSpeakerName`. */
+  async setSpeakerName(args: SetSpeakerNameArgs, options: CallOptions = {}): Promise<MeetingView> {
+    return (await this.#call<MeetingView>('setSpeakerName', args, options)).result;
   }
 
   /** call `setSummary`. */

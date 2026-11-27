@@ -6,15 +6,28 @@ import "./captureNative";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConsentPopupReturn } from "@calimero-network/mero-react";
-import { registerServiceWorker } from "@calimero-apps/install";
 import { App } from "./App";
+import { borrowExtensionSession, lendRequest } from "./native";
+import { closeSharedDialogsOnBackdrop } from "./backdropClose";
 import { invites } from "./lib/orgs";
 import { BASE } from "./route";
 import { applyStoredTheme } from "./ui";
 import "./index.css";
 
-// Installable as an app (Chrome, Edge); not in dev and not on a node.
-registerServiceWorker();
+// Earlier builds installed as an app with a service worker that cached the page.
+// That is gone: drop any worker and cache an earlier visit left behind.
+if ("serviceWorker" in navigator) {
+  void navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+    .catch(() => undefined);
+}
+if (typeof caches !== "undefined") {
+  void caches
+    .keys()
+    .then((keys) => Promise.all(keys.filter((k) => k.includes("mero-sylence") || k.startsWith("workbox")).map((k) => caches.delete(k))))
+    .catch(() => undefined);
+}
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
@@ -23,13 +36,19 @@ if (!root) throw new Error("#root is missing from index.html");
 invites.capture(window.location, { basename: BASE });
 
 applyStoredTheme();
+closeSharedDialogsOnBackdrop();
 
 const Wrapper = import.meta.env.DEV ? StrictMode : ({ children }: { children: ReactNode }) => <>{children}</>;
 
-createRoot(root).render(
-  <Wrapper>
-    <ConsentPopupReturn>
-      <App />
-    </ConsentPopupReturn>
-  </Wrapper>,
+// Creating a workspace the extension asked for: borrow its session first, so the
+// page starts signed in and the person isn't asked to sign in again.
+const lend = lendRequest();
+void (lend ? borrowExtensionSession(lend) : Promise.resolve(false)).then(() =>
+  createRoot(root).render(
+    <Wrapper>
+      <ConsentPopupReturn>
+        <App />
+      </ConsentPopupReturn>
+    </Wrapper>,
+  ),
 );

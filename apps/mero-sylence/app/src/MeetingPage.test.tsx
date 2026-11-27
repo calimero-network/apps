@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionView, SegmentView } from "./sylenceApi";
 import { MeetingPage } from "./MeetingPage";
 import { fakeWorkspace, meeting } from "./test/workspace";
+import { sha256Hex } from "./useRecording";
 
 afterEach(cleanup);
 
@@ -147,8 +148,12 @@ describe("MeetingPage", () => {
     const { sent } = setup({ me: "cy" });
     await screen.findAllByTestId("action-item");
     fireEvent.change(screen.getByRole("textbox", { name: "New action item" }), { target: { value: "Book the room" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Assignee" }), { target: { value: "Gus" } });
-    fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+    // Assign through the picker: type a name nobody in the call has, and take it.
+    fireEvent.click(screen.getByRole("button", { name: "Assign the new action item" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Assignee name" }), { target: { value: "Gus" } });
+    fireEvent.click(screen.getByRole("option", { name: /Assign to “Gus”/ }));
+    expect(screen.getByRole("button", { name: /Assigned to Gus/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
     await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
     expect(sent.find((s) => s.method === "addAction")!.args).toEqual({
       meetingId: "aa11",
@@ -162,21 +167,68 @@ describe("MeetingPage", () => {
     expect(sent.find((s) => s.method === "setActionDone")!.args).toEqual({ actionId: "act1", done: true });
   });
 
+  it("reassigns an action item to a speaker of the call", async () => {
+    const { sent } = setup({ me: "cy" });
+    const [first] = await screen.findAllByTestId("action-item");
+    fireEvent.click(within(first!).getByTestId("assignee"));
+    const options = screen.getAllByRole("option");
+    expect(options.some((o) => /in this call/.test(o.textContent ?? ""))).toBe(true);
+    const speaker = options.find((o) => /in this call/.test(o.textContent ?? ""))!;
+    fireEvent.click(speaker);
+    await waitFor(() => expect(sent.some((s) => s.method === "editAction")).toBe(true));
+    const args = sent.find((s) => s.method === "editAction")!.args as { assignee: string; text: string };
+    expect(args.text).toBe("Send the deck");
+    expect(speaker.textContent).toContain(args.assignee);
+  });
+
   it("makes an action item from a line of the transcript", async () => {
     const { sent } = setup({ me: "cy" });
     const lines = await screen.findAllByTestId("segment");
     fireEvent.click(within(lines[1]!).getByRole("button", { name: "Make action item" }));
+    // The picker offers the call's people; the item goes to the one picked.
+    const option = (await screen.findAllByRole("option"))[0]!;
+    const picked = option.querySelector(".who-option-name")!.textContent!;
+    expect(picked).not.toBe("Others");
+    fireEvent.click(option);
     await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
     expect(sent.find((s) => s.method === "addAction")!.args).toEqual({
       meetingId: "aa11",
       text: "Cy will send the deck",
-      assignee: "",
+      assignee: picked,
       sourceSeq: 1,
     });
   });
 
-  it("loads the transcript a page at a time", async () => {
-    const { sent } = setup({ me: "cy", pages: [[seg(0, "first")], [seg(1, "second")]] });
+  it("finds action items in the transcript after the call, without repeating ones already there", async () => {
+    const { sent } = setup({ me: "cy" });
+    await screen.findAllByTestId("segment");
+    fireEvent.click(await screen.findByTestId("find-actions"));
+    await waitFor(() => expect(screen.getByTestId("find-actions").textContent).toMatch(/Found \d+ new|Nothing new found/));
+    const added = sent.filter((s) => s.method === "addAction").map((s) => s.args as { text: string; sourceSeq: number | null });
+    // Whatever was found points back at its line, and nothing already listed is added again.
+    expect(added.every((a) => typeof a.sourceSeq === "number")).toBe(true);
+    expect(added.some((a) => a.text.toLowerCase() === "send the deck")).toBe(false);
+  });
+
+  it("makes an action item from a line without assigning it", async () => {
+    const { sent } = setup({ me: "cy" });
+    const lines = await screen.findAllByTestId("segment");
+    fireEvent.click(within(lines[1]!).getByRole("button", { name: "Make action item" }));
+    fireEvent.click(await screen.findByRole("option", { name: /Add without assigning/ }));
+    await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
+    expect(sent.find((s) => s.method === "addAction")!.args).toMatchObject({ assignee: "", sourceSeq: 1 });
+  });
+
+  it("reads an ended meeting whole, so its talk time covers every line", async () => {
+    const { sent } = setup({ me: "cy", pages: [[seg(0, "first", "others", "Eve")], [seg(1, "second", "others", "Sam")]] });
+    await screen.findByText("second");
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(sent.filter((s) => s.method === "transcript").map((s) => s.args.fromSeq)).toEqual([0, 1]);
+    expect(await screen.findAllByTestId("talk-row")).toHaveLength(2);
+  });
+
+  it("loads a live transcript a page at a time", async () => {
+    const { sent } = setup({ me: "cy", live: true, pages: [[seg(0, "first")], [seg(1, "second")]] });
     await screen.findByText("first");
     expect(screen.queryByText("second")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
@@ -219,5 +271,131 @@ describe("MeetingPage", () => {
     await waitFor(() => expect(document.getElementById("line-3")).toBeTruthy());
     expect(document.getElementById("line-3")!.className).toContain("focused");
     await waitFor(() => expect(scrolled).toHaveBeenCalled());
+  });
+});
+
+describe("talk time and playback", () => {
+  const lines = [seg(0, "Shall we start?", "others", "Speaker 1"), seg(1, "Yes, the beta ships Friday.", "others", "Speaker 2"), seg(2, "Great.", "others", "Speaker 1")];
+
+  it("shows who talked how much, under the names given to them", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", speakerNames: [{ label: "Speaker 2", name: "Eve" }] }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    const rows = await screen.findAllByTestId("talk-row");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText("Speaker 1")).toBeTruthy();
+    expect(within(rows[1]!).getByText("Eve")).toBeTruthy();
+    expect(screen.getByText(/Uploaded by/)).toBeTruthy();
+    // No recording: no player.
+    expect(screen.queryByRole("region", { name: "Recording" })).toBeNull();
+  });
+
+  it("lets the recorder name a speaker", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload" }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+      setSpeakerName: () => meeting({ speakerNames: [{ label: "Speaker 1", name: "Sam" }] }),
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rename Speaker 1" }));
+    fireEvent.change(screen.getByLabelText("Name for Speaker 1"), { target: { value: "Sam" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.sent.some((s) => s.method === "setSpeakerName")).toBe(true));
+    expect(fake.sent.find((s) => s.method === "setSpeakerName")!.args).toEqual({ meetingId: "aa11", label: "Speaker 1", name: "Sam" });
+  });
+
+  it("plays a meeting's recording and seeks from a line", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const id = await sha256Hex(bytes.slice().buffer);
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 200_000 } }),
+      listActions: () => [],
+      transcript: () => ({ segments: lines, next: null }),
+    });
+    fake.stored.set(id, bytes);
+    const created = vi.fn(() => "blob:recording");
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    expect(await screen.findByRole("region", { name: "Recording" })).toBeTruthy();
+    await waitFor(() => expect(document.querySelector("audio")?.getAttribute("src")).toBe("blob:recording"));
+    const play = await screen.findByRole("button", { name: "Play from 1:05" });
+    act(() => fireEvent.click(play));
+    expect(screen.getByRole("slider", { name: "Seek" }).getAttribute("aria-valuetext")).toBe("1:05");
+    // Not the recorder: no rename.
+    expect(screen.queryByRole("button", { name: /^Rename Speaker/ })).toBeNull();
+  });
+});
+
+describe("speakers are keyed the same for every reader", () => {
+  const lines = [seg(0, "Hello", "you"), seg(1, "Hi there", "others", "Eve")];
+  for (const me of ["bob", "cy"]) {
+    it(`shows the name given to the recorder's lines to ${me}`, async () => {
+      const fake = fakeWorkspace({
+        getMeeting: () => meeting({ speakerNames: [{ label: "you", name: "Robert" }] }),
+        listActions: () => [],
+        transcript: () => ({ segments: lines, next: null }),
+        insights: () => ({ model: "m", updatedBy: "bob", updatedAt: "1", people: [{ label: "you", tone: "enthusiastic", profile: "Led the call.", emotions: [], keyPoints: [] }] }),
+      });
+      render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me={me} isOwner={false} onBack={() => {}} />);
+      const rows = await screen.findAllByTestId("talk-row");
+      expect(rows.some((r) => within(r).queryByText("Robert"))).toBe(true);
+      expect(await screen.findByText("Led the call.")).toBeTruthy();
+    });
+  }
+});
+
+describe("round-2 fixes", () => {
+  it("does not retry a failing transcript read in a loop", async () => {
+    let reads = 0;
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting(),
+      listActions: () => [],
+      transcript: (args) => {
+        reads += 1;
+        if ((args.fromSeq as number) === 0) return { segments: [seg(0, "first")], next: 1 };
+        throw new Error("node busy");
+      },
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    await screen.findByText("node busy");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(reads).toBeLessThanOrEqual(3);
+    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+
+  it("keeps the rename form when the rename is refused", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload" }),
+      listActions: () => [],
+      transcript: () => ({ segments: [seg(0, "Hi", "others", "Speaker 1")], next: null }),
+      setSpeakerName: () => {
+        throw new Error("a meeting keeps at most 50 speaker names");
+      },
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rename Speaker 1" }));
+    fireEvent.change(screen.getByLabelText("Name for Speaker 1"), { target: { value: "Sam" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(/at most 50 speaker names/);
+    expect((screen.getByLabelText("Name for Speaker 1") as HTMLInputElement).value).toBe("Sam");
+  });
+
+  it("marks no line as playing before anything played", async () => {
+    const bytes = new Uint8Array([4, 5, 6]);
+    const id = await sha256Hex(bytes.slice().buffer);
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 60_000 } }),
+      listActions: () => [],
+      transcript: () => ({ segments: [{ ...seg(0, "From the start"), startMs: 0 }], next: null }),
+    });
+    fake.stored.set(id, bytes);
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    await screen.findByText("From the start");
+    expect(document.querySelector(".segment.playing")).toBeNull();
   });
 });

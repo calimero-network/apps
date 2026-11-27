@@ -3,8 +3,10 @@ import { KEYS, type AuthState, type RecorderStatus, type Settings } from "../../
 import { PLATFORM_NAMES, detectPlatform, isInCall, meetingTitle } from "../../lib/platform";
 import { write } from "../../lib/storage";
 import { TIERS, resolveTier } from "../../lib/tiers";
+import { sizeLabel } from "../../lib/format";
 import { useCaps, useMicAllowed, type ActiveTab } from "../hooks";
-import { AlertIcon, ChevronRightIcon, ChipIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
+import { AlertIcon, ChevronRightIcon, ChipIcon, ExternalIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
+import { workspaceLink } from "../../lib/appHost";
 import { ask } from "../rpc";
 import { ModelSheet } from "./ModelSheet";
 
@@ -21,7 +23,8 @@ export function Ready({
   tab: ActiveTab | null;
   onWorkspaces: () => void;
 }) {
-  const caps = useCaps();
+  // Read again once a download finishes, so Record unlocks by itself.
+  const caps = useCaps(`${status.phase}:${status.model ? "loading" : "idle"}`);
   const micAllowed = useMicAllowed();
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,6 +36,12 @@ export function Ready({
   const inCall = isInCall(tab?.url);
   const recordable = !!tab && /^https?:/.test(tab.url);
   const tier = caps ? resolveTier(settings.tier, caps, settings.language) : null;
+  /** The model this recording would use is on the laptop: nothing is downloaded mid-call. */
+  const modelReady = !!tier && !!caps?.cached?.includes(tier);
+  const downloading = status.phase === "idle" && !!status.model;
+  /** With the mic on, its permission must be granted first. */
+  const micBlocked = settings.mic && micAllowed !== true;
+  const canRecord = recordable && !busy && modelReady && !micBlocked;
   const save = (s: Partial<Settings>) => write("local", KEYS.settings, { ...settings, ...s });
 
   const start = async () => {
@@ -71,7 +80,24 @@ export function Ready({
             </span>
           </span>
         </div>
-        <button className="btn primary block lg" onClick={start} disabled={!recordable || busy}>
+        {caps && tier && !modelReady && (
+          <div className="need" data-testid="need-model">
+            <p className="strong">Download the speech model first</p>
+            <p className="small muted">
+              {TIERS[tier].name} runs on this laptop and transcribes the call. It downloads once ({sizeLabel(TIERS[tier].sizeMb)}).
+            </p>
+            {downloading && status.model ? (
+              <div className="progress" role="progressbar" aria-valuenow={Math.round(status.model.fraction * 100)}>
+                <span style={{ width: `${status.model.fraction * 100}%` }} />
+              </div>
+            ) : (
+              <button className="btn block" onClick={() => void ask({ type: "preload", tier })}>
+                Download {TIERS[tier].name}
+              </button>
+            )}
+          </div>
+        )}
+        <button className="btn primary block lg" onClick={start} disabled={!canRecord}>
           {busy ? <Spinner size={14} /> : <span className="dot" aria-hidden="true" />}
           {busy ? "Starting…" : inCall || platform !== "other" ? "Record meeting" : "Record this tab"}
         </button>
@@ -96,13 +122,17 @@ export function Ready({
         </button>
       </div>
 
-      {settings.mic && micAllowed === false && (
-        <div className="banner">
+      {settings.mic && micAllowed !== true && (
+        <div className="banner" data-testid="need-mic">
           <MicIcon size={14} />
-          <span className="grow">Allow the microphone once so your side of the call is transcribed.</span>
-          <button className="btn link" onClick={allowMic}>
-            Allow
-          </button>
+          <span className="grow">
+            {micAllowed === null ? "Checking the microphone…" : "Allow the microphone to record your side, or turn Mic off to record only the call."}
+          </span>
+          {micAllowed === false && (
+            <button className="btn link" onClick={allowMic}>
+              Allow
+            </button>
+          )}
         </div>
       )}
       {shown && (
@@ -118,16 +148,27 @@ export function Ready({
       )}
 
       <div className="stack" style={{ marginTop: "auto", gap: 12 }}>
-        <button className="row card" style={{ padding: "8px 12px" }} onClick={onWorkspaces} aria-label="Change workspace">
-          <span className="grow">
-            <span className="label">Saving to</span>
-            <span className="name">{auth.workspace?.name}</span>
-          </span>
-          <ChevronRightIcon size={16} className="chev" />
-        </button>
+        <div className="hstack" style={{ gap: 8 }}>
+          <button className="row card grow" style={{ padding: "8px 12px" }} onClick={onWorkspaces} aria-label="Change workspace">
+            <span className="grow">
+              <span className="label">Saving to</span>
+              <span className="name">{auth.workspace?.name}</span>
+            </span>
+            <ChevronRightIcon size={16} className="chev" />
+          </button>
+          {auth.page && (
+            <button
+              className="btn open-web"
+              title="Open this workspace in the Sylence web app (you sign in there separately)"
+              onClick={() => void chrome.tabs.create({ url: workspaceLink(auth.page!, auth.workspace?.appId) })}
+            >
+              <ExternalIcon size={14} /> Web app
+            </button>
+          )}
+        </div>
         <p className="foot">
           <LockIcon size={13} />
-          <span>Transcribed on this laptop. Audio is never uploaded.</span>
+          <span>Transcript and recording sealed in your workspace</span>
         </p>
       </div>
     </main>

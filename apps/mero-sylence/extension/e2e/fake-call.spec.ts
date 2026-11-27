@@ -83,6 +83,8 @@ test.beforeAll(async () => {
       "--enable-unsafe-webgpu",
     ],
   });
+  // The tutorial opens by itself on a first sign-in; these runs are past it.
+  await context.addInitScript(() => localStorage.setItem("mero-sylence:tutorial-seen", "1"));
   for (const p of Object.keys(CALL_URLS) as FakePlatform[]) {
     await context.route(`${CALL_URLS[p].url}*`, (route) => route.fulfill({ contentType: "text/html", body: callPage(p) }));
   }

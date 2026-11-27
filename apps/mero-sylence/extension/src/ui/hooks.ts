@@ -63,12 +63,23 @@ export function clock(seconds: number): string {
   return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
 }
 
-export function useCaps(): Capabilities | null {
+/** What this laptop can run, read again whenever `refresh` changes (a model finished downloading). */
+export function useCaps(refresh: unknown = null): Capabilities | null {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   useEffect(() => {
     void detectCaps().then(setCaps);
-  }, []);
+  }, [refresh]);
   return caps;
+}
+
+/** This laptop, as the speech models see it: "8 GB+ memory · 10 cores · graphics chip". */
+export function describeCaps(caps: Capabilities): string {
+  const parts: string[] = [];
+  if (caps.deviceMemoryGb) parts.push(`${caps.deviceMemoryGb >= 8 ? "8 GB+" : `${caps.deviceMemoryGb} GB`} memory`);
+  if (caps.cores) parts.push(`${caps.cores} cores`);
+  parts.push(caps.webgpu ? "graphics chip" : "no graphics acceleration");
+  if (caps.chromeOS) parts.push("Chromebook");
+  return parts.join(" · ");
 }
 
 /** Whether the extension may use the microphone (granted once on the permission page). */

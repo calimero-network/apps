@@ -8,6 +8,9 @@ export type Route =
   | { page: "meetings" }
   | { page: "actions" }
   | { page: "install" }
+  | { page: "people" }
+  | { page: "profile" }
+  | { page: "home" }
   | { page: "doc"; doc: "faq" | "terms" | "privacy" }
   | { page: "meeting"; id: string; seq?: number };
 
@@ -28,6 +31,9 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "w") parts = parts.slice(2);
   if (parts[0] === "actions") return { page: "actions" };
   if (parts[0] === "install") return { page: "install" };
+  if (parts[0] === "people") return { page: "people" };
+  if (parts[0] === "profile") return { page: "profile" };
+  if (parts[0] === "home") return { page: "home" };
   if (parts[0] === "faq" || parts[0] === "terms" || parts[0] === "privacy") return { page: "doc", doc: parts[0] };
   if (parts[0] === "m" && parts[1] && /^[0-9a-f]{1,64}$/.test(parts[1])) {
     const seq = parts[2] && /^\d{1,10}$/.test(parts[2]) ? Number(parts[2]) : undefined;
@@ -39,6 +45,9 @@ export function parseRoute(hash: string): Route {
 export function routeHash(route: Route): string {
   if (route.page === "actions") return "#/actions";
   if (route.page === "install") return "#/install";
+  if (route.page === "people") return "#/people";
+  if (route.page === "profile") return "#/profile";
+  if (route.page === "home") return "#/home";
   if (route.page === "doc") return `#/${route.doc}`;
   if (route.page === "meeting") return route.seq === undefined ? `#/m/${route.id}` : `#/m/${route.id}/${route.seq}`;
   return "#/";

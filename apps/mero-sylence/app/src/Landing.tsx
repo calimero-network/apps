@@ -539,6 +539,126 @@ function TileExport() {
   );
 }
 
+// ── replay and people: an uploaded recording, played back ─────────────────
+
+/** An uploaded meeting: start and end (seconds) of each line, out of REPLAY_LEN. */
+const REPLAY_LEN = 760;
+const REPLAY: { p: Person; at: number; end: number; text: string }[] = [
+  { p: EVE, at: 0, end: 150, text: "Let's lock the Q4 roadmap today." },
+  {
+    p: JOHN,
+    at: 150,
+    end: 250,
+    text: "Pricing goes first, then the mobile app.",
+  },
+  {
+    p: EVE,
+    at: 250,
+    end: 420,
+    text: "Agreed. Sam, is the pricing page ready?",
+  },
+  { p: SAM, at: 420, end: 520, text: "Not yet, I'll update it tomorrow." },
+  { p: EVE, at: 520, end: 640, text: "Great, John takes the mobile spec." },
+  { p: JOHN, at: 640, end: 760, text: "On it. Draft by Friday." },
+];
+/** The people card under it: share of talk time, and how each came across. */
+const TALK: { p: Person; share: number; tone: string }[] = [
+  { p: EVE, share: 52, tone: "Enthusiastic" },
+  { p: JOHN, share: 29, tone: "Positive" },
+  { p: SAM, share: 19, tone: "Concerned" },
+];
+
+/**
+ * A meeting page after an upload, playing itself: the playhead runs along a
+ * timeline coloured by speaker, the line being said lights up, and talk time
+ * and tone per person sit under it. Fixed size, like the hero demo.
+ */
+function ReplayDemo() {
+  const reduced = prefersReducedMotion();
+  const [line, setLine] = useState(reduced ? 2 : 0);
+
+  useEffect(() => {
+    if (reduced) return;
+    const t = setTimeout(() => setLine((l) => (l + 1) % REPLAY.length), 1_800);
+    return () => clearTimeout(t);
+  }, [line, reduced]);
+
+  const now = REPLAY[line]!;
+  const pct = (s: number) => `${(s / REPLAY_LEN) * 100}%`;
+
+  return (
+    <div
+      className="replay"
+      role="img"
+      aria-label="An uploaded meeting playing back: the line being said is highlighted as the audio plays, a timeline shows who spoke when, and a people card shows Eve talked 52% of the time and came across enthusiastic, John 29% and positive, Sam 19% and concerned."
+    >
+      <div className="replay-head">
+        <img src="./favicon.svg" alt="" width={18} height={18} />
+        <strong>Q4 roadmap</strong>
+        <span className="replay-meta">Uploaded · 12:40 · 3 people</span>
+      </div>
+
+      <div className="replay-player">
+        <span className="replay-btn" aria-hidden="true">
+          <i />
+          <i />
+        </span>
+        <div className="replay-track">
+          <div className="replay-bar">
+            <i
+              className={line === 0 && !reduced ? "reset" : ""}
+              style={{ width: pct(now.at + (now.end - now.at) / 2) }}
+            />
+          </div>
+          <div className="replay-lanes">
+            {REPLAY.map((l, i) => (
+              <span
+                key={i}
+                style={{
+                  ...hue(l.p),
+                  left: pct(l.at),
+                  width: pct(l.end - l.at),
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <span className="replay-time">
+          {clock(Math.round((now.at + now.end) / 2))}
+        </span>
+        <span className="replay-speed">1.5×</span>
+      </div>
+
+      <ol className="replay-lines">
+        {REPLAY.map((l, i) => (
+          <li key={i} className={i === line ? "on" : ""}>
+            <time>{clock(l.at)}</time>
+            <Name p={l.p} />
+            <span>{l.text}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="replay-people">
+        <div className="replay-share">
+          {TALK.map((t) => (
+            <span key={t.p.name} style={{ ...hue(t.p), flexGrow: t.share }} />
+          ))}
+        </div>
+        <ul>
+          {TALK.map((t) => (
+            <li key={t.p.name}>
+              <Name p={t.p} />
+              <b>{t.share}%</b>
+              <em>{t.tone}</em>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // ── page ────────────────────────────────────────────────────────────────────
 
 function Available() {
@@ -581,6 +701,7 @@ const SECTIONS = [
   { id: "how", label: "How it works" },
   { id: "private", label: "Privacy" },
   { id: "features", label: "Features" },
+  { id: "replay", label: "Replay and people" },
   { id: "open", label: "Open source" },
   { id: "get", label: "Get Sylence" },
 ];
@@ -729,8 +850,8 @@ export function LandingNav({
               Sign in
             </button>
           ) : (
-            <a className="btn small" href="#/">
-              Open {PRODUCT}
+            <a className="btn small primary" href="#/">
+              Dashboard
             </a>
           )}
         </div>
@@ -795,14 +916,22 @@ export function LandingPage({
   );
 }
 
-/** The front door when signed out. */
+/**
+ * The front door. Signed out it offers an account; signed in
+ * (`onDashboard`) it leads back to the dashboard instead.
+ */
 export function Landing({
   onSignIn,
   onInstall,
+  onDashboard,
 }: {
-  onSignIn: () => void;
+  onSignIn?: () => void;
   onInstall?: () => void;
+  onDashboard?: () => void;
 }) {
+  const install =
+    onInstall ??
+    (onDashboard ? () => (window.location.hash = "#/install") : undefined);
   // The fleet's node badge floats on every page; a visitor has no node to judge yet.
   useEffect(() => {
     document.body.classList.add("on-landing");
@@ -815,7 +944,7 @@ export function Landing({
   }, []);
   return (
     <div className="landing">
-      <LandingNav onSignIn={onSignIn} />
+      <LandingNav onSignIn={onDashboard ? undefined : onSignIn} />
 
       <section id="top" className="lp-hero lp-sect">
         <div className="lp-inner">
@@ -825,28 +954,45 @@ export function Landing({
           <div className="lp-hero-copy">
             <h1>Meeting notes that write themselves, privately.</h1>
             <p>
-              Record Meet, Zoom and Teams from your browser. Speech becomes text
-              on your laptop, so the audio never leaves it.
+              Record Meet, Zoom and Teams from your browser, or upload a
+              recording. Speech becomes text on your laptop, and the recording
+              is kept in a secure enclave only your team can read.
             </p>
             <div className="lp-cta">
-              {onInstall && (
+              {onDashboard ? (
                 <button
                   type="button"
                   className="btn primary large"
-                  onClick={onInstall}
+                  onClick={onDashboard}
                 >
-                  Get the extension
+                  Open your dashboard
                 </button>
+              ) : (
+                install && (
+                  <button
+                    type="button"
+                    className="btn primary large"
+                    onClick={install}
+                  >
+                    Get the extension
+                  </button>
+                )
               )}
               {/* New visitors start here; "Sign in" stays in the top bar. Both open the
                   passkey panel, which signs in or makes the account. */}
-              <button
-                type="button"
-                className={onInstall ? "btn large" : "btn primary large"}
-                onClick={onSignIn}
-              >
-                Create an account
-              </button>
+              {onDashboard ? (
+                <button type="button" className="btn large" onClick={install}>
+                  Get the extension
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={install ? "btn large" : "btn primary large"}
+                  onClick={onSignIn}
+                >
+                  Create an account
+                </button>
+              )}
             </div>
             <Available />
           </div>
@@ -878,16 +1024,18 @@ export function Landing({
         <div className="lp-inner lp-split">
           <Reveal>
             <span className="lp-eyebrow">Private by design</span>
-            <h2 className="lp-h2">The audio stays on your laptop.</h2>
+            <h2 className="lp-h2">Only your team can read it.</h2>
             <p className="lp-p">
               Recording, speech to text and naming all happen inside your
-              browser. Only the finished text goes to your workspace, which
-              lives on a Calimero node only your organization reaches. Nobody in
-              between reads it, us included.
+              browser. The audio and the transcript are then saved to your
+              workspace, on a Calimero node that runs in a secure enclave:
+              sealed hardware that keeps them encrypted, so only your
+              workspace&apos;s members can open them. Nobody in between can, us
+              and the cloud host included.
             </p>
             <ul className="lp-ticks">
               <li>No bot in the call, nothing to admit</li>
-              <li>Audio is never uploaded or stored</li>
+              <li>Audio and transcripts sealed in a secure enclave</li>
               <li>Passkey sign-in, no passwords</li>
             </ul>
           </Reveal>
@@ -895,7 +1043,7 @@ export function Landing({
             <div
               className="flow"
               role="img"
-              aria-label="The call's audio goes into your browser; only text goes on to your node."
+              aria-label="The call's audio becomes text in your browser; both are sealed in your node's secure enclave."
             >
               <div className="station">
                 <span className="station-art bars" aria-hidden="true">
@@ -929,7 +1077,7 @@ export function Landing({
                   <CalimeroMark size={22} />
                 </span>
                 <strong>Your node</strong>
-                <span>text only</span>
+                <span>secure enclave</span>
               </div>
             </div>
           </Reveal>
@@ -977,14 +1125,42 @@ export function Landing({
             <Reveal className="tile full ink">
               <div className="stat">
                 <span className="stat-n">0</span>
-                <span className="stat-unit">bytes of audio uploaded</span>
+                <span className="stat-unit">
+                  people outside your team can read it
+                </span>
               </div>
               <p>
-                Whisper runs on your laptop&apos;s GPU through WebGPU, with a
-                smaller model for machines without one.
+                Whisper runs on your laptop&apos;s GPU through WebGPU, then the
+                recording and transcript are sealed in your workspace&apos;s
+                secure enclave.
               </p>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      <section id="replay" className="lp-sect lp-band">
+        <div className="lp-inner lp-split replay-split">
+          <Reveal>
+            <ReplayDemo />
+          </Reveal>
+          <Reveal delay={150}>
+            <span className="lp-eyebrow">Replay and people</span>
+            <h2 className="lp-h2">Play it back. See who drove it.</h2>
+            <p className="lp-p">
+              Upload a recording and {PRODUCT} tells the voices apart, writes
+              the transcript and keeps the audio with it. Play it back and the
+              line being said lights up; then see how each person talked and
+              what they took on.
+            </p>
+            <ul className="lp-ticks">
+              <li>Upload an mp3, m4a, wav or mp4 recording</li>
+              <li>Click any line or search hit to hear it</li>
+              <li>Talk time, turns and questions per person</li>
+              <li>Tone, key points and to-dos for each person</li>
+              <li>Rename &ldquo;Speaker 2&rdquo; to John for the whole team</li>
+            </ul>
+          </Reveal>
         </div>
       </section>
 
@@ -1041,11 +1217,11 @@ export function Landing({
           <div className="lp-inner lp-final">
             <h2 className="lp-h2">Record your next call with {PRODUCT}.</h2>
             <div className="lp-cta">
-              {onInstall && (
+              {install && (
                 <button
                   type="button"
                   className="btn large lp-btn-ink"
-                  onClick={onInstall}
+                  onClick={install}
                 >
                   Get the extension
                 </button>
@@ -1053,9 +1229,9 @@ export function Landing({
               <button
                 type="button"
                 className="btn large lp-btn-line"
-                onClick={onSignIn}
+                onClick={onDashboard ?? onSignIn}
               >
-                Create an account
+                {onDashboard ? "Open your dashboard" : "Create an account"}
               </button>
             </div>
             <Available />

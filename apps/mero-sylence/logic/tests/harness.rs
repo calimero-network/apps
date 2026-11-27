@@ -722,3 +722,571 @@ fn my_account_names_the_caller() {
     let mut t = app();
     assert_eq!(view(&mut t, "cy", "myAccount", json!({})), "cy");
 }
+
+fn upload_meeting(t: &mut TestApp, who: &str) -> String {
+    let m = call(
+        t,
+        who,
+        "startMeeting",
+        json!({ "title": "standup.m4a", "platform": "upload", "url": "", "model": "whisper-base", "language": "" }),
+    );
+    m.as_str().expect("an id").to_owned()
+}
+
+#[test]
+fn an_uploaded_recording_keeps_its_audio() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let m = view(&mut t, "bob", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["platform"], "upload");
+    assert_eq!(m["audio"], Value::Null);
+
+    let blob = t.upload_blob(&[7_u8; 4_096], "audio/mp4");
+    let m = call(
+        &mut t,
+        "bob",
+        "attachAudio",
+        json!({ "meetingId": id, "blob": blob, "mime": "Audio/MP4", "durationMs": 61_000 }),
+    );
+    assert_eq!(m["audio"]["blob"], blob);
+    assert_eq!(m["audio"]["mime"], "audio/mp4");
+    assert_eq!(m["audio"]["size"], 4_096);
+    assert_eq!(m["audio"]["durationMs"], 61_000);
+    assert_eq!(m["durationMs"], 61_000);
+    assert_eq!(t.blob_refs(&blob), 1);
+
+    let m = call(&mut t, "bob", "removeAudio", json!({ "meetingId": id }));
+    assert_eq!(m["audio"], Value::Null);
+    assert_eq!(t.blob_refs(&blob), 0);
+}
+
+#[test]
+fn audio_is_checked() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let blob = t.upload_blob(&[1_u8; 64], "audio/mpeg");
+    let attach = |t: &mut TestApp, who: &str, blob: &str, mime: &str| {
+        t.as_(who).call(
+            "attachAudio",
+            json!({ "meetingId": id, "blob": blob, "mime": mime, "durationMs": 1_000 }),
+        )
+    };
+    // Only the recorder.
+    assert_eq!(code(attach(&mut t, "cy", &blob, "audio/mpeg")), "Forbidden");
+    assert_eq!(
+        code(attach(&mut t, "owner", &blob, "audio/mpeg")),
+        "Forbidden"
+    );
+    // Audio or video types only.
+    assert_eq!(code(attach(&mut t, "bob", &blob, "text/plain")), "Invalid");
+    // A blob the app does not hold.
+    let missing = "ab".repeat(32);
+    assert_eq!(
+        code(attach(&mut t, "bob", &missing, "audio/mpeg")),
+        "NotFound"
+    );
+    attach(&mut t, "bob", &blob, "audio/mpeg").expect("attached");
+}
+
+#[test]
+fn speakers_get_names() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let name = |t: &mut TestApp, who: &str, label: &str, name: &str| {
+        t.as_(who).call(
+            "setSpeakerName",
+            json!({ "meetingId": id, "label": label, "name": name }),
+        )
+    };
+    let m = name(&mut t, "bob", "Speaker 1", "Eve").unwrap();
+    assert_eq!(
+        m["speakerNames"],
+        json!([{ "label": "Speaker 1", "name": "Eve" }])
+    );
+    // Renaming replaces; the owner may too; a member may not.
+    let m = name(&mut t, "owner", "Speaker 1", "Sam").unwrap();
+    assert_eq!(
+        m["speakerNames"],
+        json!([{ "label": "Speaker 1", "name": "Sam" }])
+    );
+    assert_eq!(code(name(&mut t, "cy", "Speaker 1", "Cy")), "Forbidden");
+    // An empty name clears it.
+    let m = name(&mut t, "bob", "Speaker 1", " ").unwrap();
+    assert_eq!(m["speakerNames"], json!([]));
+    assert_eq!(code(name(&mut t, "bob", "", "Eve")), "Invalid");
+}
+
+#[test]
+fn people_insights_round_trip() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    assert_eq!(
+        view(&mut t, "cy", "insights", json!({ "meetingId": id })),
+        Value::Null
+    );
+    let person = json!({
+        "label": "Speaker 1", "tone": "enthusiastic",
+        "profile": "Drove the roadmap talk and asked the most questions.",
+        "emotions": [{ "label": "excitement", "share": 420 }, { "label": "curiosity", "share": 210 }],
+        "keyPoints": ["Ship the beta on Friday", " "]
+    });
+    let saved = call(
+        &mut t,
+        "bob",
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "go-emotions", "people": [person] } }),
+    );
+    assert_eq!(
+        saved["people"][0]["keyPoints"],
+        json!(["Ship the beta on Friday"])
+    );
+    assert_eq!(saved["updatedBy"], "bob");
+    let read = view(&mut t, "cy", "insights", json!({ "meetingId": id }));
+    assert_eq!(read["people"][0]["tone"], "enthusiastic");
+    assert_eq!(read["people"][0]["emotions"][0]["share"], 420);
+    assert!(t
+        .events_for("cy")
+        .iter()
+        .any(|(n, _)| n == "InsightsChanged"));
+
+    // Checks: who, shares, counts.
+    let set = |t: &mut TestApp, who: &str, people: Value| {
+        t.as_(who).call(
+            "setInsights",
+            json!({ "meetingId": id, "insights": { "model": "", "people": people } }),
+        )
+    };
+    assert_eq!(code(set(&mut t, "cy", json!([]))), "Forbidden");
+    let bad_share = json!([{ "label": "A", "tone": "", "profile": "", "emotions": [{ "label": "joy", "share": 1_001 }], "keyPoints": [] }]);
+    assert_eq!(code(set(&mut t, "bob", bad_share)), "Invalid");
+    let points: Vec<String> = (0..9).map(|i| format!("point {i}")).collect();
+    let many =
+        json!([{ "label": "A", "tone": "", "profile": "", "emotions": [], "keyPoints": points }]);
+    assert_eq!(code(set(&mut t, "bob", many)), "Invalid");
+
+    // No people clears them; deleting the meeting drops them too.
+    assert_eq!(set(&mut t, "owner", json!([])).unwrap(), Value::Null);
+    assert_eq!(
+        view(&mut t, "cy", "insights", json!({ "meetingId": id })),
+        Value::Null
+    );
+}
+
+#[test]
+fn deleting_a_meeting_drops_its_audio_and_insights() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let blob = t.upload_blob(&[3_u8; 128], "audio/webm");
+    call(
+        &mut t,
+        "bob",
+        "attachAudio",
+        json!({ "meetingId": id, "blob": blob, "mime": "audio/webm", "durationMs": 5_000 }),
+    );
+    call(
+        &mut t,
+        "bob",
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "m", "people": [
+            { "label": "Speaker 1", "tone": "neutral", "profile": "", "emotions": [], "keyPoints": [] }
+        ] } }),
+    );
+    let r = call(&mut t, "bob", "deleteMeeting", json!({ "meetingId": id }));
+    assert_eq!(r["remaining"], 0);
+    assert_eq!(t.blob_refs(&blob), 0);
+    // A new meeting does not inherit them.
+    let again = upload_meeting(&mut t, "bob");
+    assert_eq!(
+        view(&mut t, "bob", "insights", json!({ "meetingId": again })),
+        Value::Null
+    );
+}
+
+fn attach(
+    t: &mut TestApp,
+    who: &str,
+    id: &str,
+    blob: &str,
+    mime: &str,
+    ms: u32,
+) -> Result<Value, Failure> {
+    t.as_(who).call(
+        "attachAudio",
+        json!({ "meetingId": id, "blob": blob, "mime": mime, "durationMs": ms }),
+    )
+}
+
+#[test]
+fn recordings_keep_audio_of_the_type_they_were_uploaded_as() {
+    let mut t = app();
+    // A call recorded by the extension keeps its audio, as an upload does.
+    let call_id = start(&mut t, "bob", "Call");
+    let call_blob = t.upload_blob(&[6_u8; 256], "audio/mpeg");
+    let m = attach(&mut t, "bob", &call_id, &call_blob, "audio/mpeg", 1_000)
+        .expect("a call keeps its audio");
+    assert_eq!(m["audio"]["mime"], "audio/mpeg");
+    // Only its recorder.
+    assert_eq!(
+        code(attach(
+            &mut t,
+            "cy",
+            &call_id,
+            &call_blob,
+            "audio/mpeg",
+            1_000
+        )),
+        "Forbidden"
+    );
+    let blob = t.upload_blob(&[5_u8; 256], "audio/mpeg");
+
+    let id = upload_meeting(&mut t, "bob");
+    // Not a playable type, or not the type the node serves.
+    assert_eq!(
+        code(attach(&mut t, "bob", &id, &blob, "audio/x-made-up", 1_000)),
+        "Invalid"
+    );
+    assert_eq!(
+        code(attach(&mut t, "bob", &id, &blob, "audio/wav", 1_000)),
+        "Invalid"
+    );
+    let html = t.upload_blob(b"<script>alert(1)</script>", "text/html");
+    assert_eq!(
+        code(attach(&mut t, "bob", &id, &html, "audio/mpeg", 1_000)),
+        "Invalid"
+    );
+    // Durations out of range.
+    assert_eq!(
+        code(attach(&mut t, "bob", &id, &blob, "audio/mpeg", 0)),
+        "Invalid"
+    );
+    assert_eq!(
+        code(attach(
+            &mut t,
+            "bob",
+            &id,
+            &blob,
+            "audio/mpeg",
+            6 * 3_600_000
+        )),
+        "Invalid"
+    );
+    attach(&mut t, "bob", &id, &blob, "audio/mpeg", 1_000).expect("attached");
+}
+
+#[test]
+fn a_new_recording_replaces_the_old_one() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let first = t.upload_blob(&[1_u8; 100], "audio/mpeg");
+    let second = t.upload_blob(&[2_u8; 100], "audio/ogg");
+    attach(&mut t, "bob", &id, &first, "audio/mpeg", 1_000).unwrap();
+    let m = attach(&mut t, "bob", &id, &second, "audio/ogg", 2_000).unwrap();
+    assert_eq!(m["audio"]["blob"], second);
+    assert_eq!(t.blob_refs(&first), 0);
+    assert_eq!(t.blob_refs(&second), 1);
+}
+
+#[test]
+fn a_blob_over_the_limit_is_refused() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    let big = t.upload_blob(&vec![0_u8; 49_545_217], "audio/mpeg");
+    assert_eq!(
+        code(attach(&mut t, "bob", &id, &big, "audio/mpeg", 1_000)),
+        "Invalid"
+    );
+}
+
+#[test]
+fn an_account_keeps_a_bounded_number_of_recordings() {
+    let mut t = app();
+    let mut n = 0_u32;
+    let mut fresh = |t: &mut TestApp| {
+        n += 1;
+        t.upload_blob(&n.to_le_bytes(), "audio/mpeg")
+    };
+    let first = fresh(&mut t);
+    let mut ids = Vec::new();
+    for i in 0..100 {
+        let id = upload_meeting(&mut t, "bob");
+        let blob = if i == 0 { first.clone() } else { fresh(&mut t) };
+        attach(&mut t, "bob", &id, &blob, "audio/mpeg", 1_000).unwrap();
+        ids.push(id);
+    }
+    let extra = upload_meeting(&mut t, "bob");
+    let b = fresh(&mut t);
+    assert_eq!(
+        code(attach(&mut t, "bob", &extra, &b, "audio/mpeg", 1_000)),
+        "Refused"
+    );
+    // Re-attaching to a meeting that has one does not count twice.
+    attach(&mut t, "bob", &ids[0], &first, "audio/mpeg", 2_000).unwrap();
+    // Another account has its own allowance.
+    let cy = upload_meeting(&mut t, "cy");
+    let b = fresh(&mut t);
+    attach(&mut t, "cy", &cy, &b, "audio/mpeg", 1_000).unwrap();
+    // Removing one, or deleting a meeting, frees a place.
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[0] }));
+    let b = fresh(&mut t);
+    attach(&mut t, "bob", &extra, &b, "audio/mpeg", 1_000).unwrap();
+    let another = upload_meeting(&mut t, "bob");
+    let b = fresh(&mut t);
+    assert_eq!(
+        code(attach(&mut t, "bob", &another, &b, "audio/mpeg", 1_000)),
+        "Refused"
+    );
+    // The owner deleting Bob's meeting frees Bob's place, not the owner's.
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 0);
+    call(
+        &mut t,
+        "owner",
+        "deleteMeeting",
+        json!({ "meetingId": ids[1] }),
+    );
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 1);
+    assert_eq!(view(&mut t, "owner", "recordingsLeft", json!({})), 100);
+    let b = fresh(&mut t);
+    attach(&mut t, "bob", &another, &b, "audio/mpeg", 1_000).unwrap();
+    // Removing twice, then deleting, never frees more than one place.
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
+    call(
+        &mut t,
+        "bob",
+        "deleteMeeting",
+        json!({ "meetingId": ids[2] }),
+    );
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 1);
+}
+
+#[test]
+fn speaker_names_and_insights_have_limits() {
+    let mut t = app();
+    let id = upload_meeting(&mut t, "bob");
+    // Naming a label as itself stores nothing.
+    let m = call(
+        &mut t,
+        "bob",
+        "setSpeakerName",
+        json!({ "meetingId": id, "label": "Speaker 1", "name": "Speaker 1" }),
+    );
+    assert_eq!(m["speakerNames"], json!([]));
+    for i in 0..50 {
+        call(
+            &mut t,
+            "bob",
+            "setSpeakerName",
+            json!({ "meetingId": id, "label": format!("S{i}"), "name": "N" }),
+        );
+    }
+    let over = t.as_("bob").call(
+        "setSpeakerName",
+        json!({ "meetingId": id, "label": "S50", "name": "N" }),
+    );
+    assert_eq!(code(over), "Refused");
+
+    let person = |i: usize| json!({ "label": format!("P{i}"), "tone": "", "profile": "", "emotions": [], "keyPoints": [] });
+    let many: Vec<Value> = (0..51).map(person).collect();
+    let r = t.as_("bob").call(
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "m", "people": many } }),
+    );
+    assert_eq!(code(r), "Invalid");
+    let emotions: Vec<Value> = (0..9)
+        .map(|i| json!({ "label": format!("e{i}"), "share": 1 }))
+        .collect();
+    let r = t.as_("bob").call(
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "m", "people": [
+        { "label": "A", "tone": "", "profile": "", "emotions": emotions, "keyPoints": [] }
+    ] } }),
+    );
+    assert_eq!(code(r), "Invalid");
+    // The owner may save them; unknown meetings are NotFound.
+    call(
+        &mut t,
+        "owner",
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "m", "people": [person(0)] } }),
+    );
+    let r = t.as_("bob").call(
+        "setInsights",
+        json!({ "meetingId": "ffff", "insights": { "model": "m", "people": [] } }),
+    );
+    assert_eq!(code(r), "NotFound");
+    assert_eq!(
+        code(
+            t.as_("bob")
+                .view("insights", json!({ "meetingId": "ffff" }))
+        ),
+        "NotFound"
+    );
+}
+
+#[test]
+fn a_redone_transcript_drops_the_old_insights() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Redo");
+    append(&mut t, "bob", &id, vec![seg(0, "you", "first take")]);
+    call(
+        &mut t,
+        "bob",
+        "setInsights",
+        json!({ "meetingId": id, "insights": { "model": "m", "people": [
+        { "label": "you", "tone": "neutral", "profile": "", "emotions": [], "keyPoints": [] }
+    ] } }),
+    );
+    append(&mut t, "bob", &id, vec![seg(1, "you", "second take")]);
+    call(
+        &mut t,
+        "bob",
+        "dropSegments",
+        json!({ "meetingId": id, "fromSeq": 0, "beforeSeq": 1 }),
+    );
+    assert_eq!(
+        view(&mut t, "bob", "insights", json!({ "meetingId": id })),
+        Value::Null
+    );
+}
+
+#[test]
+fn a_recording_belongs_to_one_meeting() {
+    let mut t = app();
+    let a = upload_meeting(&mut t, "bob");
+    let b = upload_meeting(&mut t, "cy");
+    let blob = t.upload_blob(&[42_u8; 64], "audio/mpeg");
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 1_000).unwrap();
+    // Another meeting cannot name it, so removing it from the first removes it.
+    assert_eq!(
+        code(attach(&mut t, "cy", &b, &blob, "audio/mpeg", 1_000)),
+        "Refused"
+    );
+    // Its own meeting can attach it again.
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 2_000).unwrap();
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": a }));
+    attach(&mut t, "cy", &b, &blob, "audio/mpeg", 1_000).unwrap();
+    // Replaced or deleted, it is free again.
+    let other = t.upload_blob(&[43_u8; 64], "audio/mpeg");
+    attach(&mut t, "cy", &b, &other, "audio/mpeg", 1_000).unwrap();
+    attach(&mut t, "bob", &a, &blob, "audio/mpeg", 1_000).unwrap();
+    call(&mut t, "bob", "deleteMeeting", json!({ "meetingId": a }));
+    let c = upload_meeting(&mut t, "cy");
+    attach(&mut t, "cy", &c, &blob, "audio/mpeg", 1_000).unwrap();
+}
+
+#[test]
+fn a_meeting_lists_who_spoke_in_the_order_they_first_did() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Launch plan");
+    let named = |seq: u32, speaker: &str, name: &str, text: &str| {
+        json!({ "seq": seq, "startMs": seq * 3_000, "endMs": seq * 3_000 + 2_500,
+                "speaker": speaker, "name": name, "text": text })
+    };
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            named(0, "others", "Speaker 1", "Morning everyone"),
+            seg(1, "you", "Hi all"),
+            named(2, "others", "Speaker 2", "The listing is ready"),
+            named(3, "others", "Speaker 1", "Great, the deck by Friday"),
+        ],
+    );
+    let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(
+        m["speakers"],
+        json!([
+            { "speaker": "others", "name": "Speaker 1" },
+            { "speaker": "you", "name": "" },
+            { "speaker": "others", "name": "Speaker 2" },
+        ])
+    );
+    // A batch resent, and a speaker heard again, add no one.
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![named(4, "others", "Speaker 2", "Yes")],
+    );
+    let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["speakers"].as_array().map(Vec::len), Some(3));
+    // The list comes with the meetings, for the open action items page.
+    let list = view(&mut t, "cy", "listMeetings", json!({}));
+    assert_eq!(list[0]["speakers"].as_array().map(Vec::len), Some(3));
+}
+
+#[test]
+fn voices_told_apart_name_the_lines_and_join_who_spoke() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Call");
+    let others = |seq: u32, text: &str| json!({ "seq": seq, "startMs": seq * 3_000, "endMs": seq * 3_000 + 2_500, "speaker": "others", "name": "", "text": text });
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            others(0, "Morning"),
+            others(1, "Hi"),
+            others(2, "Deck by Friday"),
+        ],
+    );
+    let n = call(
+        &mut t,
+        "bob",
+        "nameSegments",
+        json!({ "meetingId": id, "names": [
+            { "seq": 0, "name": "Voice 1" }, { "seq": 1, "name": "Voice 2" }, { "seq": 2, "name": "Voice 1" },
+            { "seq": 9, "name": "Voice 3" }
+        ] }),
+    );
+    // Line 9 is not there: skipped.
+    assert_eq!(n, 3);
+    let page = view(
+        &mut t,
+        "cy",
+        "transcript",
+        json!({ "meetingId": id, "fromSeq": 0, "limit": 10 }),
+    );
+    let names: Vec<&str> = page["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Voice 1", "Voice 2", "Voice 1"]);
+    let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(
+        m["speakers"],
+        json!([
+            { "speaker": "others", "name": "" },
+            { "speaker": "others", "name": "Voice 1" },
+            { "speaker": "others", "name": "Voice 2" },
+        ])
+    );
+    // Naming a line what it already is changes nothing.
+    let again = call(
+        &mut t,
+        "bob",
+        "nameSegments",
+        json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Voice 1" }] }),
+    );
+    assert_eq!(again, 0);
+}
+
+#[test]
+fn only_the_recorder_or_the_owner_names_lines_and_at_most_500_a_call() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Call");
+    append(&mut t, "bob", &id, vec![seg(0, "others", "Morning")]);
+    let other = t.as_("cy").call(
+        "nameSegments",
+        json!({ "meetingId": id, "names": [{ "seq": 0, "name": "Eve" }] }),
+    );
+    assert_eq!(code(other), "Forbidden");
+    let many: Vec<Value> = (0..501).map(|i| json!({ "seq": i, "name": "V" })).collect();
+    let over = t
+        .as_("bob")
+        .call("nameSegments", json!({ "meetingId": id, "names": many }));
+    assert_eq!(code(over), "Invalid");
+}

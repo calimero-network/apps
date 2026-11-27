@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AUTH_WINDOW, centred, openAuthWindow, type AuthWindowDeps } from "./authWindow";
+import { AUTH_WINDOW, centred, focusAuthWindow, openAuthWindow, type AuthWindowDeps } from "./authWindow";
 
 const CB = "https://ljpjgindjakdpmbpjdcpadihhnaemocf.chromiumapp.org/";
 
@@ -56,5 +56,17 @@ describe("sign-in window", () => {
   it("centres only when the browser window's size is known", () => {
     expect(centred(undefined)).toEqual({});
     expect(centred({ left: 0, top: 0, width: 300, height: 300 })).toEqual({ left: 0, top: 0 });
+  });
+
+  it("brings the open window forward, and has none to bring once it closed", async () => {
+    const f = fake();
+    const update = vi.fn(async () => undefined);
+    const answer = openAuthWindow("http://x/", CB, f.deps);
+    await tick();
+    expect(await focusAuthWindow({ update } as never)).toBe(true);
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ focused: true }));
+    f.removed.forEach((l) => l(7));
+    await answer;
+    expect(await focusAuthWindow({ update } as never)).toBe(false);
   });
 });

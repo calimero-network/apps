@@ -65,16 +65,44 @@ export function signInUrl(
   version: string | null,
   request: Pick<HandoffRequest, "state" | "key">,
   intent?: SignInIntent,
+  workspace?: NewWorkspace,
+  account?: NewAccount,
 ): string {
   const base = origin.replace(/\/+$/, "");
   const path = version ? `/${escape(version)}/` : "/";
-  const extra = intent ? `&intent=${intent}` : "";
+  let extra = intent ? `&intent=${intent}` : "";
+  // A workspace named in the extension: the page creates it without a form of its own.
+  // The extension lends this page its session for the create (no second sign-in).
+  if (intent === "create" && workspace?.name.trim()) extra += "&lend=1";
+  if (intent === "create" && workspace?.name.trim()) {
+    extra += `&name=${encodeURIComponent(workspace.name.trim().slice(0, 80))}`;
+    if (workspace.self.trim()) extra += `&self=${encodeURIComponent(workspace.self.trim().slice(0, 48))}`;
+  }
+  // A new account filled in in the extension: the page asks only for the passkey.
+  if (intent === "signup" && account) {
+    extra += `&name=${encodeURIComponent(account.name.trim().slice(0, 48))}`;
+    if (account.label.trim()) extra += `&label=${encodeURIComponent(account.label.trim().slice(0, 32))}`;
+    if (account.ws.trim()) extra += `&ws=${encodeURIComponent(account.ws.trim().slice(0, 80))}`;
+  }
   return `${base}${path}#${SIGN_IN_FRAGMENT}&state=${request.state}&key=${request.key}${extra}`;
 }
 
 /** `create`: the page offers a new workspace before it hands the session over. */
 /** `create`: a new workspace; `signup`: a new account (the page leads with creating one). */
 export type SignInIntent = "create" | "signup";
+
+/** A new account, as the person filled it in in the extension: their name, the passkey's label, a first workspace. */
+export interface NewAccount {
+  name: string;
+  label: string;
+  ws: string;
+}
+
+/** A workspace to start, as the person named it in the extension: its name, and theirs in it. */
+export interface NewWorkspace {
+  name: string;
+  self: string;
+}
 
 export class HandoffError extends Error {
   constructor(message: string) {

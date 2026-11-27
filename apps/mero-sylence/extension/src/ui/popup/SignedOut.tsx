@@ -7,6 +7,9 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
   /** Which button is waiting for the sign-in window. */
   const [busy, setBusy] = useState<"in" | "up" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The new account's details, filled in here: the window then only asks for the passkey. */
+  const [form, setForm] = useState(false);
+  const [label, setLabel] = useState("");
 
   // Both open Sylence's page, which signs in or makes the account with a passkey;
   // "Create an account" leads with making one, as the other Calimero apps do.
@@ -14,7 +17,11 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
     setBusy(mode);
     setError(null);
     try {
-      await ask(mode === "up" ? { type: "signIn", intent: "signup" } : { type: "signIn" });
+      await ask(
+        mode === "up"
+          ? { type: "signIn", intent: "signup", account: { name: "", label: label.trim(), ws: "" } }
+          : { type: "signIn" },
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -47,10 +54,33 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
       <div className="divider-label" role="presentation">
         <span>New here?</span>
       </div>
-      <button className="btn block lg" onClick={() => void open("up")} disabled={busy !== null}>
-        {busy === "up" ? <Spinner size={14} /> : <PlusIcon size={14} />}
-        {busy === "up" ? "Waiting for the sign-up page…" : "Create an account"}
-      </button>
+      {form ? (
+        <form
+          className="card stack"
+          style={{ gap: 10 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void open("up");
+          }}
+        >
+          <div className="field">
+            <label htmlFor="su-label">
+              Label your passkey <span className="muted">(optional)</span>
+            </label>
+            <input id="su-label" className="input" autoFocus placeholder="e.g. Work laptop" maxLength={32} value={label} onChange={(e) => setLabel(e.target.value)} />
+            <span className="small muted">So you can tell your passkeys apart in your password manager.</span>
+          </div>
+          <button type="submit" className="btn primary block" disabled={busy !== null}>
+            {busy === "up" ? <Spinner size={14} /> : null}
+            {busy === "up" ? "Approve with your passkey…" : "Create account"}
+          </button>
+          <p className="small muted">A small window asks for your passkey, then closes.</p>
+        </form>
+      ) : (
+        <button className="btn block lg" onClick={() => setForm(true)} disabled={busy !== null}>
+          <PlusIcon size={14} /> Create an account
+        </button>
+      )}
       {error && (
         <div className="banner bad" role="alert">
           <AlertIcon size={14} />
@@ -60,7 +90,7 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
       {settings.pageOverride && <p className="small muted center wrap">Signing in on {settings.pageOverride}</p>}
       <p className="foot">
         <LockIcon size={13} />
-        <span>Speech is transcribed on this laptop. Audio is never uploaded.</span>
+        <span>Transcribed on this laptop. The transcript and recording are saved to your workspace, sealed so only your team can read them.</span>
       </p>
     </main>
   );
