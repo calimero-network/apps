@@ -40,6 +40,8 @@ export function SignInPanel({ titleId }: { titleId: string }) {
       invited={invites.token() !== null}
       listing={LISTING}
       titleId={titleId}
+      // A new account names its person: teammates see it on transcripts and action items.
+      askName
       classNames={{ text: "empty", error: "err" }}
     />
   );

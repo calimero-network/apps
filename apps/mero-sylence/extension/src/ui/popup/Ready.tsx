@@ -127,7 +127,7 @@ export function Ready({
         </button>
         <p className="foot">
           <LockIcon size={13} />
-          <span>Transcribed on this laptop. Audio is never uploaded.</span>
+          <span>Transcribed on this laptop · sealed in your workspace</span>
         </p>
       </div>
     </main>

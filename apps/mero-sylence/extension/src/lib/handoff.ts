@@ -65,16 +65,28 @@ export function signInUrl(
   version: string | null,
   request: Pick<HandoffRequest, "state" | "key">,
   intent?: SignInIntent,
+  workspace?: NewWorkspace,
 ): string {
   const base = origin.replace(/\/+$/, "");
   const path = version ? `/${escape(version)}/` : "/";
-  const extra = intent ? `&intent=${intent}` : "";
+  let extra = intent ? `&intent=${intent}` : "";
+  // A workspace named in the extension: the page creates it without a form of its own.
+  if (intent === "create" && workspace?.name.trim()) {
+    extra += `&name=${encodeURIComponent(workspace.name.trim().slice(0, 80))}`;
+    if (workspace.self.trim()) extra += `&self=${encodeURIComponent(workspace.self.trim().slice(0, 48))}`;
+  }
   return `${base}${path}#${SIGN_IN_FRAGMENT}&state=${request.state}&key=${request.key}${extra}`;
 }
 
 /** `create`: the page offers a new workspace before it hands the session over. */
 /** `create`: a new workspace; `signup`: a new account (the page leads with creating one). */
 export type SignInIntent = "create" | "signup";
+
+/** A workspace to start, as the person named it in the extension: its name, and theirs in it. */
+export interface NewWorkspace {
+  name: string;
+  self: string;
+}
 
 export class HandoffError extends Error {
   constructor(message: string) {

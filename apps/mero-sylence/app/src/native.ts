@@ -52,9 +52,28 @@ export function captureSignInIntent(
 ): void {
   const parts = location.hash.replace(/^#/, "").split("&");
   if (parts[0] !== "native-sign-in") return;
-  const intent = new URLSearchParams(parts.slice(1).join("&")).get("intent");
+  const params = new URLSearchParams(parts.slice(1).join("&"));
+  const intent = params.get("intent");
   if (intent === "create" || intent === "signup") storage.setItem(INTENT_KEY, intent);
   else storage.removeItem(INTENT_KEY);
+  // The workspace the person named in the extension, created here without a form.
+  const name = intent === "create" ? (params.get("name") ?? "").trim().slice(0, 80) : "";
+  if (name) storage.setItem(NEW_WORKSPACE_KEY, JSON.stringify({ name, self: (params.get("self") ?? "").trim().slice(0, 48) }));
+  else storage.removeItem(NEW_WORKSPACE_KEY);
+}
+
+const NEW_WORKSPACE_KEY = "sylence:native-new-workspace";
+
+/** The workspace the extension asked for by name (`&intent=create&name=…&self=…`), if any. */
+export function newWorkspaceRequest(storage: Pick<Storage, "getItem"> = sessionStorage): { name: string; self: string } | null {
+  try {
+    const raw = storage.getItem(NEW_WORKSPACE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { name?: unknown; self?: unknown };
+    return typeof v.name === "string" && v.name ? { name: v.name, self: typeof v.self === "string" ? v.self : "" } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function signInIntent(storage: Pick<Storage, "getItem"> = sessionStorage): "create" | "signup" | null {

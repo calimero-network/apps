@@ -31,6 +31,17 @@ vi.mock("./WorkspacePicker", () => ({
   },
 }));
 vi.mock("./SignIn", () => ({ SignInPanel: () => <div data-testid="signin-panel" /> }));
+const named = { current: null as { name: string; self: string } | null };
+vi.mock("./CreateNamedWorkspace", () => ({
+  CreateNamedWorkspace: ({ request, onDone }: { request: { name: string; self: string }; onDone: () => void }) => {
+    named.current = request;
+    return (
+      <button type="button" onClick={onDone}>
+        Created {request.name}
+      </button>
+    );
+  },
+}));
 
 import { ExtensionSignIn } from "./App";
 import { NATIVE_CALLBACK, captureSignInIntent } from "./native";
@@ -59,7 +70,6 @@ describe("ExtensionSignIn", () => {
       return true;
     });
     render(<ExtensionSignIn />);
-    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("Signing you in to the Sylence extension…");
     await screen.findByText("You are signed in");
     expect(screen.getByText(/You can close this tab/)).toBeTruthy();
     expect(finish).toHaveBeenCalledTimes(1);
@@ -67,25 +77,24 @@ describe("ExtensionSignIn", () => {
     await waitFor(() => expect(clear).toHaveBeenCalled());
   });
 
-  it("with no workspace yet, offers one before the handoff, then hands off", async () => {
+  it("with no workspace yet, still hands off at once: the extension offers workspaces itself", async () => {
     workspaces.current = [];
     session.current = { status: "signed-in", client: { id: "client" } };
     finish.mockResolvedValue(true);
     render(<ExtensionSignIn />);
-    expect(await screen.findByRole("heading", { level: 1, name: "Create your first workspace" })).toBeTruthy();
-    expect(finish).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Start a new workspace" }));
     await screen.findByText("You are signed in");
     expect(finish).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Create your first workspace")).toBeNull();
   });
 
-  it("lets the person skip the workspace step", async () => {
-    workspaces.current = [];
+  it("a workspace named in the extension is created here, then the session is handed over", async () => {
     session.current = { status: "signed-in", client: { id: "client" } };
+    captureSignInIntent({ hash: "#native-sign-in&state=s&key=k&intent=create&name=Launch%20team&self=Eve" });
     finish.mockResolvedValue(true);
     render(<ExtensionSignIn />);
-    fireEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-    await screen.findByText("You are signed in");
+    fireEvent.click(await screen.findByRole("button", { name: "Created Launch team" }));
+    expect(named.current).toEqual({ name: "Launch team", self: "Eve" });
+    await waitFor(() => expect(finish).toHaveBeenCalledTimes(1));
   });
 
   it("asked to create one: shows the start form even with workspaces, then hands over", async () => {

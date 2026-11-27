@@ -18,7 +18,8 @@ import { ProfilePage } from "./ProfilePage";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
-import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, signInIntent } from "./native";
+import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, newWorkspaceRequest, signInIntent } from "./native";
+import { CreateNamedWorkspace } from "./CreateNamedWorkspace";
 import { TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
 import { PRODUCT, type SessionDeps } from "./session";
@@ -77,25 +78,13 @@ export function ExtensionSignIn() {
   const creating = signInIntent() === "create";
   const signingUp = signInIntent() === "signup";
 
+  // Only a new workspace keeps the window open: a plain sign-in hands the session
+  // over at once and the window closes; the extension offers workspaces itself.
   useEffect(() => {
     if (!signedIn || needsWorkspace !== null) return;
-    if (creating) {
-      setNeedsWorkspace(true);
-      return;
-    }
-    let live = true;
-    listWorkspaces(signedIn.client, signedIn.source)
-      .then((rows) => {
-        if (live) setNeedsWorkspace(rows.length === 0);
-      })
-      .catch(() => {
-        if (live) setNeedsWorkspace(false);
-      })
-      .finally(signedIn.after);
-    return () => {
-      live = false;
-    };
+    setNeedsWorkspace(creating);
   }, [signedIn, needsWorkspace, creating]);
+  const named = creating ? newWorkspaceRequest() : null;
 
   useEffect(() => {
     if (session.status !== "signed-in" || needsWorkspace !== false || started.current) return;
@@ -108,6 +97,14 @@ export function ExtensionSignIn() {
       .then((done) => setHanded(done))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [session, api.store, needsWorkspace]);
+
+  if (session.status === "signed-in" && needsWorkspace === true && named) {
+    return (
+      <Centered>
+        <CreateNamedWorkspace request={named} onDone={() => setNeedsWorkspace(false)} />
+      </Centered>
+    );
+  }
 
   if (session.status === "signed-in" && needsWorkspace === true) {
     return (

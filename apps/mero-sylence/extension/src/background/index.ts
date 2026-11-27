@@ -9,8 +9,8 @@ import { pickWorkspaces, type AppRow } from "../lib/workspaces";
 import { PACKAGE, meetingLink, servedPage, isLocalPage } from "../lib/appHost";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
 import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
-import { openAuthWindow } from "../lib/authWindow";
-import { newHandoff, openHandoff, signInUrl, type SignInIntent } from "../lib/handoff";
+import { openAuthWindow, focusAuthWindow } from "../lib/authWindow";
+import { newHandoff, openHandoff, signInUrl, type SignInIntent, type NewWorkspace } from "../lib/handoff";
 import {
   DEFAULT_SETTINGS,
   IDLE,
@@ -232,11 +232,36 @@ async function lineName(speaker: "you" | "others", startedAt: number | undefined
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
 
-async function signIn(intent?: SignInIntent): Promise<AuthState> {
+/** The sign-in under way, if any (one window at a time). */
+let signingIn: Promise<AuthState> | null = null;
+
+/**
+ * Sign in, or, while a sign-in window is already open, bring that window to the
+ * front and wait for it: pressing Sign in or Create an account twice never opens
+ * a second window. (Each sign-in seals its session to its own key, so a second
+ * one could not use the first window's answer anyway.)
+ */
+async function signIn(intent?: SignInIntent, workspace?: NewWorkspace): Promise<AuthState> {
+  if (signingIn) {
+    if (await focusAuthWindow()) return signingIn;
+    signingIn = null;
+  }
+  const run = openSignIn(intent, workspace);
+  signingIn = run;
+  try {
+    return await run;
+  } finally {
+    if (signingIn === run) signingIn = null;
+  }
+}
+
+async function openSignIn(intent?: SignInIntent, workspace?: NewWorkspace): Promise<AuthState> {
   const s = await settings();
   const page = await servedPage(s.pageOverride);
   const request = await newHandoff();
-  const url = signInUrl(page.origin, page.version, request, intent);
+  // Starting a workspace: the ones there now, so the new one can be told apart after.
+  const before = intent === "create" ? new Set((await listWorkspaces().catch(() => [])).map((w) => w.appId)) : null;
+  const url = signInUrl(page.origin, page.version, request, intent, workspace);
   const answer = await openAuthWindow(url, `https://${chrome.runtime.id}.chromiumapp.org/`);
   if (!answer) throw new Error("Sign-in was cancelled.");
   const session = await openHandoff(request, answer);
@@ -257,7 +282,26 @@ async function signIn(intent?: SignInIntent): Promise<AuthState> {
   };
   await saveAuth(next);
   await write("session", KEYS.signedOutReason, null);
-  return next;
+  let done = next;
+  if (before) {
+    // The window created a workspace: choose it, so the popup opens on it.
+    const made = (await listWorkspaces().catch(() => [])).find((w) => !before.has(w.appId));
+    if (made) {
+      done = { ...next, workspace: made };
+      await saveAuth(done);
+    }
+  }
+  reopenPopup();
+  return done;
+}
+
+/**
+ * The popup closed when the sign-in window took focus; open it again so the
+ * person carries on where they were. Chrome allows this from Chrome 127; where
+ * it does not, the toolbar icon is one click away.
+ */
+function reopenPopup(): void {
+  void chrome.action?.openPopup?.()?.catch(() => undefined);
 }
 
 /**
@@ -749,7 +793,7 @@ let offscreenEvents: Promise<unknown> = Promise.resolve();
 async function handle(req: Request): Promise<unknown> {
   switch (req.type) {
     case "signIn":
-      return signIn(req.intent);
+      return signIn(req.intent, req.workspace);
     case "signOut":
       await saveAuth(null);
       return null;

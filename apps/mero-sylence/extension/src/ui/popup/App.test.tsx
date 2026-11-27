@@ -26,7 +26,7 @@ describe("popup", () => {
   it("signed out: offers sign-in and asks the service worker", async () => {
     render(<App />);
     const button = await screen.findByRole("button", { name: "Sign in with Calimero" });
-    expect(screen.getByText(/Audio is never uploaded/)).toBeTruthy();
+    expect(screen.getByText(/sealed so only your team can read it/)).toBeTruthy();
     fireEvent.click(button);
     await waitFor(() => expect(types()).toContain("signIn"));
   });
@@ -57,16 +57,36 @@ describe("popup", () => {
     );
   });
 
-  it("no workspace yet: reopens the sign-in window, which offers one", async () => {
+  it("no workspace yet: names one here, and the window only approves it", async () => {
     chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
     chrome.onSend = () => ({ ok: true, value: [] });
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Create a workspace/ }));
-    await waitFor(() => expect(types()).toContain("signIn"));
+    expect(await screen.findByRole("heading", { name: "Create your first workspace" })).toBeTruthy();
+    expect(screen.getByText("Every word remembered. Only your team can listen.")).toBeTruthy();
+    const create = screen.getByRole("button", { name: "Create workspace" });
+    expect(create).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Launch team" } });
+    fireEvent.change(screen.getByLabelText("Your name, as your team sees it"), { target: { value: "Eve" } });
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(chrome.sent).toContainEqual({ type: "signIn", intent: "create", workspace: { name: "Launch team", self: "Eve" } }),
+    );
     expect(chrome.created).toEqual([]);
   });
 
-  it("create another workspace: asks the window for a new one and switches to it", async () => {
+  it("no workspace yet: opens an invite link to join", async () => {
+    chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
+    chrome.onSend = () => ({ ok: true, value: [] });
+    render(<App />);
+    const join = await screen.findByRole("button", { name: "Join" });
+    fireEvent.change(screen.getByLabelText("Invite link"), { target: { value: "not a link" } });
+    expect(join).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Invite link"), { target: { value: "https://sylence.example/?invite=abc" } });
+    fireEvent.click(join);
+    await waitFor(() => expect(chrome.created).toContain("https://sylence.example/?invite=abc"));
+  });
+
+  it("create another workspace: named here, made in the window", async () => {
     chrome.areas.local.set(KEYS.auth, { ...AUTH, workspace: null });
     let lists = 0;
     chrome.onSend = (m) =>
@@ -74,10 +94,12 @@ describe("popup", () => {
         ? { ok: true, value: lists++ === 0 ? [{ appId: "a1", name: "Design" }] : [{ appId: "a1", name: "Design" }, { appId: "a9", name: "New team" }] }
         : { ok: true, value: null };
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Create another workspace" }));
-    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "signIn", intent: "create" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create or join another workspace" }));
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "New team" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    // The service worker chooses the new workspace once the window closes.
     await waitFor(() =>
-      expect(chrome.sent).toContainEqual({ type: "chooseWorkspace", workspace: { appId: "a9", name: "New team" } }),
+      expect(chrome.sent).toContainEqual({ type: "signIn", intent: "create", workspace: { name: "New team", self: "" } }),
     );
   });
 

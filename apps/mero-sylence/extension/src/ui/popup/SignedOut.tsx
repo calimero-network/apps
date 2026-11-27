@@ -60,7 +60,7 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
       {settings.pageOverride && <p className="small muted center wrap">Signing in on {settings.pageOverride}</p>}
       <p className="foot">
         <LockIcon size={13} />
-        <span>Speech is transcribed on this laptop. Audio is never uploaded.</span>
+        <span>Transcribed on this laptop, then saved to your workspace, sealed so only your team can read it.</span>
       </p>
     </main>
   );

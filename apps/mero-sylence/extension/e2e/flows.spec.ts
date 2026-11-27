@@ -103,6 +103,23 @@ test("sign-in opens a small popup window on the page, and closing it cancels", a
   await popup.close();
 });
 
+test("pressing sign-in again while its window is open brings that window forward, never a second one", async () => {
+  const popup = await openPopup(context);
+  const waiting = nextSignInPage();
+  await popup.getByRole("button", { name: "Sign in with Calimero" }).click();
+  await waiting;
+  await expect.poll(async () => (await authWindows(worker)).length).toBe(1);
+  // A second popup (the first closes when the window takes focus) asks again.
+  const again = await openPopup(context);
+  await again.getByRole("button", { name: "Create an account" }).click();
+  await again.waitForTimeout(800);
+  const open = await authWindows(worker);
+  expect(open).toHaveLength(1);
+  await worker.evaluate((id) => chrome.windows.remove(id), open[0]!.id);
+  await popup.close();
+  await again.close();
+});
+
 test("the page saying cancel also cancels, and closes its window", async () => {
   const popup = await openPopup(context);
   const waiting = nextSignInPage();
@@ -134,29 +151,33 @@ test("signing in on the page hands the session over, closes the window and lists
   await expect(popup.getByRole("radio", { name: "Sales", exact: true })).toBeVisible();
   await popup.getByRole("radio", { name: "Sales" }).click();
   await expect(popup.getByRole("button", { name: "Change workspace" })).toContainText("Sales");
-  expect((await getStorage<Auth>(worker, "local", "sylence:auth")).workspace).toEqual(node!.workspaces[1]);
+  expect((await getStorage<Auth>(worker, "local", "sylence:auth")).workspace).toMatchObject(node!.workspaces[1]!);
   await popup.close();
 });
 
-test("create another workspace: the window opens the create step, and the new workspace is chosen", async () => {
+test("create another workspace: named in the popup, made in the window, and chosen", async () => {
   test.skip(!node, noNode ?? "");
   const popup = await openPopup(context);
   await popup.getByRole("button", { name: "Change workspace" }).click();
   await expect(popup.getByRole("radio", { name: "Sales" })).toHaveAttribute("aria-checked", "true");
 
+  // The workspace is named here, in the popup; the window only approves it.
+  await popup.getByRole("button", { name: "Create or join another workspace" }).click();
+  await popup.getByLabel("Workspace name").fill("Design");
+  await popup.getByLabel("Your name, as your team sees it").fill("Eve");
   const waiting = nextSignInPage();
-  await popup.getByRole("button", { name: "Create another workspace" }).click();
+  await popup.getByRole("button", { name: "Create workspace" }).click();
   const signInPage = await waiting;
   const req = await signInPage.evaluate(() => (window as unknown as { __req: Record<string, string | null> }).__req);
   expect(req.intent).toBe("create");
-  expect(signInPage.url()).toContain("&intent=create");
+  expect(signInPage.url()).toContain("&intent=create&name=Design&self=Eve");
 
   // What the page's create step does: a workspace in the account's organization.
   const made = await node!.createWorkspace("Design");
   await signInPage.evaluate((s) => (window as unknown as { handoff: (s: unknown) => Promise<void> }).handoff(s), await node!.session());
 
   await expect(popup.getByRole("button", { name: "Change workspace" })).toContainText("Design");
-  expect((await getStorage<Auth>(worker, "local", "sylence:auth")).workspace).toEqual(made);
+  expect((await getStorage<Auth>(worker, "local", "sylence:auth")).workspace).toMatchObject(made);
   await popup.close();
 });
 

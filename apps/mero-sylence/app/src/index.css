@@ -2061,3 +2061,10 @@ button.text-close:hover:not(:disabled) {
   background: none;
   color: var(--text);
 }
+
+/* The shared sign-in panel's fields sit in a column: they must not grow tall
+   (inputs grow along a row here, flex: 1 1 160px). */
+.cp-passkey input:not([type="checkbox"]):not([type="radio"]) {
+  flex: none;
+  width: 100%;
+}
