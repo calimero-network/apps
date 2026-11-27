@@ -18,6 +18,8 @@ export function usePlayer() {
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  /** Someone played or sought: until then no line is "playing". */
+  const [engaged, setEngaged] = useState(false);
   /** A seek asked for before the audio could take it, and whether to play after it. */
   const pending = useRef<{ ms: number; play: boolean } | null>(null);
   const rateRef = useRef(1);
@@ -38,6 +40,7 @@ export function usePlayer() {
   const seek = useCallback(
     (ms: number, play = false) => {
       const a = audioRef.current;
+      setEngaged(true);
       setTime(Math.max(0, ms));
       if (!a || a.readyState < 1) {
         pending.current = { ms, play };
@@ -105,7 +108,10 @@ export function usePlayer() {
               : "the browser could not play it",
         );
       },
-      onPlay: () => setPlaying(true),
+      onPlay: () => {
+        setEngaged(true);
+        setPlaying(true);
+      },
       onPause: () => setPlaying(false),
       onEnded: () => setPlaying(false),
     }),
@@ -113,8 +119,8 @@ export function usePlayer() {
   );
 
   return useMemo(
-    () => ({ bind, subscribe, getTime, durationMs, playing, rate, error, seek, toggle, skip, setRate }),
-    [bind, subscribe, getTime, durationMs, playing, rate, error, seek, toggle, skip, setRate],
+    () => ({ bind, subscribe, getTime, durationMs, playing, engaged, rate, error, seek, toggle, skip, setRate }),
+    [bind, subscribe, getTime, durationMs, playing, engaged, rate, error, seek, toggle, skip, setRate],
   );
 }
 

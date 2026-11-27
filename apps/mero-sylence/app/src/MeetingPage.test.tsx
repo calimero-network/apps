@@ -303,3 +303,55 @@ describe("speakers are keyed the same for every reader", () => {
     });
   }
 });
+
+describe("round-2 fixes", () => {
+  it("does not retry a failing transcript read in a loop", async () => {
+    let reads = 0;
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting(),
+      listActions: () => [],
+      transcript: (args) => {
+        reads += 1;
+        if ((args.fromSeq as number) === 0) return { segments: [seg(0, "first")], next: 1 };
+        throw new Error("node busy");
+      },
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    await screen.findByText("node busy");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(reads).toBeLessThanOrEqual(3);
+    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+
+  it("keeps the rename form when the rename is refused", async () => {
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload" }),
+      listActions: () => [],
+      transcript: () => ({ segments: [seg(0, "Hi", "others", "Speaker 1")], next: null }),
+      setSpeakerName: () => {
+        throw new Error("a meeting keeps at most 50 speaker names");
+      },
+    });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="bob" isOwner={false} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rename Speaker 1" }));
+    fireEvent.change(screen.getByLabelText("Name for Speaker 1"), { target: { value: "Sam" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(/at most 50 speaker names/);
+    expect((screen.getByLabelText("Name for Speaker 1") as HTMLInputElement).value).toBe("Sam");
+  });
+
+  it("marks no line as playing before anything played", async () => {
+    const bytes = new Uint8Array([4, 5, 6]);
+    const id = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const fake = fakeWorkspace({
+      getMeeting: () => meeting({ platform: "upload", audio: { blob: id, mime: "audio/mpeg", size: 3, durationMs: 60_000 } }),
+      listActions: () => [],
+      transcript: () => ({ segments: [{ ...seg(0, "From the start"), startMs: 0 }], next: null }),
+    });
+    fake.stored.set(id, bytes);
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+    render(<MeetingPage workspace={fake.workspace} meetingId="aa11" me="cy" isOwner={false} onBack={() => {}} />);
+    await screen.findByText("From the start");
+    expect(document.querySelector(".segment.playing")).toBeNull();
+  });
+});

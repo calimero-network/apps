@@ -13,6 +13,9 @@ import type { ActionView, MeetingView, SegmentView } from "../generated/client";
  */
 export function mergeSegments(existing: readonly SegmentView[], incoming: readonly SegmentView[]): SegmentView[] {
   if (incoming.length === 0) return existing as SegmentView[];
+  // The common case, a next page: everything new comes after what is held.
+  const last = existing.length ? existing[existing.length - 1]!.seq : -1;
+  if (incoming[0]!.seq > last && incoming.every((s, i) => i === 0 || s.seq > incoming[i - 1]!.seq)) return [...existing, ...incoming];
   const bySeq = new Map<number, SegmentView>();
   for (const s of existing) bySeq.set(s.seq, s);
   for (const s of incoming) bySeq.set(s.seq, s);
@@ -134,15 +137,27 @@ export function matchesAll(text: string, words: readonly string[]): boolean {
   return words.every((w) => t.includes(w));
 }
 
+export type Highlighter = (text: string) => { text: string; hit: boolean }[];
+
+/**
+ * A function that cuts text into plain and matching parts, for <mark>. The
+ * pattern is built once per query, not once per line: `split` with one
+ * capturing group puts the matches at the odd positions.
+ */
+export function highlighter(words: readonly string[]): Highlighter {
+  const ws = words.filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (ws.length === 0) return (text) => [{ text, hit: false }];
+  const re = new RegExp(`(${[...ws].sort((a, b) => b.length - a.length).join("|")})`, "gi");
+  return (text) =>
+    text
+      .split(re)
+      .map((part, i) => ({ text: part, hit: i % 2 === 1 }))
+      .filter((p) => p.text !== "");
+}
+
 /** `text` cut into plain and matching parts, for <mark>. */
 export function highlightParts(text: string, words: readonly string[]): { text: string; hit: boolean }[] {
-  const ws = words.filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  if (ws.length === 0) return [{ text, hit: false }];
-  const re = new RegExp(`(${ws.sort((a, b) => b.length - a.length).join("|")})`, "gi");
-  return text
-    .split(re)
-    .filter((part) => part !== "")
-    .map((part) => ({ text: part, hit: ws.some((w) => new RegExp(`^${w}$`, "i").test(part)) }));
+  return highlighter(words)(text);
 }
 
 export function searchMeetings<T extends Pick<MeetingView, "title">>(meetings: readonly T[], query: string): T[] {
@@ -165,8 +180,8 @@ export function toMarkdown(
   actions: readonly Pick<ActionView, "text" | "assignee" | "done">[],
   recorderName: string,
   locale = "en-GB",
-  /** The name given to a speaker label, if any. */
-  nameOf: (label: string) => string = (label) => label,
+  /** Who said a line, as the page shows it (names given to speakers included). */
+  speakerOf: (s: SegmentView) => string = (s) => speakerLabel(s.speaker, recorderName, s.name),
 ): string {
   const lines: string[] = [`# ${meeting.title}`, ""];
   const when = formatWhen(meeting.startedAt, locale);
@@ -185,7 +200,7 @@ export function toMarkdown(
   lines.push("## Transcript", "");
   if (segments.length === 0) lines.push("_No transcript yet._");
   for (const s of segments) {
-    lines.push(`**${formatClock(s.startMs)} ${nameOf(speakerLabel(s.speaker, recorderName, s.name))}:** ${s.text}`, "");
+    lines.push(`**${formatClock(s.startMs)} ${speakerOf(s)}:** ${s.text}`, "");
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -202,7 +217,7 @@ export function markdownFileName(title: string): string {
 }
 
 /** Segments one transcript read asks for. */
-export const PAGE = 200;
+export const PAGE = 500;
 
 /**
  * What to re-read after `TranscriptChanged { from, to }`: the changed numbers,

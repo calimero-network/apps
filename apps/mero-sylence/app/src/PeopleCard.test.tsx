@@ -20,6 +20,7 @@ const analyze = (over: Partial<Analyze> = {}): Analyze => ({
   phase: "idle",
   fraction: 0,
   message: null,
+  saved: null,
   canWrite: false,
   run: vi.fn(async () => {}),
   cancel: vi.fn(),

@@ -434,6 +434,8 @@ export interface MeroSylenceApi {
   myAccount(options?: ViewOptions): Promise<string>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ActionView[]>;
+  /** view `recordingsLeft`. */
+  recordingsLeft(options?: ViewOptions): Promise<number>;
   /** call `removeAction`. */
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<null>;
   /** call `removeAudio`. */
@@ -491,6 +493,8 @@ export interface MeroSylenceRawApi {
   myAccount(options?: ViewOptions): Promise<ViewAnswer<string>>;
   /** view `openActions`. */
   openActions(options?: ViewOptions): Promise<ViewAnswer<ActionView[]>>;
+  /** view `recordingsLeft`. */
+  recordingsLeft(options?: ViewOptions): Promise<ViewAnswer<number>>;
   /** call `removeAction`. */
   removeAction(args: RemoveActionArgs, options?: CallOptions): Promise<CallAnswer<null>>;
   /** call `removeAudio`. */
@@ -546,6 +550,7 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
       listMeetings: (options = {}) => this.#view<MeetingView[]>('listMeetings', {}, options),
       myAccount: (options = {}) => this.#view<string>('myAccount', {}, options),
       openActions: (options = {}) => this.#view<ActionView[]>('openActions', {}, options),
+      recordingsLeft: (options = {}) => this.#view<number>('recordingsLeft', {}, options),
       removeAction: (args, options = {}) => this.#call<null>('removeAction', args, options),
       removeAudio: (args, options = {}) => this.#call<MeetingView>('removeAudio', args, options),
       renameMeeting: (args, options = {}) => this.#call<MeetingView>('renameMeeting', args, options),
@@ -655,6 +660,11 @@ export class MeroSylenceClient<T extends AppCallTransport = AppTransport> implem
   /** view `openActions`. */
   async openActions(options: ViewOptions = {}): Promise<ActionView[]> {
     return (await this.#view<ActionView[]>('openActions', {}, options)).result;
+  }
+
+  /** view `recordingsLeft`. */
+  async recordingsLeft(options: ViewOptions = {}): Promise<number> {
+    return (await this.#view<number>('recordingsLeft', {}, options)).result;
   }
 
   /** call `removeAction`. */

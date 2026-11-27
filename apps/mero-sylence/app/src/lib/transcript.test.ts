@@ -164,3 +164,23 @@ describe("toMarkdown", () => {
     expect(highlightParts("plain", [])).toEqual([{ text: "plain", hit: false }]);
   });
 });
+
+describe("toMarkdown with names given to speakers", () => {
+  it("writes the name the page shows, for `you` and `others` too", async () => {
+    const { toMarkdown, speakerKey } = await import("./transcript");
+    const names = new Map([["others", "Eve"], ["you", "Robert"]]);
+    const md = toMarkdown(
+      { title: "T", platform: "meet", startedAt: "0", durationMs: 0, summary: "" },
+      [
+        { seq: 0, startMs: 0, endMs: 1, speaker: "you", name: "", text: "Hi", edited: false },
+        { seq: 1, startMs: 2, endMs: 3, speaker: "others", name: "", text: "Hello", edited: false },
+      ],
+      [],
+      "Bob",
+      "en-GB",
+      (s) => names.get(speakerKey(s.speaker, s.name)) ?? s.speaker,
+    );
+    expect(md).toContain("Robert:** Hi");
+    expect(md).toContain("Eve:** Hello");
+  });
+});

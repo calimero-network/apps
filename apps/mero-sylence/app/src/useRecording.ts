@@ -69,13 +69,46 @@ function openDb(): Promise<IDBDatabase> | null {
       if (db.objectStoreNames.contains("blobs")) db.deleteObjectStore("blobs");
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Another tab upgrading the store: let it, and open again next time.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
     req.onerror = () => {
       dbPromise = null;
       reject(req.error);
     };
+    // A tab with an older version holds the store open: no cache this time, rather than no playback.
+    req.onblocked = () => {
+      dbPromise = null;
+      reject(new Error("the recording cache is held by another tab"));
+    };
   });
   return dbPromise;
+}
+
+/** How long playback waits for the cache before it downloads instead. */
+export const CACHE_WAIT_MS = 2_000;
+
+/** `p`, or `fallback` when it has not settled within `ms`. */
+export function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(t);
+        resolve(fallback);
+      },
+    );
+  });
 }
 
 function done(req: IDBRequest | IDBTransaction): Promise<void> {
@@ -159,6 +192,23 @@ export async function forgetRecording(appId: string, blobId: string): Promise<vo
   }
 }
 
+/** Drops the kept recordings of workspace `appId` whose blob id is not in `keep` (no meeting names them any more). */
+export async function pruneRecordings(appId: string, keep: ReadonlySet<string>): Promise<void> {
+  try {
+    const db = await openDb();
+    if (!db) return;
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const prefix = `${appId}/`;
+    for (const r of await rows(store)) {
+      if (r.key.startsWith(prefix) && !keep.has(r.key.slice(prefix.length))) store.delete(r.key);
+    }
+    await done(tx);
+  } catch {
+    // ignore
+  }
+}
+
 /** Drops every kept recording of workspace `appId`, or of every workspace (signing out). */
 export async function forgetWorkspaceRecordings(appId?: string): Promise<void> {
   try {
@@ -196,7 +246,7 @@ export function useRecording(blobs: WorkspaceBlobs, audio: Audio | null | undefi
     setState({ url: null, loading: true, error: null });
     void (async () => {
       try {
-        let blob = await cached(appId, blobId);
+        let blob = await within(cached(appId, blobId), CACHE_WAIT_MS, null);
         if (!blob) {
           const data = await blobs.download(blobId);
           if ((await sha256Hex(data)) !== blobId) throw new Error("the recording did not match its id");

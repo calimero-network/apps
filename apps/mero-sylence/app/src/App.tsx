@@ -9,7 +9,7 @@ import { Landing, LandingPage } from "./Landing";
 import { MeetingPage } from "./MeetingPage";
 import { MeetingsList } from "./MeetingsList";
 import { UploadRecording } from "./UploadRecording";
-import { forgetWorkspaceRecordings } from "./useRecording";
+import { forgetWorkspaceRecordings, pruneRecordings } from "./useRecording";
 import { OpenActions } from "./OpenActions";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
@@ -342,12 +342,19 @@ function WorkspaceView({
   onLogout: () => void;
 }) {
   const { client: calimero, source, accountId, after } = useSignedIn();
-  const workspace = useWorkspace(appId, onLost);
+  const lostHere = useCallback(() => {
+    // Recordings of a workspace this account no longer reaches are not kept.
+    void forgetWorkspaceRecordings(appId);
+    onLost();
+  }, [appId, onLost]);
+  const workspace = useWorkspace(appId, lostHere);
   const [route, go] = useRoute();
   const meetings = useRead(workspace.client, workspace.version, (c) => c.listMeetings(), []);
   const [owner, setOwner] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+  /** What the last upload could not keep (its audio), shown over the meeting it opened. */
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -366,6 +373,12 @@ function WorkspaceView({
   }, [calimero, source, appId, after]);
 
   const openActions = meetings.data?.reduce((n, m) => n + m.openActions, 0) ?? 0;
+  // A recording kept in this browser whose meeting is gone, or whose audio was removed or
+  // replaced (here or on another device), is dropped once the list says so.
+  const keptAudio = meetings.data ? meetings.data.flatMap((m) => (m.audio ? [m.audio.blob] : [])).sort().join(",") : null;
+  useEffect(() => {
+    if (keptAudio !== null) void pruneRecordings(appId, new Set(keptAudio ? keptAudio.split(",") : []));
+  }, [appId, keptAudio]);
   const searchClient = workspace.client;
   const searchTranscripts = useCallback(
     async (query: string) => {
@@ -425,14 +438,23 @@ function WorkspaceView({
         <UploadRecording
           workspace={workspace}
           onClose={() => setUploading(false)}
-          onDone={(id) => {
+          onDone={(id, note) => {
             setUploading(false);
+            setUploadNote(note ?? null);
             go({ page: "meeting", id });
           }}
         />
       )}
       {route.page === "install" && <InstallPage onBack={() => go({ page: "meetings" })} backLabel="All meetings" />}
       {route.page === "actions" && <OpenActions workspace={workspace} onOpen={(id) => go({ page: "meeting", id })} />}
+      {route.page === "meeting" && uploadNote && (
+        <p className="notice" role="status">
+          {uploadNote}{" "}
+          <button type="button" className="btn small ghost" onClick={() => setUploadNote(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
       {route.page === "meeting" && (
         <MeetingPage
           key={route.id}

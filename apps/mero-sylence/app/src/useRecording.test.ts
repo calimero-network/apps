@@ -76,3 +76,12 @@ describe("useRecording", () => {
     expect(result.current).toEqual({ url: null, loading: false, error: null });
   });
 });
+
+describe("within", () => {
+  it("answers the fallback when the promise is slow or fails", async () => {
+    const { within } = await import("./useRecording");
+    expect(await within(new Promise<string>(() => {}), 5, "late")).toBe("late");
+    expect(await within(Promise.reject(new Error("x")), 50, "failed")).toBe("failed");
+    expect(await within(Promise.resolve("fast"), 50, "late")).toBe("fast");
+  });
+});

@@ -387,8 +387,8 @@ pub struct Sylence {
     deleting: Set<String>,
     /// People insights by meeting id.
     insights: UnorderedMap<String, Insights>,
-    /// Recordings each account keeps, by account.
-    recordings: UnorderedMap<String, u32>,
+    /// `(recorder, meetingId)` of every meeting that keeps a recording.
+    recorded: Set<(String, String)>,
 }
 
 #[app::error]
@@ -827,9 +827,9 @@ impl Sylence {
                 let _ = self.meeting_actions.remove(&key)?;
             }
             let _ = self.insights.remove(&meeting_id)?;
-            if row.audio.is_some() {
-                self.release_recording(&row.recorder)?;
-            }
+            let _ = self
+                .recorded
+                .remove(&(row.recorder.clone(), meeting_id.clone()))?;
             let _ = self.deleting.insert(&meeting_id)?;
             env::emit(
                 Event::MeetingChanged {
@@ -908,14 +908,14 @@ impl Sylence {
                 "the blob was uploaded as {stored:?}, not {mime:?}"
             )));
         }
-        if row.audio.is_none() {
-            let kept = self.recordings.get(&row.recorder)?.unwrap_or(0);
-            if kept >= MAX_RECORDINGS_PER_ACCOUNT {
+        let key = (row.recorder.clone(), meeting_id.clone());
+        if !self.recorded.contains(&key)? {
+            if self.recordings_of(&row.recorder)? >= MAX_RECORDINGS_PER_ACCOUNT {
                 return Err(refused(format!(
                     "an account keeps at most {MAX_RECORDINGS_PER_ACCOUNT} recordings; remove one first"
                 )));
             }
-            let _ = self.recordings.insert(&row.recorder, &(kept + 1))?;
+            let _ = self.recorded.insert(&key)?;
         }
         row.audio = Some(Audio {
             blob,
@@ -938,7 +938,9 @@ impl Sylence {
     pub fn remove_audio(&mut self, meeting_id: String) -> app::Result<MeetingView> {
         let mut row = self.recorders(&meeting_id)?;
         if row.audio.take().is_some() {
-            self.release_recording(&row.recorder)?;
+            let _ = self
+                .recorded
+                .remove(&(row.recorder.clone(), meeting_id.clone()))?;
             let _ = self.meetings.insert(&meeting_id, &row)?;
             env::emit(
                 Event::MeetingChanged {
@@ -1045,6 +1047,13 @@ impl Sylence {
         };
         env::emit(Event::InsightsChanged { meeting_id }, Audience::All)?;
         Ok(saved)
+    }
+
+    /// How many more recordings the caller may keep (see [`MAX_RECORDINGS_PER_ACCOUNT`]).
+    #[app::view]
+    pub fn recordings_left(&self) -> app::Result<u32> {
+        let caller = me()?;
+        Ok(MAX_RECORDINGS_PER_ACCOUNT.saturating_sub(self.recordings_of(&caller)?))
     }
 
     /// A meeting's people insights, if any were saved.
@@ -1375,18 +1384,16 @@ impl Sylence {
         Ok(row)
     }
 
-    /// One recording fewer kept by `account`.
-    fn release_recording(&mut self, account: &str) -> app::Result<()> {
-        let key = account.to_owned();
-        match self.recordings.get(&key)?.unwrap_or(0) {
-            0 | 1 => {
-                let _ = self.recordings.remove(&key)?;
-            }
-            n => {
-                let _ = self.recordings.insert(&key, &(n - 1))?;
-            }
-        }
-        Ok(())
+    /// Recordings `account` keeps, counted up to the cap plus one.
+    fn recordings_of(&self, account: &str) -> app::Result<u32> {
+        Ok(self
+            .recorded
+            .prefix(
+                &[KeyPart::Str(account.to_owned())],
+                FindOpts::default().limit(MAX_RECORDINGS_PER_ACCOUNT + 1),
+            )?
+            .items
+            .len() as u32)
     }
 
     /// The meeting, if the caller recorded it or owns the instance.

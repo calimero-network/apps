@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { memo, useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { usePlayerTime, type PlayerState } from "./usePlayer";
 import { formatClock } from "./lib/transcript";
 import { nextRate, speakerColor, type Lane } from "./lib/playback";
@@ -37,13 +37,24 @@ export function Player({
   const scrub = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
 
+  // While dragging, seek at most once a frame.
+  const frame = useRef<number | null>(null);
+  const lastX = useRef(0);
   const seekAt = (clientX: number) => {
-    const el = scrub.current;
-    if (!el) return;
-    const box = el.getBoundingClientRect();
-    const f = Math.min(1, Math.max(0, (clientX - box.left) / box.width));
-    seek(f * duration);
+    lastX.current = clientX;
+    if (frame.current !== null) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      const el = scrub.current;
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      const f = Math.min(1, Math.max(0, (lastX.current - box.left) / box.width));
+      seek(f * duration);
+    });
   };
+  useEffect(() => () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+  }, []);
 
   const onPointer = (e: PointerEvent<HTMLDivElement>) => {
     if (e.type === "pointerdown") {
@@ -139,19 +150,7 @@ export function Player({
         onPointerCancel={ready ? onPointer : undefined}
         onKeyDown={ready ? onScrubKey : undefined}
       >
-        <div className="player-lanes" style={{ gridTemplateRows: `repeat(${Math.max(1, lanes.length)}, 1fr)` }}>
-          {lanes.map((lane, i) => (
-            <div className="player-lane" key={lane.label} title={nameOf(lane.label)}>
-              {lane.spans.map((s, j) => (
-                <span
-                  key={j}
-                  className="player-span"
-                  style={{ left: `${s.from * 100}%`, width: `${Math.max(0.3, (s.to - s.from) * 100)}%`, background: speakerColor(i) }}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+        <Lanes lanes={lanes} nameOf={nameOf} />
         <div className="player-played" style={{ width: `${progress * 100}%` }} />
         <div className="player-head" style={{ left: `${progress * 100}%` }} />
       </div>
@@ -175,3 +174,22 @@ export function Player({
     </section>
   );
 }
+
+/** Each speaker's stretches; rendered again only when the lanes change, not on every tick. */
+const Lanes = memo(function Lanes({ lanes, nameOf }: { lanes: Lane[]; nameOf: (label: string) => string }) {
+  return (
+    <div className="player-lanes" style={{ gridTemplateRows: `repeat(${Math.max(1, lanes.length)}, 1fr)` }}>
+      {lanes.map((lane, i) => (
+        <div className="player-lane" key={lane.label} title={nameOf(lane.label)}>
+          {lane.spans.map((s, j) => (
+            <span
+              key={j}
+              className="player-span"
+              style={{ left: `${s.from * 100}%`, width: `${Math.max(0.3, (s.to - s.from) * 100)}%`, background: speakerColor(i) }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+});

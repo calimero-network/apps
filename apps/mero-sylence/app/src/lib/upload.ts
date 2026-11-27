@@ -15,15 +15,54 @@ export const RATE = 16_000;
 export const MAX_AUDIO_BYTES = 49_545_216;
 
 /**
- * Longer than this is refused: the decoded audio alone would not fit in a
- * tab. `probeDuration` reads the length from the file's header first, so a
- * long file is refused before it is decoded; the decoded length is checked
- * again after, for files whose header gives none.
+ * Longer than this is refused. Decoding holds the file's channels at their
+ * own rate for a moment before they are mixed down to 16 kHz mono, so a much
+ * longer recording would not fit in a tab. `probeDuration` reads the length
+ * from the file's header first, so a long file is refused before it is
+ * decoded; the decoded length is checked again after.
  */
-export const MAX_DURATION_MS = 4 * 60 * 60_000;
+export const MAX_DURATION_MS = 3 * 60 * 60_000;
 
 /** Files larger than this are refused before they are read at all. */
 export const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** A file whose length the header does not give is decoded only up to this size. */
+export const MAX_UNPROBED_BYTES = 400 * 1024 * 1024;
+
+/**
+ * The content types a recording may be kept as: the contract's `AUDIO_TYPES`
+ * (logic/src/lib.rs), exactly; `upload.test.ts` checks the two agree.
+ */
+export const CONTRACT_AUDIO_TYPES = [
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/aac",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
+  "audio/flac",
+  "audio/opus",
+  "video/mp4",
+  "video/webm",
+] as const;
+
+/** What browsers and systems call the same types by other names. */
+const MIME_ALIASES: Record<string, string> = {
+  "audio/mp3": "audio/mpeg",
+  "audio/x-mp3": "audio/mpeg",
+  "audio/mpeg3": "audio/mpeg",
+  "audio/x-mpeg": "audio/mpeg",
+  "audio/x-flac": "audio/flac",
+  "audio/x-aac": "audio/aac",
+  "audio/aacp": "audio/aac",
+  "audio/wave": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "video/ogg": "audio/ogg",
+  "application/ogg": "audio/ogg",
+  "audio/m4a": "audio/mp4",
+};
 
 /** What the file picker offers. */
 export const ACCEPT = "audio/*,video/mp4,video/webm,.mp3,.m4a,.mp4,.wav,.webm,.ogg,.oga,.opus,.aac,.flac";
@@ -36,21 +75,38 @@ const MIME_BY_EXT: Record<string, string> = {
   webm: "audio/webm",
   ogg: "audio/ogg",
   oga: "audio/ogg",
-  opus: "audio/ogg",
+  opus: "audio/opus",
   aac: "audio/aac",
   flac: "audio/flac",
 };
 
-/** The file's type as the browser plays it: its own when set, else from the extension. */
-export function audioMime(file: { name: string; type: string }): string {
-  if (file.type.startsWith("audio/") || file.type.startsWith("video/")) return file.type;
+const ALLOWED = new Set<string>(CONTRACT_AUDIO_TYPES);
+
+/**
+ * The type the recording is kept and played as: one of
+ * {@link CONTRACT_AUDIO_TYPES}, from the file's own type (other names for
+ * the same type mapped) or else its extension. Null when it is none of them:
+ * the transcript can still be made, but the audio is not kept.
+ */
+export function audioMime(file: { name: string; type: string }): string | null {
+  const own = file.type.split(";")[0]!.trim().toLowerCase();
+  const named = MIME_ALIASES[own] ?? own;
+  if (ALLOWED.has(named)) return named;
   const ext = file.name.toLowerCase().split(".").pop() ?? "";
-  return MIME_BY_EXT[ext] ?? "";
+  const byExt = MIME_BY_EXT[ext];
+  return byExt && ALLOWED.has(byExt) ? byExt : null;
 }
 
-/** True when the file looks like something the page can decode. */
+/** True when the file looks like something the page can decode (any audio or video, or a known extension). */
 export function isAudioFile(file: { name: string; type: string }): boolean {
-  return audioMime(file) !== "";
+  if (file.type.startsWith("audio/") || file.type.startsWith("video/")) return true;
+  return audioMime(file) !== null;
+}
+
+/** Why the audio of a file of this type is not kept, or null when its type can be. */
+export function unkeptType(file: { name: string; type: string }): string | null {
+  if (audioMime(file) !== null) return null;
+  return `A workspace keeps mp3, m4a, aac, wav, webm, ogg, opus, flac and mp4 recordings; this one (${file.type || "an unknown type"}) is transcribed without keeping the audio.`;
 }
 
 /** Why the audio is not kept for playback, or null when it fits. */
@@ -368,30 +424,32 @@ export function probeDuration(file: Blob, timeoutMs = 10_000): Promise<number | 
 
 /**
  * The file decoded to 16 kHz mono, as the speech models take it. Browser
- * only. The encoded bytes are released once decoded; a mono file's samples
- * are used as they are, and only a multi-channel one is mixed into a copy.
+ * only. The file is decoded at its own rate, then rendered once through a
+ * one-channel 16 kHz `OfflineAudioContext`, so the browser mixes the channels
+ * down and resamples natively: no mixing loop on the main thread and no
+ * second copy. The encoded bytes and the decoded buffer are let go as soon as
+ * they are used.
  */
 export async function decodeTo16kMono(file: Blob): Promise<{ audio: Float32Array; durationMs: number }> {
   if (file.size > MAX_FILE_BYTES) throw new Error("This file is larger than 2 GB; Sylence cannot read it in the browser.");
-  // decodeAudioData resamples to the context's rate, and takes (detaches) the bytes.
-  const ctx = new OfflineAudioContext(1, 1, RATE);
-  let decoded: AudioBuffer;
+  const decoder = new OfflineAudioContext(1, 1, RATE);
+  let decoded: AudioBuffer | null;
   try {
-    decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+    // decodeAudioData takes (detaches) the bytes; nothing else holds them.
+    decoded = await decoder.decodeAudioData(await file.arrayBuffer());
   } catch {
     throw new Error("This browser cannot decode that file. Try an mp3, m4a, wav or webm recording.");
   }
-  const n = decoded.length;
-  const channels = decoded.numberOfChannels;
-  let audio: Float32Array;
-  if (channels === 1) {
-    audio = decoded.getChannelData(0);
-  } else {
-    audio = new Float32Array(n);
-    for (let c = 0; c < channels; c++) {
-      const data = decoded.getChannelData(c);
-      for (let i = 0; i < n; i++) audio[i]! += data[i]! / channels;
-    }
-  }
-  return { audio, durationMs: Math.round((n / RATE) * 1000) };
+  const seconds = decoded.duration;
+  if (seconds * 1000 > MAX_DURATION_MS) throw new Error("Recordings up to 3 hours can be uploaded.");
+  const frames = Math.max(1, Math.ceil(seconds * RATE));
+  const ctx = new OfflineAudioContext(1, frames, RATE);
+  const source = ctx.createBufferSource();
+  source.buffer = decoded;
+  decoded = null;
+  source.connect(ctx.destination);
+  source.start();
+  const rendered = await ctx.startRendering();
+  source.disconnect();
+  return { audio: rendered.getChannelData(0), durationMs: Math.round(seconds * 1000) };
 }

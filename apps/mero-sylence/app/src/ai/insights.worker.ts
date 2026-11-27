@@ -8,11 +8,13 @@ import { env, pipeline, type TextClassificationPipeline, type TextGenerationPipe
 import ortMjs from "@ort/ort-wasm-simd-threaded.asyncify.mjs?url";
 import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { EMOTION_MODEL, WRITERS, type FromInsightsWorker, type ToInsightsWorker, type WriterId } from "./insightsProtocol";
-import { revisionOf } from "./models";
+import { pinnedFetch, revisionOf } from "./models";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 env.useWasmCache = false;
+// Every Hugging Face request, the library's own config probes included, reads the pinned commit.
+env.fetch = pinnedFetch(self.fetch.bind(self));
 if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.wasmPaths = {
     mjs: new URL(ortMjs, self.location.href).href,
@@ -61,17 +63,22 @@ function loadClassifier(): Promise<TextClassificationPipeline> {
 async function classify(id: number, texts: string[]): Promise<void> {
   try {
     const clf = await loadClassifier();
-    const out: Record<string, number>[] = [];
-    for (let i = 0; i < texts.length; i += BATCH) {
-      const batch = texts.slice(i, i + BATCH).map((t) => t.slice(0, MAX_CHARS) || ".");
+    const clipped = texts.map((t) => t.slice(0, MAX_CHARS) || ".");
+    // Lines of about the same length share a batch, so little of each batch is padding;
+    // the answers go back in the lines' own order.
+    const order = clipped.map((_, i) => i).sort((x, y) => clipped[x]!.length - clipped[y]!.length);
+    const out: Record<string, number>[] = new Array<Record<string, number>>(texts.length);
+    for (let i = 0; i < order.length; i += BATCH) {
+      const slots = order.slice(i, i + BATCH);
+      const batch = slots.map((k) => clipped[k]!);
       const res = (await clf(batch, { top_k: null } as never)) as unknown;
       // One input answers one list; several answer a list per input.
       const lists = (batch.length === 1 && !Array.isArray((res as unknown[])[0]) ? [res] : res) as { label: string; score: number }[][];
-      for (const list of lists) {
+      lists.forEach((list, j) => {
         const scores: Record<string, number> = {};
         for (const { label, score } of list) scores[label] = score;
-        out.push(scores);
-      }
+        out[slots[j]!] = scores;
+      });
       post({ type: "progress", step: "classify", fraction: Math.min(1, (i + batch.length) / texts.length) });
     }
     post({ type: "scores", id, scores: out });

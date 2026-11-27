@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CheckSquare, Clock, Download, FileText, Trash } from "@calimero-network/mero-icons";
 import type { MeetingView, SegmentView } from "./sylenceApi";
 import { deleteMeetingFully } from "./sylenceApi";
@@ -11,7 +11,7 @@ import {
   formatClock,
   formatDuration,
   formatWhen,
-  highlightParts,
+  highlighter,
   markdownFileName,
   matchesAll,
   platformName,
@@ -21,6 +21,7 @@ import {
   toMarkdown,
 } from "./lib/transcript";
 import { useTranscript } from "./useTranscript";
+import type { Highlighter } from "./lib/transcript";
 import { useRead, type Workspace } from "./useWorkspace";
 import { Icon } from "./ui";
 import { talkStats } from "./lib/stats";
@@ -97,7 +98,7 @@ export function MeetingPage({
       more={transcript.next !== null}
       loadingMore={transcript.loading}
       transcriptError={transcript.error}
-      onLoadMore={() => void transcript.loadMore()}
+      onLoadMore={transcript.loadMore}
       onSegmentChanged={transcript.replace}
       actions={actions.data}
       insights={insights.data}
@@ -108,6 +109,12 @@ export function MeetingPage({
       focusSeq={focusSeq}
     />
   );
+}
+
+/** Whichever insights were saved last: a run here, or the latest read. */
+function newer(a: Insights | null, b: Insights | null): Insights | null {
+  if (!a || !b) return a ?? b;
+  return Number(a.updatedAt) >= Number(b.updatedAt) ? a : b;
 }
 
 /** The meeting once read. Presentational apart from the calls it makes through `workspace.act`. */
@@ -137,7 +144,7 @@ export function MeetingBody({
   more: boolean;
   loadingMore: boolean;
   transcriptError: string | null;
-  onLoadMore: () => void;
+  onLoadMore: () => unknown;
   onSegmentChanged: (s: SegmentView) => void;
   actions: import("./sylenceApi").ActionView[] | null;
   /** What was worked out about each person, if anyone ran Analyze. */
@@ -151,7 +158,10 @@ export function MeetingBody({
   const recorder = m.recorder === me;
   const canEdit = recorder || isOwner;
   const [find, setFind] = useState("");
-  const findWords = useMemo(() => queryWords(find), [find]);
+  // Typing stays quick on a long transcript: the list follows a beat behind.
+  const deferredFind = useDeferredValue(find);
+  const findWords = useMemo(() => queryWords(deferredFind), [deferredFind]);
+  const mark = useMemo(() => highlighter(findWords), [findWords]);
   /** The speaker key the transcript is narrowed to, or null for everyone. */
   const [who, setWho] = useState<string | null>(null);
   // Names given to speakers ("Speaker 1" → "Eve"), by stable key; a re-read with the same names keeps the memo.
@@ -189,7 +199,7 @@ export function MeetingBody({
   const player = usePlayer();
   const [follow, setFollow] = useState(true);
   const byStart = useMemo(() => [...segments].sort((a, b) => a.startMs - b.startMs || a.seq - b.seq), [segments]);
-  const playingIndex = usePlayingIndex(player, byStart, hasAudio);
+  const playingIndex = usePlayingIndex(player, byStart, hasAudio && player.engaged);
   const playingSeq = playingIndex >= 0 ? (byStart[playingIndex]?.seq ?? null) : null;
   const lanes = useMemo(
     () => (hasAudio ? speakerLanes(segments, labelOf, stats.speakers.map((s) => s.label), m.audio?.durationMs || m.durationMs) : []),
@@ -204,8 +214,12 @@ export function MeetingBody({
   const lastSeq = segments.length ? segments[segments.length - 1]!.seq : -1;
   // An ended meeting is read whole: talk time, the timeline, playback and Analyze cover every line.
   // While live, finding reads the whole transcript and a linked line reads up to it.
+  // A failed read waits for "Load more" instead of being retried in a loop.
   const wantsMore =
-    more && !loadingMore && (!m.live || findWords.length > 0 || (focusSeq !== undefined && focusSeq > lastSeq));
+    more &&
+    !loadingMore &&
+    !transcriptError &&
+    (!m.live || findWords.length > 0 || (focusSeq !== undefined && focusSeq > lastSeq));
   useEffect(() => {
     if (wantsMore) onLoadMore();
   }, [wantsMore, onLoadMore]);
@@ -224,14 +238,17 @@ export function MeetingBody({
   const segmentStart = useCallback((seq: number) => segments.find((s) => s.seq === seq)?.startMs, [segments]);
 
   // Built when asked for, not on every render.
-  const markdown = () => toMarkdown(m, segments, actions ?? [], recorderName, undefined, nameOf);
+  const markdown = () => toMarkdown(m, segments, actions ?? [], recorderName, undefined, (s) => nameOf(labelOf(s)));
 
-  const run = useCallback(async (fn: () => Promise<unknown>) => {
+  /** Runs a write; false (and the error shown) when it failed. */
+  const run = useCallback(async (fn: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     try {
       await fn();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     }
   }, []);
   const { act } = workspace;
@@ -357,7 +374,7 @@ export function MeetingBody({
 
       {!m.live && segments.length > 0 && (
         <PeopleCard
-          insights={insights}
+          insights={newer(analyze.saved, insights)}
           stats={stats}
           actions={actions}
           displayName={nameOf}
@@ -425,7 +442,7 @@ export function MeetingBody({
                 playing={s.seq === playingSeq}
                 onSeek={canSeek ? seekTo : undefined}
                 color={colorOf(labelOf(s))}
-                highlight={findWords}
+                mark={mark}
                 segment={s}
                 speaker={nameOf(labelOf(s))}
                 editable={recorder}
@@ -590,7 +607,7 @@ const SegmentRow = memo(function SegmentRow({
   playing = false,
   onSeek,
   color,
-  highlight = [],
+  mark,
   segment,
   speaker,
   editable,
@@ -604,7 +621,8 @@ const SegmentRow = memo(function SegmentRow({
   /** Play the recording from a time (this line's start). */
   onSeek?: (ms: number) => void;
   color?: string;
-  highlight?: readonly string[];
+  /** Cuts the text into plain and found parts. */
+  mark: Highlighter;
   segment: SegmentView;
   speaker: string;
   editable: boolean;
@@ -666,7 +684,7 @@ const SegmentRow = memo(function SegmentRow({
         </form>
       ) : (
         <p className="segment-text">
-          {highlightParts(segment.text, highlight).map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
+          {mark(segment.text).map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
           {segment.edited && <span className="edited"> (edited)</span>}
         </p>
       )}

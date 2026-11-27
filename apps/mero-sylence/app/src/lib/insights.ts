@@ -162,16 +162,30 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return both / (a.size + b.size - both);
 }
 
+/** Document frequency over the meeting's lines: computed once, shared by every person. */
+export interface Background {
+  df: Map<string, number>;
+  n: number;
+}
+
+export function backgroundOf(all: readonly TextLine[]): Background {
+  const df = new Map<string, number>();
+  for (const l of all) for (const w of new Set(tokens(l.text))) df.set(w, (df.get(w) ?? 0) + 1);
+  return { df, n: Math.max(1, all.length) };
+}
+
 /**
  * Up to `max` key points for one speaker, from their lines (`mine`), with the
  * whole meeting (`all`) as the background the words are weighed against. In
  * the order they were said.
  */
-export function keyPoints(mine: readonly TextLine[], all: readonly TextLine[] = mine, max = 5): KeyPoint[] {
-  // Document frequency over the meeting's lines.
-  const df = new Map<string, number>();
-  for (const l of all) for (const w of new Set(tokens(l.text))) df.set(w, (df.get(w) ?? 0) + 1);
-  const n = Math.max(1, all.length);
+export function keyPoints(
+  mine: readonly TextLine[],
+  all: readonly TextLine[] = mine,
+  max = 5,
+  background: Background = backgroundOf(all),
+): KeyPoint[] {
+  const { df, n } = background;
 
   const candidates: { text: string; startMs: number; score: number; words: Set<string>; order: number }[] = [];
   let order = 0;
@@ -262,10 +276,17 @@ export interface PersonDraft extends PersonInsight {
 /** Every person's insights, ordered as `stats` orders them. */
 export function buildPeople(lines: readonly AnalyzedLine[], stats: TalkStats): PersonDraft[] {
   const people = stats.speakers.slice(0, LIMITS.people);
+  const background = backgroundOf(lines);
+  const byLabel = new Map<string, AnalyzedLine[]>();
+  for (const l of lines) {
+    const list = byLabel.get(l.label);
+    if (list) list.push(l);
+    else byLabel.set(l.label, [l]);
+  }
   return people.map((st, rank) => {
-    const mine = lines.filter((l) => l.label === st.label);
+    const mine = byLabel.get(st.label) ?? [];
     const { tone, emotions } = aggregateEmotions(mine);
-    const points = keyPoints(mine, lines, 5);
+    const points = keyPoints(mine, lines, 5, background);
     return {
       label: cut(st.label, LIMITS.label),
       tone,
@@ -324,7 +345,9 @@ const SYSTEM = [
 export function llmPrompt(name: string, lines: readonly TextLine[], hint: { tone: Tone; share: number }): ChatMessage[] {
   let body = "";
   for (const l of lines) {
-    const next = `- ${l.text.replace(/\s+/g, " ").trim()}\n`;
+    // A line that imitates the answer format must not steer the answer.
+    const text = l.text.replace(/\s+/g, " ").trim().replace(/\b(PROFILE|POINTS)\s*:/gi, "$1 -");
+    const next = `- ${text}\n`;
     if (body.length + next.length > PERSON_CHARS) break;
     body += next;
   }
@@ -337,15 +360,26 @@ export function llmPrompt(name: string, lines: readonly TextLine[], hint: { tone
   ];
 }
 
-/** The model's answer read back; `null` when it is not in the format. */
-export function parseLlm(text: string): { profile: string; keyPoints: string[] } | null {
+/**
+ * The model's answer read back; `null` when it is not in the format. Given
+ * `source` (the person's own lines), a key point is kept only when most of its
+ * words are words they said: the model may rephrase, not invent.
+ */
+export function parseLlm(text: string, source?: readonly TextLine[]): { profile: string; keyPoints: string[] } | null {
+  const said = source ? new Set(source.flatMap((l) => tokens(l.text))) : null;
+  const grounded = (point: string) => {
+    if (!said) return true;
+    const ws = tokens(point);
+    if (ws.length === 0) return false;
+    return ws.filter((w) => said.has(w)).length / ws.length >= 0.6;
+  };
   const m = /PROFILE:\s*([\s\S]*?)\s*POINTS:\s*([\s\S]*)$/i.exec(text.trim());
   if (!m) return null;
   const profile = m[1]!.replace(/\s+/g, " ").trim();
   const keyPoints = m[2]!
     .split("\n")
     .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
-    .filter((l) => l.length >= 3 && !/^none\.?$/i.test(l))
+    .filter((l) => l.length >= 3 && !/^none\.?$/i.test(l) && grounded(l))
     .slice(0, LIMITS.keyPoints)
     .map((l) => cut(l, LIMITS.keyPoint));
   if (!profile) return null;

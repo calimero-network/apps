@@ -1013,13 +1013,27 @@ fn an_account_keeps_a_bounded_number_of_recordings() {
         code(attach(&mut t, "bob", &another, &blob, "audio/mpeg", 1_000)),
         "Refused"
     );
+    // The owner deleting Bob's meeting frees Bob's place, not the owner's.
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 0);
+    call(
+        &mut t,
+        "owner",
+        "deleteMeeting",
+        json!({ "meetingId": ids[1] }),
+    );
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 1);
+    assert_eq!(view(&mut t, "owner", "recordingsLeft", json!({})), 100);
+    attach(&mut t, "bob", &another, &blob, "audio/mpeg", 1_000).unwrap();
+    // Removing twice, then deleting, never frees more than one place.
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
+    call(&mut t, "bob", "removeAudio", json!({ "meetingId": ids[2] }));
     call(
         &mut t,
         "bob",
         "deleteMeeting",
-        json!({ "meetingId": ids[1] }),
+        json!({ "meetingId": ids[2] }),
     );
-    attach(&mut t, "bob", &another, &blob, "audio/mpeg", 1_000).unwrap();
+    assert_eq!(view(&mut t, "bob", "recordingsLeft", json!({})), 1);
 }
 
 #[test]

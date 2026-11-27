@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SegmentView } from "./sylenceApi";
+import type { Insights } from "./generated/client";
 import type { Workspace } from "./useWorkspace";
 import type { TalkStats } from "./lib/stats";
 import { buildPeople, llmPrompt, parseLlm, toInput, type AnalyzedLine } from "./lib/insights";
@@ -13,6 +14,8 @@ export interface Analyze {
   fraction: number;
   /** What went wrong, or a note on how it went. */
   message: string | null;
+  /** What the last run saved (`setInsights`'s answer), so the page can show it before any event. */
+  saved: Insights | null;
   /** WebGPU is there: the profiles can be written by a Smart notes model. */
   canWrite: boolean;
   run: (opts?: { useLlm?: boolean }) => Promise<void>;
@@ -54,6 +57,7 @@ export function useAnalyze({
   const [phase, setPhase] = useState<AnalyzePhase>("idle");
   const [fraction, setFraction] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Insights | null>(null);
   const worker = useRef<ReturnType<WorkerFactory> | null>(null);
   const runId = useRef(0);
   const reject = useRef<((e: Error) => void) | null>(null);
@@ -163,7 +167,7 @@ export function useAnalyze({
                 (m) => (m.type === "text" && m.id === id * 1000 + i ? m.text : undefined),
               );
               if (!live()) return;
-              const parsed = parseLlm(text);
+              const parsed = parseLlm(text, mine);
               if (parsed) {
                 p.profile = parsed.profile;
                 if (parsed.keyPoints.length) p.keyPoints = parsed.keyPoints;
@@ -181,18 +185,26 @@ export function useAnalyze({
 
         if (!live()) return;
         setPhase("saving");
-        await ws.act((c) => c.setInsights({ meetingId: mid, insights: toInput(people, model) }));
+        const result = await ws.act((c) => c.setInsights({ meetingId: mid, insights: toInput(people, model) }));
         if (!live()) return;
+        setSaved(result);
         setPhase("done");
         setFraction(1);
       } catch (e) {
         if (e instanceof Cancelled || !live()) return;
         setPhase("error");
         setMessage(e instanceof Error ? e.message : String(e));
+      } finally {
+        // The models (up to about 1.3 GB with the writer) are not kept between runs; the next run reads them from the browser cache.
+        if (live()) {
+          worker.current?.terminate();
+          worker.current = null;
+          reject.current = null;
+        }
       }
     },
     [ask, createWorker],
   );
 
-  return { phase, fraction, message, canWrite: hasWebGpu(), run, cancel };
+  return { phase, fraction, message, saved, canWrite: hasWebGpu(), run, cancel };
 }

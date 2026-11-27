@@ -14,6 +14,8 @@ import {
   isAudioFile,
   labelSpeakers,
   MAX_DURATION_MS,
+  MAX_UNPROBED_BYTES,
+  unkeptType,
   titleFromFile,
   toSegmentInputs,
   tooLargeForAudio,
@@ -90,7 +92,8 @@ export function UploadRecording({
   probe = probeDuration,
 }: {
   workspace: Pick<Workspace, "act" | "blobs">;
-  onDone: (meetingId: string) => void;
+  /** The meeting is saved; `note` says what did not go as asked (the audio not kept). */
+  onDone: (meetingId: string, note?: string) => void;
   onClose: () => void;
   createWorker?: SpeechWorkerFactory;
   decode?: typeof decodeTo16kMono;
@@ -112,6 +115,8 @@ export function UploadRecording({
   const runId = useRef(0);
   /** The meeting the current run started, once it has. */
   const started = useRef<{ id: string; note: string; durationMs: number } | null>(null);
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
 
   useEffect(() => {
     const el = ref.current;
@@ -122,10 +127,18 @@ export function UploadRecording({
     return () => {
       runId.current += 1;
       worker.current?.terminate();
+      // Closed mid-run (a workspace switch, signing out): a meeting already started is ended, not left live.
+      const meeting = started.current;
+      started.current = null;
+      if (meeting) {
+        void workspaceRef.current
+          .act((c) => c.endMeeting({ meetingId: meeting.id, durationMs: meeting.durationMs }))
+          .catch(() => undefined);
+      }
     };
   }, []);
 
-  const audioRefusal = file ? tooLargeForAudio(file.size) : null;
+  const audioRefusal = file ? (unkeptType(file) ?? tooLargeForAudio(file.size)) : null;
   const busy = run !== null;
 
   const pick = (f: File | undefined | null) => {
@@ -184,10 +197,13 @@ export function UploadRecording({
       step("decode");
       // The length first, from the file's header: a long file is refused before it is decoded.
       const probed = await probe(file);
-      if (probed !== null && probed > MAX_DURATION_MS) throw new Error("Recordings up to 4 hours can be uploaded.");
+      if (probed !== null && probed > MAX_DURATION_MS) throw new Error("Recordings up to 3 hours can be uploaded.");
+      if (probed === null && file.size > MAX_UNPROBED_BYTES) {
+        throw new Error("This browser cannot tell how long this recording is, and it is too large to read without knowing. Try an mp3 or m4a copy.");
+      }
       step("decode", 0.2);
       const { audio, durationMs } = await decode(file);
-      if (durationMs > MAX_DURATION_MS) throw new Error("Recordings up to 4 hours can be uploaded.");
+      if (durationMs > MAX_DURATION_MS) throw new Error("Recordings up to 3 hours can be uploaded.");
       if (durationMs < 1_000) throw new Error("This recording is shorter than a second.");
       step("load");
       const webgpu = await hasWebGpu();
@@ -217,12 +233,8 @@ export function UploadRecording({
         };
         w.onerror = (e) => reject(new Error(e.message || "the speech model stopped"));
         const msg: ToSpeech = { type: "run", audio, language, webgpu };
-        try {
-          w.postMessage(msg, [audio.buffer]);
-        } catch {
-          // A decoded buffer's own memory may refuse to move; then it is copied.
-          w.postMessage(msg);
-        }
+        // The rendered buffer is the page's own: it moves to the worker, no copy.
+        w.postMessage(msg, [audio.buffer]);
       });
       worker.current?.terminate();
       worker.current = null;
@@ -240,6 +252,7 @@ export function UploadRecording({
       const meeting = { id, note: "", durationMs };
       if (!live()) {
         // Cancelled while the meeting was being started: it exists now, so end it.
+        setError(null);
         settle(meeting, "the rest was cancelled.");
         return;
       }
@@ -250,17 +263,25 @@ export function UploadRecording({
         await workspace.act((c) => c.appendSegments({ meetingId: id, segments: parts[i]! }));
       }
       meeting.note = "The transcript is saved";
-      if (keepAudio && !audioRefusal) {
+      const mime = audioMime(file);
+      /** Why the audio was not kept, when keeping it was asked for and failed. */
+      let audioNote: string | null = null;
+      if (keepAudio && !audioRefusal && mime) {
         step("save", 0.75);
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const mime = audioMime(file);
-        step("save", 0.8);
-        const { blobId } = await workspace.blobs.upload(bytes, mime);
-        // The uploader has the bytes already: keep them, so playback does not download them again.
-        void rememberRecording(workspace.blobs.appId, blobId, file.slice(0, file.size, mime));
-        step("save", 0.9);
-        await workspace.act((c) => c.attachAudio({ meetingId: id, blob: blobId, mime, durationMs }));
-        meeting.note = "The transcript and the audio are saved";
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          step("save", 0.8);
+          const { blobId } = await workspace.blobs.upload(bytes, mime);
+          step("save", 0.9);
+          await workspace.act((c) => c.attachAudio({ meetingId: id, blob: blobId, mime, durationMs }));
+          // The uploader has the bytes already: keep them, so playback does not download them again.
+          void rememberRecording(workspace.blobs.appId, blobId, file.slice(0, file.size, mime));
+          meeting.note = "The transcript and the audio are saved";
+        } catch (e) {
+          if (e instanceof Cancelled || !live()) throw e;
+          // The transcript is the point; a recording that could not be kept is noted, and the run goes on.
+          audioNote = `The audio could not be kept: ${e instanceof Error ? e.message : String(e)}`;
+        }
       }
       step("save", 0.95);
       await workspace.act((c) => c.endMeeting({ meetingId: id, durationMs }));
@@ -275,7 +296,8 @@ export function UploadRecording({
       if (!live()) return;
       started.current = null;
       setRun(null);
-      onDone(id);
+      if (audioNote) onDone(id, audioNote);
+      else onDone(id);
     } catch (e) {
       if (!live() || e instanceof Cancelled) return;
       worker.current?.terminate();
@@ -347,7 +369,7 @@ export function UploadRecording({
               ) : (
                 <span className="upload-file">
                   <span className="upload-file-name">Drop a recording here, or browse</span>
-                  <span className="dim">mp3, m4a, wav, webm, ogg or mp4 · up to 4 hours</span>
+                  <span className="dim">mp3, m4a, wav, webm, ogg or mp4 · up to 3 hours</span>
                 </span>
               )}
             </label>

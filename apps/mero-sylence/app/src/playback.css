@@ -343,3 +343,23 @@
     justify-content: center;
   }
 }
+
+/* Rows far off screen skip layout and paint until scrolled near. */
+.transcript .segment {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--sunken);
+  color: var(--text-2);
+  font-size: 13px;
+}

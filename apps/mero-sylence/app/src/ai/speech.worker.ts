@@ -24,11 +24,13 @@ import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { TIERS, whisperLanguage } from "../../../extension/src/lib/tiers";
 import { clusterVoices, cutPoints, RATE, type TimedChunk, type Turn } from "../lib/upload";
 import type { FromSpeech, SpeechStage, ToSpeech } from "./speechProtocol";
-import { revisionOf } from "./models";
+import { pinnedFetch, revisionOf } from "./models";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 env.useWasmCache = false;
+// Every Hugging Face request, the library's own config probes included, reads the pinned commit.
+env.fetch = pinnedFetch(self.fetch.bind(self));
 if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.wasmPaths = {
     mjs: new URL(ortMjs, self.location.href).href,

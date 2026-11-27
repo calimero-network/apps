@@ -48,7 +48,8 @@ export function SpeakersCard({
                   className="talk-rename"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void onRename(s.label, draft.trim()).then(() => setEditing(null));
+                    // A refused rename keeps the form and what was typed.
+                    void onRename(s.label, draft.trim()).then((ok) => ok !== false && setEditing(null));
                   }}
                 >
                   <input

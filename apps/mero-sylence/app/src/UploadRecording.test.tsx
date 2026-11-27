@@ -98,8 +98,8 @@ function setup(handlers: Record<string, Handler> = {}, opts: { decode?: typeof d
   return { ...fake, order, onDone, worker, upload };
 }
 
-function choose(size = 3, name = "standup.mp3") {
-  const file = new File([new Uint8Array(Math.min(size, 3))], name, { type: "audio/mpeg" });
+function choose(size = 3, name = "standup.mp3", type = "audio/mpeg") {
+  const file = new File([new Uint8Array(Math.min(size, 3))], name, { type });
   if (size > 1_000) Object.defineProperty(file, "size", { value: size });
   fireEvent.change(screen.getByTestId("upload-file"), { target: { files: [file] } });
 }
@@ -131,12 +131,12 @@ describe("UploadRecording", () => {
     expect(order).not.toContain("attachAudio");
   });
 
-  it("refuses a recording over four hours before decoding it", async () => {
+  it("refuses a recording over three hours before decoding it", async () => {
     const decodeSpy = vi.fn(async () => ({ audio: new Float32Array(16), durationMs: 1_000 }));
     const { order } = setup({}, { decode: decodeSpy, probe: vi.fn(async () => 5 * 60 * 60_000) });
     choose();
     fireEvent.click(screen.getByTestId("upload-start"));
-    expect(await screen.findByText("Recordings up to 4 hours can be uploaded.")).toBeTruthy();
+    expect(await screen.findByText("Recordings up to 3 hours can be uploaded.")).toBeTruthy();
     expect(decodeSpy).not.toHaveBeenCalled();
     expect(order).toEqual([]);
   });
@@ -189,7 +189,7 @@ describe("UploadRecording", () => {
     expect(order.filter((m) => m === "startMeeting")).toHaveLength(1);
   });
 
-  it("ends the meeting when attaching the audio fails, and does not start a second one", async () => {
+  it("goes on without the audio when attaching it fails: ends the meeting, adds the action items, says why", async () => {
     const { order, onDone } = setup({
       attachAudio: () => {
         order.push("attachAudio");
@@ -198,11 +198,57 @@ describe("UploadRecording", () => {
     });
     choose();
     fireEvent.click(screen.getByTestId("upload-start"));
-    expect(await screen.findByText("the node refused the recording")).toBeTruthy();
-    await waitFor(() => expect(order).toContain("endMeeting"));
-    expect(screen.getByText(/The transcript is saved; the rest did not finish/)).toBeTruthy();
-    expect(screen.queryByTestId("upload-start")).toBeNull();
-    expect(onDone).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(onDone.mock.calls[0]).toEqual(["m1", "The audio could not be kept: the node refused the recording"]);
+    expect(order).toContain("endMeeting");
+    expect(order).toContain("addAction");
     expect(order.filter((m) => m === "startMeeting")).toHaveLength(1);
+  });
+
+  it("keeps no audio of a type the workspace does not keep, and still saves the transcript", async () => {
+    const { order, onDone, upload } = setup();
+    choose(3, "clip.mov", "video/quicktime");
+    expect(screen.getByText(/transcribed without keeping the audio/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("upload-start"));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith("m1"));
+    expect(upload).not.toHaveBeenCalled();
+    expect(order).not.toContain("attachAudio");
+  });
+
+  it("uploads a type under its usual name", async () => {
+    const { sent, onDone, upload } = setup();
+    choose(3, "talk.mp3", "audio/mp3");
+    fireEvent.click(screen.getByTestId("upload-start"));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith("m1"));
+    expect(upload.mock.calls[0]![1]).toBe("audio/mpeg");
+    expect(sent.find((s) => s.method === "attachAudio")!.args).toMatchObject({ mime: "audio/mpeg" });
+  });
+
+  it("refuses a large file whose length the browser cannot tell", async () => {
+    const decodeSpy = vi.fn(async () => ({ audio: new Float32Array(16), durationMs: 1_000 }));
+    setup({}, { decode: decodeSpy, probe: vi.fn(async () => null) });
+    choose(500 * 1024 * 1024);
+    fireEvent.click(screen.getByTestId("upload-start"));
+    expect(await screen.findByText(/cannot tell how long this recording is/)).toBeTruthy();
+    expect(decodeSpy).not.toHaveBeenCalled();
+  });
+
+  it("ends a started meeting when the dialog goes away mid-run", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { order } = setup({
+      appendSegments: async (a) => {
+        order.push("appendSegments");
+        await gate;
+        return { added: (a.segments as unknown[]).length, skipped: 0, nextSeq: 0 };
+      },
+    });
+    choose();
+    fireEvent.click(screen.getByTestId("upload-start"));
+    await waitFor(() => expect(order).toContain("appendSegments"));
+    cleanup();
+    await waitFor(() => expect(order).toContain("endMeeting"));
+    await act(async () => release());
+    expect(order).not.toContain("attachAudio");
   });
 });

@@ -23,3 +23,34 @@ export function revisionOf(repo: string): string {
   if (!sha) throw new Error(`${repo} is not a pinned model`);
   return sha;
 }
+
+const HUB = "https://huggingface.co/";
+
+/**
+ * `url` with any Hugging Face file request moved to the pinned commit:
+ * `https://huggingface.co/{repo}/resolve/{ref}/{file}` becomes
+ * `…/resolve/{sha}/{file}`, whatever ref the library asked for (it asks for
+ * `main` while it probes configs). A Hugging Face URL that names a repo not
+ * listed in {@link MODEL_REVISIONS} throws. Anything else is left alone.
+ */
+export function pinnedUrl(url: string): string {
+  if (!url.startsWith(HUB)) return url;
+  const rest = url.slice(HUB.length);
+  const at = rest.indexOf("/resolve/");
+  if (at < 0) throw new Error(`refused an unpinned Hugging Face request: ${url}`);
+  const repo = rest.slice(0, at);
+  const sha = revisionOf(repo);
+  const after = rest.slice(at + "/resolve/".length);
+  const slash = after.indexOf("/");
+  if (slash < 0) throw new Error(`refused an unpinned Hugging Face request: ${url}`);
+  return `${HUB}${repo}/resolve/${sha}/${after.slice(slash + 1)}`;
+}
+
+/** A `fetch` for transformers.js (`env.fetch`) that only ever reads pinned commits. */
+export function pinnedFetch(base: typeof fetch = fetch): typeof fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const pinned = pinnedUrl(url);
+    return base(pinned === url ? input : pinned, init);
+  }) as typeof fetch;
+}

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assignSpeakers,
   audioMime,
+  CONTRACT_AUDIO_TYPES,
+  unkeptType,
   batches,
   clusterVoices,
   cutPoints,
@@ -101,7 +103,18 @@ describe("files", () => {
   it("knows the type from the extension when the browser gives none", () => {
     expect(audioMime({ name: "a.MP3", type: "" })).toBe("audio/mpeg");
     expect(audioMime({ name: "a.m4a", type: "audio/x-m4a" })).toBe("audio/x-m4a");
-    expect(audioMime({ name: "notes.txt", type: "text/plain" })).toBe("");
+    expect(audioMime({ name: "notes.txt", type: "text/plain" })).toBeNull();
+    // Other names for the same types, and types the workspace does not keep.
+    expect(audioMime({ name: "a.mp3", type: "audio/mp3" })).toBe("audio/mpeg");
+    expect(audioMime({ name: "a.flac", type: "audio/x-flac" })).toBe("audio/flac");
+    expect(audioMime({ name: "a.wav", type: "audio/vnd.wave" })).toBe("audio/wav");
+    expect(audioMime({ name: "a.m4a", type: "audio/m4a" })).toBe("audio/mp4");
+    expect(audioMime({ name: "a.ogg", type: "video/ogg" })).toBe("audio/ogg");
+    expect(audioMime({ name: "clip.mov", type: "video/quicktime" })).toBeNull();
+    expect(audioMime({ name: "voice.3gp", type: "audio/3gpp" })).toBeNull();
+    expect(isAudioFile({ name: "clip.mov", type: "video/quicktime" })).toBe(true);
+    expect(unkeptType({ name: "clip.mov", type: "video/quicktime" })).toMatch(/without keeping the audio/);
+    expect(unkeptType({ name: "a.mp3", type: "audio/mpeg" })).toBeNull();
     expect(isAudioFile({ name: "call.webm", type: "" })).toBe(true);
     expect(isAudioFile({ name: "doc.pdf", type: "application/pdf" })).toBe(false);
   });
@@ -158,5 +171,17 @@ describe("clusterVoices", () => {
 
   it("answers nothing for nothing", () => {
     expect(clusterVoices([])).toEqual([]);
+  });
+});
+
+describe("CONTRACT_AUDIO_TYPES", () => {
+  it("is exactly the contract's AUDIO_TYPES", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../../../logic/src/lib.rs"), "utf8");
+    const block = /const AUDIO_TYPES: \[&str; \d+\] = \[([\s\S]*?)\];/.exec(src);
+    expect(block).not.toBeNull();
+    const types = [...block![1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(types).toEqual([...CONTRACT_AUDIO_TYPES]);
   });
 });

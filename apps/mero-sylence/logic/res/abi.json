@@ -277,6 +277,15 @@
       "public": false,
       "returns": "list<ActionView>"
     },
+    "recordingsLeft": {
+      "allowSystem": false,
+      "confirm": false,
+      "doc": "How many more recordings the caller may keep (see [`MAX_RECORDINGS_PER_ACCOUNT`]).",
+      "kind": "view",
+      "params": [],
+      "public": false,
+      "returns": "u32"
+    },
     "removeAction": {
       "allowSystem": false,
       "confirm": false,
@@ -479,7 +488,7 @@
       "meetingActions": "set",
       "meetings": "unorderedMap",
       "openActions": "set",
-      "recordings": "unorderedMap",
+      "recorded": "set",
       "segments": "unorderedMap"
     },
     "search": {
@@ -490,7 +499,7 @@
       "meetingActions": [],
       "meetings": [],
       "openActions": [],
-      "recordings": [],
+      "recorded": [],
       "segments": []
     },
     "version": 1

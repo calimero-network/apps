@@ -1840,6 +1840,59 @@
         ],
         "type": "object"
       },
+      "RecordingsLeftArgs": {
+        "description": "The arguments of `recordingsLeft`, by name.",
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "RecordingsLeftRequest": {
+        "properties": {
+          "args": {
+            "$ref": "#/components/schemas/RecordingsLeftArgs"
+          },
+          "consistency": {
+            "default": "strong",
+            "description": "`strong` reads the leader's latest state; `stale` any replica at least as new as `minIndex`.",
+            "enum": [
+              "strong",
+              "stale"
+            ],
+            "type": "string"
+          },
+          "minIndex": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "RecordingsLeftResponse": {
+        "properties": {
+          "index": {
+            "description": "The log index the answer reflects.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "result": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer",
+            "x-calimero-type": "u32"
+          }
+        },
+        "required": [
+          "index",
+          "result",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "RefusedError": {
         "properties": {
           "message": {
@@ -3774,6 +3827,73 @@
           "public": false
         },
         "x-calimero-publisher-description": "Every action item not yet done, across meetings, newest meeting first."
+      }
+    },
+    "/apps/{app}/methods/recordingsLeft": {
+      "post": {
+        "description": "A view: runs as `POST /apps/{app}/views` with `method: \"recordingsLeft\"`.\n\nThe ABI lists the app's errors for the whole app, not per method: any of them may answer `422 APP_ERROR`.",
+        "operationId": "recordingsLeft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/app"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordingsLeftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingsLeftResponse"
+                }
+              }
+            },
+            "description": "The method ran."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/AppError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "view `recordingsLeft`",
+        "tags": [
+          "view"
+        ],
+        "x-calimero-method": {
+          "confirm": false,
+          "kind": "view",
+          "public": false
+        },
+        "x-calimero-publisher-description": "How many more recordings the caller may keep (see [`MAX_RECORDINGS_PER_ACCOUNT`])."
       }
     },
     "/apps/{app}/methods/removeAction": {
