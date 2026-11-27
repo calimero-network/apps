@@ -11,6 +11,7 @@ import {
   decodeTo16kMono,
   probeDuration,
   formatBytes,
+  MAX_AUDIO_BYTES,
   isAudioFile,
   labelSpeakers,
   MAX_DURATION_MS,
@@ -395,7 +396,7 @@ export function UploadRecording({
               <span>
                 <span className="upload-check-label">Keep the audio for playback</span>
                 <span className="dim">
-                  {audioRefusal ?? "Saved in this workspace, so everyone in it can play the meeting back."}
+                  {audioRefusal ?? `Saved in this workspace for everyone to play back. Recordings up to ${formatBytes(MAX_AUDIO_BYTES)} are kept; larger ones are transcribed only.`}
                 </span>
               </span>
               <input

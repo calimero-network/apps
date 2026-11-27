@@ -5,8 +5,8 @@
  * cache; the ONNX runtime is bundled with the page. Text never leaves here.
  */
 import { env, pipeline, type TextClassificationPipeline, type TextGenerationPipeline } from "@huggingface/transformers";
-import ortMjs from "@ort/ort-wasm-simd-threaded.asyncify.mjs?url";
-import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
+import ortMjs from "/ort-dist/ort-wasm-simd-threaded.asyncify.mjs?url";
+import ortWasm from "/ort-dist/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { EMOTION_MODEL, WRITERS, type FromInsightsWorker, type ToInsightsWorker, type WriterId } from "./insightsProtocol";
 import { pinnedFetch, revisionOf } from "./models";
 

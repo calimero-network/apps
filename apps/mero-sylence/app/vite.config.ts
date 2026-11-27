@@ -42,8 +42,13 @@ export default defineConfig({
   plugins: [absoluteSocialImage(), extensionDownload(), servedAssetsFallback(), react()],
   // The ONNX runtime the speech worker loads (src/ai/speech.worker.ts imports
   // its files by URL), bundled with the page so no code is fetched at run time.
-  resolve: { alias: { "@ort": ortDir() } },
+  // A path, not a package-like name: Vite would otherwise try to pre-bundle the
+  // runtime's loader in dev and answer 404 for it.
+  resolve: { alias: [{ find: /^\/ort-dist\//, replacement: `${ortDir()}/` }] },
   worker: { format: "es" },
+  // Dev only: the speech worker imports transformers.js. Discovered late, it
+  // was re-bundled mid-run and the worker got Vite's "outdated" 504.
+  optimizeDeps: { include: ["@huggingface/transformers"] },
   build: { chunkSizeWarningLimit: 4_000 },
   server: {
     // 5173 exactly: the origin `merod local` trusts passkey ceremonies from

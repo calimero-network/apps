@@ -19,8 +19,8 @@ import {
   type AutomaticSpeechRecognitionPipeline,
   type Tensor,
 } from "@huggingface/transformers";
-import ortMjs from "@ort/ort-wasm-simd-threaded.asyncify.mjs?url";
-import ortWasm from "@ort/ort-wasm-simd-threaded.asyncify.wasm?url";
+import ortMjs from "/ort-dist/ort-wasm-simd-threaded.asyncify.mjs?url";
+import ortWasm from "/ort-dist/ort-wasm-simd-threaded.asyncify.wasm?url";
 import { TIERS, whisperLanguage } from "../../../extension/src/lib/tiers";
 import { clusterVoices, cutPoints, RATE, type TimedChunk, type Turn } from "../lib/upload";
 import type { FromSpeech, SpeechStage, ToSpeech } from "./speechProtocol";
