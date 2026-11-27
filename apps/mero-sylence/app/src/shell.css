@@ -583,18 +583,6 @@
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
-.menu-who {
-  display: grid;
-  gap: 2px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-.menu-who strong {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* The fleet's floating node badge: Sylence shows it on the Profile page only. */
 [data-node-shield-host] {
@@ -1028,4 +1016,218 @@
   min-height: 36px;
   padding: 0 16px;
   font-size: 13px;
+}
+
+/* ── the workspace bar under the navbar: which workspace, and the way to the others ── */
+.ws-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -8px 0 8px;
+  min-width: 0;
+}
+.ws-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ws-bar-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.ws-bar-switch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ws-bar-switch:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* ── your name in the account menu: one row, edited in place ── */
+.menu-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 4px 0 10px;
+  min-width: 0;
+}
+.menu-name-row.editing {
+  padding: 0 4px;
+}
+.menu-name-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.menu-name-row input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.menu-name-row .icon-btn {
+  flex: none;
+}
+
+/* ── workspace cards: delete beside open ── */
+.ws-item {
+  position: relative;
+}
+.ws-item .ws-card {
+  justify-content: flex-start;
+  padding-right: 52px;
+}
+.ws-item .ws-card > .icon {
+  display: none;
+}
+.ws-delete {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 12px;
+  margin: auto 0;
+  color: var(--text-dim);
+  opacity: 0.6;
+  transition: opacity 0.15s ease-out, color 0.15s ease-out, background-color 0.15s ease-out;
+}
+.ws-delete:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.ws-item:hover .ws-delete,
+.ws-delete:focus-visible {
+  opacity: 1;
+}
+.ws-confirm {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding-right: 16px !important;
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+  cursor: default;
+}
+.ws-confirm:hover {
+  transform: none !important;
+}
+
+/* ── the invite dialog: coral selection, custom radios and checkboxes ── */
+:root .mero-cw-choices {
+  gap: 6px;
+}
+:root .mero-cw-choice {
+  gap: 10px;
+  padding: 10px 12px;
+  border-color: var(--border);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+:root .mero-cw-choice:hover {
+  border-color: var(--border-strong);
+}
+:root .mero-cw-choice:has(input:checked) {
+  border-color: var(--coral);
+  background: color-mix(in srgb, var(--coral) 7%, transparent);
+}
+:root .mero-cw-choice .mero-cw-sub {
+  font-size: 12px;
+}
+:root .mero-cw-choice input[type="radio"],
+:root .mero-cw-cap input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+:root .mero-cw-choice input[type="radio"] {
+  border-radius: 50%;
+}
+:root .mero-cw-choice input[type="radio"]:checked {
+  border-color: var(--coral);
+  box-shadow: inset 0 0 0 3.5px var(--surface);
+  background: var(--coral);
+}
+:root .mero-cw-cap input[type="checkbox"] {
+  margin: 0;
+  border-radius: 4px;
+}
+:root .mero-cw-cap input[type="checkbox"]:checked {
+  border-color: var(--coral);
+  background: var(--coral)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 8.5 2.5 2.5L12 5.5'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+}
+:root .mero-cw-cap input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+:root .mero-cw-choice input:focus-visible,
+:root .mero-cw-cap input:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+:root .mero-cw-caps {
+  gap: 1px;
+  margin-bottom: 12px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--sunken);
+  max-height: 240px;
+}
+:root .mero-cw-cap {
+  min-height: 32px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background-color 0.15s;
+}
+:root .mero-cw-cap:hover:not([data-disabled]) {
+  background: var(--surface);
+}
+:root .mero-cw-cap:has(input:checked) {
+  background: color-mix(in srgb, var(--coral) 10%, var(--surface));
+}
+:root .mero-cw-cap label {
+  gap: 9px;
+}
+:root .mero-cw-btn--primary {
+  background: var(--ink);
 }

@@ -7,6 +7,7 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import { App } from "./App";
+import { closeSharedDialogsOnBackdrop } from "./backdropClose";
 import { invites } from "./lib/orgs";
 import { BASE } from "./route";
 import { applyStoredTheme } from "./ui";
@@ -34,6 +35,7 @@ if (!root) throw new Error("#root is missing from index.html");
 invites.capture(window.location, { basename: BASE });
 
 applyStoredTheme();
+closeSharedDialogsOnBackdrop();
 
 const Wrapper = import.meta.env.DEV ? StrictMode : ({ children }: { children: ReactNode }) => <>{children}</>;
 

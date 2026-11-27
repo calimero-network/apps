@@ -77,3 +77,17 @@ export function roleName(role: string | undefined): string {
 export function canManage(role: string | undefined): boolean {
   return role === "owner" || role === "admin";
 }
+
+/**
+ * Deletes a workspace: this app instance and everything in it, for everyone
+ * (core's `DELETE /apps/{app}`: its owner or an admin of its organization).
+ * The organization and its other apps stay.
+ */
+export async function deleteWorkspace(client: Pick<CalimeroClient, "apps">, appId: string): Promise<void> {
+  await client.apps.delete({ app: appId });
+}
+
+/** Whether `account` may delete `workspace`: its owner, or an owner or admin of its organization. */
+export function canDeleteWorkspace(workspace: { owner: string }, account: string, orgRole: string | undefined): boolean {
+  return workspace.owner === account || canManage(orgRole);
+}

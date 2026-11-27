@@ -4,7 +4,8 @@ import { ManageInHomeLink } from "@calimero-apps/passkey";
 import { InviteDialog } from "@calimero-network/mero-react";
 
 import { inviteLinkBase } from "./lib/orgs";
-import { canManage, leaveWorkspace, removeMember, roleName, setOrgRole, type ManagedRole } from "./lib/manage";
+import { canManage, deleteWorkspace, leaveWorkspace, removeMember, roleName, setOrgRole, type ManagedRole } from "./lib/manage";
+import { forgetWorkspaceRecordings } from "./useRecording";
 import { PersonName, useOrg, useSpaceNames } from "./names";
 import { PRODUCT } from "./session";
 import { useSessionApi, useSignedIn } from "./sessionContext";
@@ -30,6 +31,7 @@ export function PeoplePage({ appId, workspaceName, onLeft }: { appId: string; wo
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -217,6 +219,42 @@ export function PeoplePage({ appId, workspaceName, onLeft }: { appId: string; wo
           ) : (
             <button type="button" className="btn danger-ghost" onClick={() => setLeaving(true)}>
               Leave workspace
+            </button>
+          )}
+        </section>
+      )}
+
+      {manager && (
+        <section className="card danger-zone">
+          <div>
+            <h2>Delete this workspace</h2>
+            <p className="dim">
+              Its meetings, recordings and action items are deleted for everyone. This can&apos;t be undone.
+            </p>
+          </div>
+          {deletingAll ? (
+            <div className="row">
+              <button
+                type="button"
+                className="btn danger"
+                disabled={busy === appId}
+                onClick={() =>
+                  void act(appId, async () => {
+                    await deleteWorkspace(client, appId);
+                    void forgetWorkspaceRecordings(appId);
+                    onLeft();
+                  })
+                }
+              >
+                {busy === appId ? "Deleting…" : `Delete ${workspaceName || "workspace"}`}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setDeletingAll(false)}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="btn danger-ghost" onClick={() => setDeletingAll(true)} data-testid="delete-workspace">
+              Delete workspace
             </button>
           )}
         </section>

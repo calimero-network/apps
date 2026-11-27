@@ -50,7 +50,7 @@ test("signs up with a passkey and makes a workspace", async () => {
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByTestId("empty-meetings")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("heading", { name: "Record your first meeting" })).toBeVisible();
-  await expect(page.locator(".team-name")).toContainText("Launch team");
+  await expect(page.getByTestId("workspace-switcher")).toContainText("Launch team");
 });
 
 test("lists every meeting of the workspace, newest first, with live badge and counts", async () => {

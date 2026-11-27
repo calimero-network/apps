@@ -18,7 +18,7 @@ import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
 import { NATIVE_APPROVE_CALLBACK, NATIVE_CALLBACK, signInIntent } from "./native";
-import { PersonName, TeamNamespace, useSpaceNames } from "./names";
+import { TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
 import { PRODUCT, type SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi, useSignedIn } from "./sessionContext";
@@ -433,14 +433,6 @@ function WorkspaceView({
 
   return (
     <Shell
-      left={
-        name ? (
-          <span className="team-name">
-            <span className="slash">/</span>
-            {name}
-          </span>
-        ) : null
-      }
       right={
         <Menu
           me={accountId}
@@ -454,6 +446,17 @@ function WorkspaceView({
       }
       footer={<AppFooter onShowTutorial={onShowTutorial} />}
     >
+      <div className="ws-bar" data-testid="workspace-bar">
+        <span className="ws-dot" aria-hidden="true">
+          {(name || "W").slice(0, 1).toUpperCase()}
+        </span>
+        <span className="ws-bar-name" data-testid="workspace-switcher" title={name}>
+          {name || "Workspace"}
+        </span>
+        <button type="button" className="ws-bar-switch" onClick={onSwitchWorkspace}>
+          <Icon name="list" size={14} /> Switch workspace
+        </button>
+      </div>
       {(route.page === "meetings" || route.page === "actions" || route.page === "people") && (
         <nav className="tabs" role="tablist">
           <button
@@ -531,6 +534,8 @@ function WorkspaceView({
 }
 
 const THEMES = ["system", "light", "dark"] as const;
+/** The longest name a person can give themselves. */
+const NAME_MAX = 48;
 
 /** Your avatar in the top bar: your name, theme, switch workspace, log out. */
 function Menu({
@@ -579,32 +584,48 @@ function Menu({
       </button>
       {open && (
         <div className="menu-panel glass-float" role="menu">
-          {me && nameOf(me) && (
-            <div className="menu-section menu-who" data-testid="my-name">
-              <span className="dim">Signed in as</span>
-              <strong>
-                <PersonName account={me} />
-              </strong>
-            </div>
-          )}
-          {me && org && (
+          {me && (org || nameOf(me)) && (
             <div className="menu-section">
               {renaming === null ? (
-                <button className="menu-item" onClick={() => setRenaming(nameOf(me) ?? "")}>
-                  <Icon name="pen" /> {nameOf(me) ? "Change your name" : "Set your name"}
-                </button>
+                <div className="menu-name-row" data-testid="my-name">
+                  <span className={nameOf(me) ? "menu-name-text" : "menu-name-text dim"} title={nameOf(me) ?? undefined}>
+                    {nameOf(me) ?? "Set your name"}
+                  </span>
+                  {org && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={nameOf(me) ? "Change your name" : "Set your name"}
+                      onClick={() => setRenaming(nameOf(me) ?? "")}
+                    >
+                      <Icon name="pen" size={14} />
+                    </button>
+                  )}
+                </div>
               ) : (
                 <form
-                  className="row"
+                  className="menu-name-row editing"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    publish(me, renaming);
+                    if (!renaming.trim()) return;
+                    publish(me, renaming.trim().slice(0, NAME_MAX));
                     setRenaming(null);
                   }}
+                  onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setRenaming(null))}
                 >
-                  <input aria-label="your name" autoFocus maxLength={64} value={renaming} onChange={(e) => setRenaming(e.target.value)} />
-                  <button type="submit" className="btn small primary">
-                    Save
+                  <input
+                    aria-label="your name"
+                    autoFocus
+                    maxLength={NAME_MAX}
+                    placeholder="Your name"
+                    value={renaming}
+                    onChange={(e) => setRenaming(e.target.value)}
+                  />
+                  <button type="submit" className="icon-btn" aria-label="Save name" disabled={!renaming.trim()}>
+                    <Icon name="check" size={14} />
+                  </button>
+                  <button type="button" className="icon-btn" aria-label="Cancel" onClick={() => setRenaming(null)}>
+                    <Icon name="x" size={14} />
                   </button>
                 </form>
               )}
