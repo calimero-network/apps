@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignables, assigneeColor, assigneeInitials } from "./assignee";
+import { assignables, assigneeColor, assigneeInitials, callSpeakers } from "./assignee";
 
 describe("assignees", () => {
   const speakers = [{ name: "Eve", color: "var(--spk-0)" }, { name: "Speaker 2", color: "var(--spk-1)" }];
@@ -21,5 +21,19 @@ describe("assignees", () => {
     expect(assigneeInitials("Eve Lee")).toBe("EL");
     expect(assigneeInitials("Speaker 2")).toBe("S2");
     expect(assigneeInitials("john")).toBe("JO");
+  });
+
+  it("names who spoke in a call as the page shows them, leaving out the unnamed others", () => {
+    const meeting = {
+      speakers: [
+        { speaker: "others", name: "Speaker 1" },
+        { speaker: "you", name: "" },
+        { speaker: "others", name: "" },
+        { speaker: "others", name: "Speaker 2" },
+      ],
+      speakerNames: [{ label: "Speaker 1", name: "John" }],
+    };
+    expect(callSpeakers(meeting, "Eve")).toEqual(["John", "Eve", "Speaker 2"]);
+    expect(callSpeakers({ speakerNames: [] }, "Eve")).toEqual([]);
   });
 });

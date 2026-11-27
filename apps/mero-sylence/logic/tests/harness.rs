@@ -1161,3 +1161,40 @@ fn a_recording_belongs_to_one_meeting() {
     let c = upload_meeting(&mut t, "cy");
     attach(&mut t, "cy", &c, &blob, "audio/mpeg", 1_000).unwrap();
 }
+
+#[test]
+fn a_meeting_lists_who_spoke_in_the_order_they_first_did() {
+    let mut t = app();
+    let id = start(&mut t, "bob", "Launch plan");
+    let named = |seq: u32, speaker: &str, name: &str, text: &str| {
+        json!({ "seq": seq, "startMs": seq * 3_000, "endMs": seq * 3_000 + 2_500,
+                "speaker": speaker, "name": name, "text": text })
+    };
+    append(
+        &mut t,
+        "bob",
+        &id,
+        vec![
+            named(0, "others", "Speaker 1", "Morning everyone"),
+            seg(1, "you", "Hi all"),
+            named(2, "others", "Speaker 2", "The listing is ready"),
+            named(3, "others", "Speaker 1", "Great, the deck by Friday"),
+        ],
+    );
+    let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(
+        m["speakers"],
+        json!([
+            { "speaker": "others", "name": "Speaker 1" },
+            { "speaker": "you", "name": "" },
+            { "speaker": "others", "name": "Speaker 2" },
+        ])
+    );
+    // A batch resent, and a speaker heard again, add no one.
+    append(&mut t, "bob", &id, vec![named(4, "others", "Speaker 2", "Yes")]);
+    let m = view(&mut t, "cy", "getMeeting", json!({ "meetingId": id }));
+    assert_eq!(m["speakers"].as_array().map(Vec::len), Some(3));
+    // The list comes with the meetings, for the open action items page.
+    let list = view(&mut t, "cy", "listMeetings", json!({}));
+    assert_eq!(list[0]["speakers"].as_array().map(Vec::len), Some(3));
+}

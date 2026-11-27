@@ -1612,6 +1612,12 @@
             },
             "type": "array"
           },
+          "speakers": {
+            "items": {
+              "$ref": "#/components/schemas/Speaker"
+            },
+            "type": "array"
+          },
           "startedAt": {
             "description": "A u64 as a decimal string (0..=18446744073709551615).",
             "pattern": "^(0|[1-9][0-9]*)$",
@@ -1653,7 +1659,8 @@
           "live",
           "openActions",
           "audio",
-          "speakerNames"
+          "speakerNames",
+          "speakers"
         ],
         "type": "object",
         "x-calimero-abi-type": "MeetingView"
@@ -2583,6 +2590,22 @@
           "receipt"
         ],
         "type": "object"
+      },
+      "Speaker": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "speaker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "speaker",
+          "name"
+        ],
+        "type": "object",
+        "x-calimero-abi-type": "Speaker"
       },
       "SpeakerName": {
         "properties": {

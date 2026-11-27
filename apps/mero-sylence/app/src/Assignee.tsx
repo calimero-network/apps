@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { inPopover, Popover } from "./Popover";
+import { usePresence } from "./usePresence";
 import { assigneeColor, assigneeInitials, sameName, type Assignable } from "./lib/assignee";
 import { useOrg } from "./names";
 import { Icon } from "./ui";
@@ -24,11 +26,13 @@ export function AssigneeChip({
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const presence = usePresence(open);
   const ref = useRef<HTMLSpanElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node) && !inPopover(e.target)) setOpen(false);
     };
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", close);
@@ -63,6 +67,7 @@ export function AssigneeChip({
   return (
     <span className="who-wrap" ref={ref}>
       <button
+        ref={button}
         type="button"
         className={who ? "who-chip" : "who-chip empty"}
         style={style}
@@ -74,15 +79,17 @@ export function AssigneeChip({
       >
         {body}
       </button>
-      {open && (
-        <AssigneePicker
-          current={who}
-          people={people}
-          onPick={(n) => {
-            setOpen(false);
-            if (!sameName(n, who) || (n === "" && who !== "")) onAssign(n);
-          }}
-        />
+      {presence.mounted && (
+        <Popover anchor={button.current} closing={presence.closing} width={248} label="Assign to">
+          <AssigneePicker
+            current={who}
+            people={people}
+            onPick={(n) => {
+              setOpen(false);
+              if (!sameName(n, who) || (n === "" && who !== "")) onAssign(n);
+            }}
+          />
+        </Popover>
       )}
     </span>
   );
@@ -93,17 +100,24 @@ export function AssigneePicker({
   current,
   people,
   onPick,
+  first,
+  noneLabel,
 }: {
   current: string;
   people: readonly Assignable[];
   onPick: (name: string) => void;
+  /** Listed first (the person who said the line an item is made from). */
+  first?: string;
+  /** Offer picking no one, under this label ("Add without assigning"). */
+  noneLabel?: string;
 }) {
   const [query, setQuery] = useState("");
   const q = query.trim();
-  const shown = people.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()));
+  const ordered = first ? [...people].sort((a, b) => Number(sameName(b.name, first)) - Number(sameName(a.name, first))) : people;
+  const shown = ordered.filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()));
   const typedIsNew = q && !people.some((p) => sameName(p.name, q));
   return (
-    <div className="who-picker glass-float" role="listbox" aria-label="Assign to">
+    <div className="who-picker" role="listbox" aria-label="Assign to">
       <input
         autoFocus
         className="who-search"
@@ -145,10 +159,10 @@ export function AssigneePicker({
             {sameName(p.name, current) && <Icon name="check" size={14} />}
           </button>
         ))}
-        {current && (
+        {(current || noneLabel) && (
           <button type="button" role="option" aria-selected={false} className="who-option clear" onClick={() => onPick("")}>
-            <Icon name="x" size={14} />
-            <span className="who-option-name">Unassign</span>
+            <Icon name={noneLabel ? "plus" : "x"} size={14} />
+            <span className="who-option-name">{noneLabel ?? "Unassign"}</span>
           </button>
         )}
       </div>

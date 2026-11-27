@@ -135,6 +135,19 @@ pub struct MeetingRow {
     /// Names given to speaker labels ("Speaker 1" → "Eve").
     #[serde(default)]
     pub aliases: Vec<SpeakerName>,
+    /// Everyone who spoke, in the order they first did: who an action item
+    /// from this meeting can be given to. Rows written before it have none.
+    #[serde(default)]
+    pub speakers: Vec<Speaker>,
+}
+
+/// Someone who spoke in a meeting: `you` or `others`, and the name the call or
+/// the upload gave them ("Eve", "Speaker 2"); empty when there was none.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(rename_all = "camelCase")]
+pub struct Speaker {
+    pub speaker: String,
+    pub name: String,
 }
 
 /// A meeting's recording: one of the app's blobs.
@@ -277,6 +290,8 @@ pub struct MeetingView {
     /// The uploaded recording, if any.
     pub audio: Option<Audio>,
     pub speaker_names: Vec<SpeakerName>,
+    /// Everyone who spoke, in the order they first did.
+    pub speakers: Vec<Speaker>,
 }
 
 #[derive(Clone, Debug, Serialize, AbiType)]
@@ -568,6 +583,7 @@ impl Sylence {
             revised: false,
             audio: None,
             aliases: Vec::new(),
+            speakers: Vec::new(),
         };
         let _ = self.meetings.insert(&id, &row)?;
         let _ = self.by_time.insert(&(now, id.clone()))?;
@@ -619,6 +635,13 @@ impl Sylence {
             row.duration_ms = row.duration_ms.max(s.end_ms);
             low = low.min(s.seq);
             high = high.max(s.seq);
+            let who = Speaker {
+                speaker: s.speaker.clone(),
+                name: name.clone(),
+            };
+            if row.speakers.len() < MAX_ALIASES && !row.speakers.contains(&who) {
+                row.speakers.push(who);
+            }
             let _ = self.segments.insert(
                 &key,
                 &SegmentRow {
@@ -1469,6 +1492,7 @@ impl Sylence {
             open_actions: open,
             audio: row.audio,
             speaker_names: row.aliases,
+            speakers: row.speakers,
         })
     }
 }

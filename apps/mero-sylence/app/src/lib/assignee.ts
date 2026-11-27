@@ -1,4 +1,5 @@
 import { speakerColor } from "./playback";
+import { speakerKey } from "./transcript";
 
 /** Someone an action item can be given to: a speaker of the call or a workspace member, with their colour. */
 export interface Assignable {
@@ -42,6 +43,26 @@ export function assignables(speakers: readonly { name: string; color: string }[]
   for (const m of members) {
     if (!m.trim() || out.some((p) => sameName(p.name, m))) continue;
     out.push({ name: m, color: assigneeColor(m), source: "member" });
+  }
+  return out;
+}
+
+/**
+ * The people who spoke in a meeting, under the names the page shows them by:
+ * the name given to a label ("Speaker 1" → "Eve"), else the recorder's own
+ * name for `you`, else the name the call showed. `others` with no name ("Others")
+ * is no one to give work to, so it is left out.
+ */
+export function callSpeakers(
+  meeting: { speakers?: readonly { speaker: string; name: string }[]; speakerNames: readonly { label: string; name: string }[] },
+  recorderName: string,
+): string[] {
+  const aliases = new Map(meeting.speakerNames.map((a) => [a.label, a.name]));
+  const out: string[] = [];
+  for (const s of meeting.speakers ?? []) {
+    const key = speakerKey(s.speaker, s.name);
+    const name = aliases.get(key) || (key === "you" ? recorderName : key === "others" ? "" : key);
+    if (name && !out.some((n) => sameName(n, name))) out.push(name);
   }
   return out;
 }

@@ -12,6 +12,7 @@ import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { APP_PACKAGE, PRODUCT } from "./session";
 import { useSignedIn } from "./sessionContext";
 import { Icon } from "./ui";
+import { usePresence } from "./usePresence";
 
 const CREATE_LABELS = {
   title: "Start a workspace",
@@ -88,6 +89,7 @@ function WorkspaceCard({
   onDelete: () => void;
 }) {
   const [menu, setMenu] = useState(false);
+  const menuPresence = usePresence(menu);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -131,8 +133,8 @@ function WorkspaceCard({
           >
             <Icon name="more" />
           </button>
-          {menu && (
-            <div className="menu-panel glass-float ws-more-panel" role="menu">
+          {menuPresence.mounted && (
+            <div className={`menu-panel glass-float ws-more-panel${menuPresence.closing ? " closing" : ""}`} role="menu">
               <button
                 role="menuitem"
                 className="menu-item danger-text"

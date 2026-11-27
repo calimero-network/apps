@@ -4,6 +4,7 @@ import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "
 
 import { AppFooter } from "./AppFooter";
 import { Tutorial, tutorialSeen } from "./Tutorial";
+import { usePresence } from "./usePresence";
 import { InfoPage } from "./InfoPages";
 import { InstallPage } from "./InstallPage";
 import { Landing, LandingPage } from "./Landing";
@@ -573,6 +574,7 @@ function Menu({
   const { api } = useSessionApi();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const menuPresence = usePresence(open);
   const ref = useRef<HTMLDivElement>(null);
   const { nameOf, publish } = useSpaceNames();
 
@@ -597,8 +599,8 @@ function Menu({
           <Icon name="user" size={18} />
         </span>
       </button>
-      {open && (
-        <div className="menu-panel glass-float" role="menu">
+      {menuPresence.mounted && (
+        <div className={`menu-panel glass-float${menuPresence.closing ? " closing" : ""}`} role="menu">
           {me && (org || nameOf(me)) && (
             <div className="menu-section">
               {renaming === null ? (

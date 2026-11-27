@@ -1510,26 +1510,10 @@ button.who-chip.empty:hover:not(:disabled) {
   letter-spacing: 0.02em;
 }
 .who-picker {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 240px;
   padding: 6px;
   border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: var(--shadow-float);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .who-picker {
-    animation: who-pop 0.16s var(--ease-out);
-  }
-}
-@keyframes who-pop {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
 }
 .who-search {
   width: 100%;
@@ -1576,12 +1560,6 @@ button.who-chip.empty:hover:not(:disabled) {
   border-top: 1px solid var(--border);
   border-radius: 0;
   margin-top: 4px;
-}
-@media (max-width: 560px) {
-  .who-picker {
-    left: auto;
-    right: 0;
-  }
 }
 
 /* An on/off switch: coral when on. */
@@ -1670,5 +1648,69 @@ input[type="checkbox"].switch:focus-visible {
 @media (max-width: 560px) {
   .open-actions-head {
     flex-wrap: wrap;
+  }
+}
+
+/* ── dropdowns: drawn over the page, they open and close with a little motion ── */
+.popover {
+  z-index: 60;
+}
+.row-tools.pinned {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .popover > *,
+  .menu-panel {
+    animation: drop-in 0.18s var(--ease-out);
+    transform-origin: top;
+  }
+  .popover.up > * {
+    transform-origin: bottom;
+    animation-name: drop-in-up;
+  }
+  .popover.closing > *,
+  .menu-panel.closing {
+    animation: drop-out 0.15s var(--ease-out) forwards;
+  }
+  /* The items arrive one after another. */
+  .popover .who-option,
+  .menu-panel .menu-item,
+  .menu-panel .menu-name-row,
+  .menu-panel .theme-switch {
+    animation: drop-item 0.22s var(--ease-out) both;
+  }
+  .popover .who-option:nth-child(2),
+  .menu-panel .menu-section:nth-child(2) > * { animation-delay: 30ms; }
+  .popover .who-option:nth-child(3),
+  .menu-panel .menu-section:nth-child(3) > * { animation-delay: 60ms; }
+  .popover .who-option:nth-child(4),
+  .menu-panel .menu-section:nth-child(4) > * { animation-delay: 90ms; }
+  .popover .who-option:nth-child(n + 5) { animation-delay: 120ms; }
+  .menu-panel .menu-section > :nth-child(2) { animation-delay: 70ms; }
+  .menu-panel .menu-section > :nth-child(3) { animation-delay: 100ms; }
+  .menu-panel .menu-section > :nth-child(n + 4) { animation-delay: 130ms; }
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+@keyframes drop-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+@keyframes drop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes drop-item {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
   }
 }

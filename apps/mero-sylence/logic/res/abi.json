@@ -736,6 +736,10 @@
         [
           "speakerNames",
           "list<SpeakerName>"
+        ],
+        [
+          "speakers",
+          "list<Speaker>"
         ]
       ],
       "kind": "record"
@@ -880,6 +884,19 @@
         [
           "edited",
           "bool"
+        ]
+      ],
+      "kind": "record"
+    },
+    "Speaker": {
+      "fields": [
+        [
+          "speaker",
+          "string"
+        ],
+        [
+          "name",
+          "string"
         ]
       ],
       "kind": "record"

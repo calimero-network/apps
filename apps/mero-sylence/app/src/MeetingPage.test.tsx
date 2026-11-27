@@ -185,13 +185,27 @@ describe("MeetingPage", () => {
     const { sent } = setup({ me: "cy" });
     const lines = await screen.findAllByTestId("segment");
     fireEvent.click(within(lines[1]!).getByRole("button", { name: "Make action item" }));
+    // The picker offers the call's people; the item goes to the one picked.
+    const option = (await screen.findAllByRole("option"))[0]!;
+    const picked = option.querySelector(".who-option-name")!.textContent!;
+    expect(picked).not.toBe("Others");
+    fireEvent.click(option);
     await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
     expect(sent.find((s) => s.method === "addAction")!.args).toEqual({
       meetingId: "aa11",
       text: "Cy will send the deck",
-      assignee: "",
+      assignee: picked,
       sourceSeq: 1,
     });
+  });
+
+  it("makes an action item from a line without assigning it", async () => {
+    const { sent } = setup({ me: "cy" });
+    const lines = await screen.findAllByTestId("segment");
+    fireEvent.click(within(lines[1]!).getByRole("button", { name: "Make action item" }));
+    fireEvent.click(await screen.findByRole("option", { name: /Add without assigning/ }));
+    await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
+    expect(sent.find((s) => s.method === "addAction")!.args).toMatchObject({ assignee: "", sourceSeq: 1 });
   });
 
   it("reads an ended meeting whole, so its talk time covers every line", async () => {

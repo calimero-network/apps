@@ -27,6 +27,10 @@ import { useRead, type Workspace } from "./useWorkspace";
 import { Icon } from "./ui";
 import { talkStats } from "./lib/stats";
 import { speakerColor, speakerLanes } from "./lib/playback";
+import { AssigneePicker, useMemberNames } from "./Assignee";
+import { inPopover, Popover } from "./Popover";
+import { usePresence } from "./usePresence";
+import { assignables, type Assignable } from "./lib/assignee";
 import { Player } from "./Player";
 import { usePlayer, usePlayingIndex } from "./usePlayer";
 import { SpeakersCard } from "./SpeakersCard";
@@ -193,9 +197,12 @@ export function MeetingBody({
   }, [stats]);
   /** The call's speakers as action items name them, in their transcript colour. */
   const actionSpeakers = useMemo(
-    () => speakers.map((s) => ({ name: nameOf(s.label), color: colorOf(s.label) })),
+    // An unnamed "Others" is no one to give work to.
+    () => speakers.filter((s) => s.label !== "others").map((s) => ({ name: nameOf(s.label), color: colorOf(s.label) })),
     [speakers, nameOf, colorOf],
   );
+  const memberNames = useMemberNames();
+  const actionPeople = useMemo(() => assignables(actionSpeakers, memberNames), [actionSpeakers, memberNames]);
   const shownSegments = useMemo(
     () =>
       segments.filter(
@@ -277,7 +284,8 @@ export function MeetingBody({
     [run, act, meetingId, onSegmentChanged],
   );
   const makeAction = useCallback(
-    (s: SegmentView) => run(() => act((c) => c.addAction({ meetingId, text: s.text.slice(0, 500), assignee: "", sourceSeq: s.seq }))),
+    (s: SegmentView, assignee: string) =>
+      run(() => act((c) => c.addAction({ meetingId, text: s.text.slice(0, 500), assignee: assignee.trim(), sourceSeq: s.seq }))),
     [run, act, meetingId],
   );
   const canSeek = hasAudio && !!recording.url;
@@ -485,6 +493,7 @@ export function MeetingBody({
                 editable={recorder}
                 onSave={saveLine}
                 onMakeAction={makeAction}
+                people={actionPeople}
               />
             ))}
           </ol>
@@ -651,6 +660,7 @@ const SegmentRow = memo(function SegmentRow({
   editable,
   onSave,
   onMakeAction,
+  people = [],
 }: {
   ref?: React.Ref<HTMLLIElement>;
   focused?: boolean;
@@ -665,10 +675,29 @@ const SegmentRow = memo(function SegmentRow({
   speaker: string;
   editable: boolean;
   onSave: (seq: number, text: string) => Promise<unknown>;
-  onMakeAction: (segment: SegmentView) => Promise<unknown>;
+  onMakeAction: (segment: SegmentView, assignee: string) => Promise<unknown>;
+  /** Who the action item can be given to; the line's speaker comes first. */
+  people?: readonly Assignable[];
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [made, setMade] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const picker = usePresence(assigning);
+  const toolsRef = useRef<HTMLSpanElement>(null);
+  const makeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!assigning) return;
+    const close = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node) && !inPopover(e.target)) setAssigning(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setAssigning(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [assigning]);
   useEffect(() => {
     if (!made) return;
     const t = setTimeout(() => setMade(false), 1_600);
@@ -727,16 +756,34 @@ const SegmentRow = memo(function SegmentRow({
         </p>
       )}
       {draft === null && (
-        <span className="row-tools">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Make action item"
-            title="Make action item"
-            onClick={() => void onMakeAction(segment).then(() => setMade(true))}
-          >
-            <Icon name={made ? "check" : "plus"} size={14} />
-          </button>
+        <span className={`row-tools${assigning ? " pinned" : ""}`} ref={toolsRef}>
+          <span className="who-wrap">
+            <button
+              ref={makeRef}
+              type="button"
+              className="icon-btn"
+              aria-label="Make action item"
+              aria-expanded={assigning}
+              title="Make action item, and say who does it"
+              onClick={() => setAssigning((o) => !o)}
+            >
+              <Icon name={made ? "check" : "plus"} size={14} />
+            </button>
+            {picker.mounted && (
+              <Popover anchor={makeRef.current} closing={picker.closing} width={248} label="Who does it">
+                <AssigneePicker
+                  current=""
+                  people={people}
+                  first={speaker}
+                  noneLabel="Add without assigning"
+                  onPick={(who) => {
+                    setAssigning(false);
+                    void onMakeAction(segment, who).then(() => setMade(true));
+                  }}
+                />
+              </Popover>
+            )}
+          </span>
           {editable && (
             <button
               type="button"

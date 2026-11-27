@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Trash } from "@calimero-network/mero-icons";
 import { AssigneeChip, useMemberNames } from "./Assignee";
-import { assignables, assigneeColor, assigneeInitials, sameName, type Assignable } from "./lib/assignee";
+import { assignables, assigneeColor, assigneeInitials, callSpeakers, sameName, type Assignable } from "./lib/assignee";
+import { displayName } from "./lib/people";
+import { useSpaceNames } from "./names";
 import { PlatformMark } from "./PlatformMark";
 import { Icon } from "./ui";
 import "./shell.css";
@@ -134,6 +136,22 @@ const OPEN_AT_START = 3;
 function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
   const [view, setView] = useState<"call" | "person">("call");
   const memberNames = useMemberNames();
+  const { nameOf } = useSpaceNames();
+  /** Per call: who spoke in it (saved with the meeting), then the workspace's members. */
+  const peopleOf = useMemo(() => {
+    const byMeeting = new Map<string, Assignable[]>();
+    for (const g of groups) {
+      const spoke = g.meeting ? callSpeakers(g.meeting, displayName(g.meeting.recorder, null, nameOf(g.meeting.recorder))) : [];
+      byMeeting.set(
+        g.id,
+        assignables(
+          spoke.map((name) => ({ name, color: assigneeColor(name) })),
+          memberNames,
+        ),
+      );
+    }
+    return (meetingId: string) => byMeeting.get(meetingId) ?? assignables([], memberNames);
+  }, [groups, memberNames, nameOf]);
   const people = useMemo(() => assignables([], memberNames), [memberNames]);
   const [open, setOpen] = useState<Set<string>>(
     () => new Set(groups.slice(0, groups.length <= OPEN_AT_START ? groups.length : 2).map((g) => g.id)),
@@ -168,7 +186,7 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
         )}
       </div>
       {view === "person" ? (
-        <ByPerson groups={groups} people={people} {...handlers} />
+        <ByPerson groups={groups} people={people} peopleOf={peopleOf} {...handlers} />
       ) : (
         groups.map((g) => {
           const title = g.meeting?.title || "Meeting";
@@ -202,7 +220,7 @@ function OpenGroups({ groups, ...handlers }: { groups: Group[] } & Handlers) {
               </summary>
               <ul className="action-list">
                 {g.items.map((a) => (
-                  <OpenRow key={a.id} action={a} people={people} {...handlers}>
+                  <OpenRow key={a.id} action={a} people={peopleOf(g.id)} {...handlers}>
                     <span className="dim">
                       added by <PersonName account={a.createdBy} />
                     </span>
@@ -287,7 +305,12 @@ function OpenRow({
 }
 
 /** The same items by who has them: a section per person in their colour, no one's last; each item names its call. */
-function ByPerson({ groups, people, ...handlers }: { groups: Group[]; people: readonly Assignable[] } & Handlers) {
+function ByPerson({
+  groups,
+  people,
+  peopleOf,
+  ...handlers
+}: { groups: Group[]; people: readonly Assignable[]; peopleOf: (meetingId: string) => Assignable[] } & Handlers) {
   const byPerson = useMemo(() => {
     const out: { name: string; items: { action: ActionView; meeting: Group["meeting"] }[] }[] = [];
     for (const g of groups) {
@@ -322,7 +345,7 @@ function ByPerson({ groups, people, ...handlers }: { groups: Group[]; people: re
           </summary>
           <ul className="action-list">
             {p.items.map(({ action: a, meeting }) => (
-              <OpenRow key={a.id} action={a} people={people} {...handlers}>
+              <OpenRow key={a.id} action={a} people={peopleOf(a.meetingId)} {...handlers}>
                 <button type="button" className="oa-call" onClick={() => handlers.onOpen(a.meetingId)} title="Open the call">
                   <Icon name="mic" size={12} /> {meeting?.title || "Meeting"}
                 </button>

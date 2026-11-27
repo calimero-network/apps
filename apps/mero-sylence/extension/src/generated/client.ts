@@ -87,6 +87,7 @@ export interface MeetingView {
   openActions: number;
   audio: Audio | null;
   speakerNames: SpeakerName[];
+  speakers: Speaker[];
 }
 
 /** The app type `PersonInsight`. */
@@ -136,6 +137,12 @@ export interface SegmentView {
   name: string;
   text: string;
   edited: boolean;
+}
+
+/** The app type `Speaker`. */
+export interface Speaker {
+  speaker: string;
+  name: string;
 }
 
 /** The app type `SpeakerName`. */
