@@ -121,7 +121,7 @@ describe('one sign-in everywhere', () => {
     invites.put({ token: 'tok-1', org: null, team: null, doc: null, route: null, extra: {} });
     const { client } = setup();
     fireEvent.click(await screen.findByTestId('signup-passkey'));
-    fireEvent.click(await screen.findByTestId('signup-passkey')); // past the optional name
+    fireEvent.click(await screen.findByTestId('signup-create')); // past the passkey's label
     await signedIn();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', {
       invite: 'tok-1',
@@ -160,7 +160,7 @@ describe('one sign-in everywhere', () => {
       </CalimeroProvider>,
     );
     fireEvent.click(await screen.findByTestId('signup-passkey'));
-    fireEvent.click(await screen.findByTestId('signup-passkey')); // past the optional name
+    fireEvent.click(await screen.findByTestId('signup-create')); // past the passkey's label
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/teams/org-1'));
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' });
     expect(invites.token()).toBeNull();

@@ -1,13 +1,12 @@
 export { knownPasskeys, thisClusterPasskey } from "./knownPasskeys";
 export {
-  appNamedPasskey,
+  labelledName,
+  labelledPasskey,
   passkeyAppName,
   passkeyCluster,
   passkeyName,
-  rememberedSignUpName,
-  signUpNameKey,
   UNNAMED_ACCOUNT,
-  withAppName,
+  type PasskeyNaming,
 } from "./passkeyName";
 export {
   describeCeremonyFailure,
@@ -44,6 +43,7 @@ export {
   type Session,
   type SessionApi,
   type SessionDeps,
+  type PasskeySignUpOptions,
 } from "./session";
 export {
   PasskeySignIn,

@@ -313,6 +313,8 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await expect(signUp).toBeVisible({ timeout: 60_000 });
       await shot("signed-out");
       await signUp.click();
+      // The shared panel's "Create an account" opens the passkey's label step; "Create passkey" signs up.
+      if (!app.signUpTestId) await page.getByTestId("signup-create").click();
       const approve = page.locator('[data-testid="signup-approve"]:enabled');
       await expect(approve.or(app.signedIn(page)).first()).toBeVisible({ timeout: 120_000 });
       if (await approve.isVisible()) await approve.click();

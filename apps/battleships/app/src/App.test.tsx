@@ -211,6 +211,7 @@ describe('App', () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalled());
     expect(client.signUp.mock.calls[0]?.[1]).toBe('');
 
@@ -230,6 +231,7 @@ describe('App', () => {
     client.createApp.mockRejectedValueOnce(new Error('quota exceeded'));
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('signup-passkey'));
+    fireEvent.click(await screen.findByTestId('signup-create'));
     fireEvent.click(await screen.findByText('Create a lobby'));
     fireEvent.click(screen.getByTestId('create-done'));
     expect(await screen.findByText('quota exceeded')).toBeTruthy();
@@ -330,6 +332,7 @@ describe('App', () => {
     const create = await screen.findByTestId('signup-passkey');
     expect(create.textContent).toBe('Create your account and join the lobby');
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId('signup-create'));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-9' }));
     await waitFor(() => expect(client.call).toHaveBeenCalledWith('app-1', 'registerPlayer', {}));
     expect(client.signIn).not.toHaveBeenCalled();

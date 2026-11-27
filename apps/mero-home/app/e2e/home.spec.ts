@@ -35,17 +35,16 @@ async function withPasskey(context: BrowserContext, page: Page): Promise<void> {
 
 /** Signs up on the invitation page (the account and the join in one step). */
 async function signUpFromInvite(page: Page, name: string): Promise<void> {
-  // The first press asks for the (optional) name; the second creates the passkey.
-  const create = page.getByTestId("signup-passkey");
-  await create.click();
+  // "Create an account" opens the step that asks the (optional) name; "Create passkey" signs up.
+  await page.getByTestId("signup-passkey").click();
   await page.getByTestId("signup-name").fill(name);
-  await create.click();
+  await page.getByTestId("signup-create").click();
   // Two prompts: the page asks the second (the approval) at once, and only
   // when that one fails does it wait on an enabled "Approve" (while a prompt
   // is open the same test id is a disabled "waiting" button, and it leaves
   // the page once the sign-up is done). Done is when neither control is left.
   const approve = page.locator('[data-testid="signup-approve"]:enabled');
-  const pending = page.locator('[data-testid="signup-approve"], [data-testid="signup-passkey"]');
+  const pending = page.locator('[data-testid="signup-approve"], [data-testid="signup-passkey"], [data-testid="signup-create"]');
   const failed = page.getByTestId("signin-error");
   await expect
     .poll(

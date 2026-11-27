@@ -143,6 +143,7 @@ describe("an invite link, no account here", () => {
     render(<Screen d={deps(client)} invite="tok-1" onJoined={onJoined} />);
 
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     expect(await screen.findByTestId("status")).toBeTruthy();
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
@@ -157,6 +158,7 @@ describe("an invite link, no account here", () => {
     render(<Screen d={deps(client)} invite="tok-1" />);
     // Pressed while the cluster's policy is still being read.
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     readPolicy();
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
@@ -168,6 +170,7 @@ describe("an invite link, no account here", () => {
       const client = fakeClient({ signUpPolicy: vi.fn(() => new Promise<never>(() => {})) });
       render(<Screen d={deps(client)} invite="tok-1" onJoined={() => {}} />);
       fireEvent.click(await screen.findByTestId("signup-passkey"));
+      fireEvent.click(await screen.findByTestId("signup-create"));
       await act(() => vi.advanceTimersByTimeAsync(POLICY_READ_TIMEOUT_MS));
       await screen.findByTestId("status");
       expect(client.signUp).toHaveBeenCalledTimes(1);
@@ -187,6 +190,7 @@ describe("an invite link, no account here", () => {
     view.rerender(<Screen d={deps(second)} invite="tok-1" />);
     await waitFor(() => expect(second.signUpPolicy).toHaveBeenCalled());
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     readPolicy();
     await screen.findByTestId("status");
     expect(second.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
@@ -198,6 +202,7 @@ describe("an invite link, no account here", () => {
     });
     render(<Screen d={deps(client)} invite="tok-old" onJoined={() => {}} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     expect((await screen.findByTestId("signin-error")).textContent).toMatch(/expired.*ask whoever sent it for a new one/);
   });
 });
@@ -229,6 +234,7 @@ describe("an invite link, an account here", () => {
     const create = screen.getByTestId("signup-passkey");
     expect(create.className).toContain("cp-passkey__primary");
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
   });
@@ -246,6 +252,7 @@ describe("an invite link, an account here", () => {
     const client = fakeClient();
     render(<Screen d={deps(client, storage)} invite="tok-1" onJoined={() => {}} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByTestId("status");
     expect(storage.getItem(accountHintKey(resolveTarget(DEV_ENV)))).toBe("1");
   });
@@ -292,6 +299,7 @@ describe("the two-prompt sign-up", () => {
     const pk = passkey();
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByTestId("status");
     expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
@@ -304,6 +312,7 @@ describe("the two-prompt sign-up", () => {
     pk.get.mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
 
     await approve();
     expect(screen.queryByTestId("signin-error")).toBeNull();
@@ -320,6 +329,7 @@ describe("the two-prompt sign-up", () => {
     });
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     expect((await screen.findByTestId("signin-error", {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
     await approve();
     await screen.findByTestId("status");
@@ -332,6 +342,7 @@ describe("the two-prompt sign-up", () => {
     pk.get.mockRejectedValueOnce(named("ConfirmPromptBlocked"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     expect(await screen.findByText(SIGN_UP_READY)).toBeTruthy();
     // Nothing starts the second prompt again by itself.
     await act(async () => {
@@ -351,6 +362,7 @@ describe("the two-prompt sign-up", () => {
       .mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await approve();
     expect((await screen.findByTestId("signin-error", {}, { timeout: 3000 })).textContent).toBe(SIGN_UP_NOT_FINISHED);
     expect((screen.getByTestId("signup-approve") as HTMLButtonElement).disabled).toBe(false);
@@ -364,6 +376,7 @@ describe("the two-prompt sign-up", () => {
     pk.create.mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByTestId("signin-error")).toBeNull();
   });
@@ -374,6 +387,7 @@ describe("the two-prompt sign-up", () => {
     pk.get.mockRejectedValueOnce(named("NotAllowedError"));
     render(<Screen d={deps(client, memoryStorage(), pk)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     fireEvent.click(await screen.findByTestId("signup-cancel"));
     // Quiet: the panel is back, with no error.
     await screen.findByTestId("signup-passkey");

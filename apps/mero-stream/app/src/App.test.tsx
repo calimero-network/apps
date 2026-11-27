@@ -243,6 +243,7 @@ describe("App", () => {
       expect(screen.getByTestId("signup-passkey")).toBeTruthy();
     });
     fireEvent.click(screen.getByTestId("signup-passkey"));
+    fireEvent.click(screen.getByTestId("signup-create"));
     await screen.findByText("Your streams");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     await screen.findByTestId("streams-empty");
@@ -493,6 +494,7 @@ describe("App", () => {
     const create = await screen.findByTestId("signup-passkey");
     expect(create.textContent).toBe("Create your account and join the stream");
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
     await waitFor(() =>
       expect(client.call).toHaveBeenCalledWith("app-1", "join", expect.anything()),

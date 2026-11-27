@@ -351,6 +351,7 @@ describe('SignInDialog', () => {
     fireEvent.click(screen.getByTestId('signin-passkey'));
     expect(value.signIn).toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('signup-passkey'));
+    fireEvent.click(screen.getByTestId('signup-create'));
     expect(screen.queryByTestId('signup-name')).toBeNull();
     expect(value.signUp).toHaveBeenCalled();
   });

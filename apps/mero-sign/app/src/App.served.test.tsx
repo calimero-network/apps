@@ -60,6 +60,7 @@ describe('the app on a page a node serves', () => {
     }));
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('signup-passkey'));
+    fireEvent.click(await screen.findByTestId('signup-create'));
     await screen.findByTestId('agreement-title');
     expect(window.location.pathname).toBe(`${BASE}agreements/agr-1`);
   });

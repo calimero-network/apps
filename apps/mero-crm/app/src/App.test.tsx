@@ -320,6 +320,7 @@ describe('App', () => {
     const create = await screen.findByTestId('signup-passkey', {}, SLOW);
     expect(create.textContent).toBe('Create your account and join the workspace');
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId('signup-create'));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-xyz' }), SLOW);
     await waitFor(() => expect(screen.queryByTestId('invitation-page')).toBeNull(), SLOW);
     expect(client.signIn).not.toHaveBeenCalled();
@@ -450,6 +451,7 @@ describe('App', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/'), SLOW);
     await openSignIn();
     fireEvent.click(await screen.findByTestId('signup-passkey', {}, SLOW));
+    fireEvent.click(await screen.findByTestId('signup-create', {}, SLOW));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-xyz' }), SLOW);
     await waitFor(() => expect(window.location.pathname).toBe('/crm/members'), SLOW);
     await new Promise((r) => setTimeout(r, 300));

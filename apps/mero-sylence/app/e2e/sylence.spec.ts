@@ -39,6 +39,7 @@ test("signs up with a passkey and makes a workspace", async () => {
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Meeting notes that write themselves");
   await page.getByRole("button", { name: "Sign in" }).first().click();
   await page.getByTestId("signup-passkey").click();
+  await page.getByTestId("signup-create").click();
   // Signed in with no workspace: the picker.
   await page.getByRole("button", { name: "Start a new workspace" }).click();
   await page.getByPlaceholder("e.g. Product team").fill("Launch team");

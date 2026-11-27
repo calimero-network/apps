@@ -52,6 +52,7 @@ const notAllowed = (message = 'The request is not allowed by the user agent.') =
 
 async function startSignUp() {
   fireEvent.click(await screen.findByTestId('signup-passkey'));
+  fireEvent.click(await screen.findByTestId('signup-create'));
 }
 
 /** "Approve with your new passkey", once the sign-up has fallen back to it. */

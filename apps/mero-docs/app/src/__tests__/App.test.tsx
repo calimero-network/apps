@@ -261,6 +261,7 @@ describe('App on Calimero 1.0', () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
+    fireEvent.click(await screen.findByTestId('signup-create', {}, BOOT));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'inv_f' }), BOOT);
     await waitFor(() => expect(window.location.pathname).toBe('/app/org-1/f/eng'), BOOT);
     expect((await screen.findAllByText('Launch plan', {}, BOOT)).length).toBeGreaterThan(0);
@@ -289,6 +290,7 @@ describe('App on Calimero 1.0', () => {
       render(<App deps={d} />);
       fireEvent.click(await screen.findByText('Open sign-in'));
       fireEvent.click(await screen.findByTestId('signup-passkey'));
+      fireEvent.click(await screen.findByTestId('signup-create'));
     }
     /** "Approve with your new passkey", once the sign-up has fallen back to it. */
     async function approveButton() {
@@ -456,6 +458,7 @@ describe('App on Calimero 1.0', () => {
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId('signup-passkey', {}, BOOT));
+      fireEvent.click(await screen.findByTestId('signup-create', {}, BOOT));
       await waitFor(() => expect(client.signUp).toHaveBeenCalled(), BOOT);
       expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'inv_abc' });
       await waitFor(() => expect(invites.token()).toBeNull());

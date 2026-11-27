@@ -384,6 +384,7 @@ describe("App", () => {
     const client = fakeClient();
     render(<App deps={deps(client)} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
     await screen.findByText("Namespaces vs contexts");
     expect(window.location.pathname).toBe("/f");

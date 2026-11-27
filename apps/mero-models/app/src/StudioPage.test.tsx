@@ -314,6 +314,7 @@ describe("the studio's front door", () => {
     const client = fakeClient();
     renderPage(client);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), ""));
   });
 
@@ -356,6 +357,7 @@ describe("the studio's front door", () => {
       const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
       renderPage(client, storage, invites);
       fireEvent.click(await screen.findByTestId("signup-passkey"));
+      fireEvent.click(await screen.findByTestId("signup-create"));
       await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
       expect(client.redeemInvite).not.toHaveBeenCalled();
