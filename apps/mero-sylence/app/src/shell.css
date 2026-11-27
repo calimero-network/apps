@@ -139,22 +139,7 @@
 .start-layout.solo .start-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.picker-showcase {
-  margin: 0;
-  padding: 0;
-  background: none;
-  font-size: 14px;
-  overflow: visible;
-}
-.picker-showcase .demo {
-  height: 400px;
-}
-.picker-showcase figcaption {
-  margin-top: 12px;
-  color: var(--text-dim);
-  font-size: 13px;
-  text-align: center;
-}
+
 .start-card {
   display: flex;
   flex-direction: column;
@@ -549,9 +534,6 @@
   .start-layout.solo .start-grid {
     grid-template-columns: 1fr;
   }
-  .picker-showcase .demo {
-    height: 420px;
-  }
   .app-footer-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -728,4 +710,139 @@
     background: color-mix(in srgb, var(--text) 16%, var(--sunken));
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
+}
+
+/* ── the still panel beside the ways in ── */
+.showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--on-ink);
+  overflow: hidden;
+  position: relative;
+}
+.showcase::after {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -80px;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--coral) 35%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.showcase-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.showcase-slogan {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.showcase-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+  color: color-mix(in srgb, var(--on-ink) 78%, transparent);
+}
+.showcase-points li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.showcase-points .icon {
+  flex: none;
+  color: var(--coral);
+}
+.showcase-card {
+  margin-top: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+}
+.showcase-card p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.showcase-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.showcase-card-head img {
+  border-radius: 4px;
+}
+.showcase-seal {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--coral) 16%, transparent);
+}
+.sc-who {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sc-who.amber {
+  background: color-mix(in srgb, #f2a20c 20%, transparent);
+}
+.sc-who.blue {
+  background: color-mix(in srgb, #3d7dff 18%, transparent);
+}
+.showcase-card .todo {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.showcase-card .todo .sc-who {
+  margin-left: auto;
+}
+.sc-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--text-dim);
+}
+@media (max-width: 560px) {
+  .showcase {
+    padding: 22px 18px;
+  }
+}
+/* The glow sits behind the words. */
+.showcase > * {
+  position: relative;
+  z-index: 1;
 }

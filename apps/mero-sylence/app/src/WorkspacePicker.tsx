@@ -8,7 +8,6 @@ import { roleName } from "./lib/manage";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { APP_PACKAGE, PRODUCT } from "./session";
 import { useSignedIn } from "./sessionContext";
-import { CallDemo } from "./Landing";
 import { Icon } from "./ui";
 
 const CREATE_LABELS = {
@@ -31,6 +30,51 @@ interface OrgChoice {
 
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
+}
+
+/** A still panel beside the ways in: what Sylence is for, in one line, and a saved meeting drawn under it. */
+function PickerShowcase() {
+  return (
+    <aside className="showcase" aria-label={`Why ${PRODUCT}`}>
+      <span className="showcase-eyebrow">Private meeting notes</span>
+      <h2 className="showcase-slogan">
+        Every word remembered.
+        <br />
+        Only your team can listen.
+      </h2>
+      <ul className="showcase-points">
+        <li>
+          <Icon name="mic" /> Transcribed on your laptop, no bot in the call
+        </li>
+        <li>
+          <Icon name="key" /> Sealed in a secure enclave
+        </li>
+        <li>
+          <Icon name="users" /> Read, search and act on it together
+        </li>
+      </ul>
+      <div className="showcase-card" aria-hidden="true">
+        <div className="showcase-card-head">
+          <img src="./favicon.svg" alt="" width={16} height={16} />
+          <strong>Launch plan</strong>
+          <span className="dim">Google Meet · 0:42</span>
+          <span className="showcase-seal">
+            <Icon name="key" size={11} /> Sealed
+          </span>
+        </div>
+        <p>
+          <b className="sc-who amber">Eve</b> Let&apos;s lock the launch plan today.
+        </p>
+        <p>
+          <b className="sc-who blue">John</b> The store listing is ready.
+        </p>
+        <p className="todo">
+          <span className="sc-check" /> Send the deck by Friday
+          <b className="sc-who blue">John</b>
+        </p>
+      </div>
+    </aside>
+  );
 }
 
 /**
@@ -214,10 +258,7 @@ export function WorkspacePicker({
         </section>
       </div>
       {!createOnly && (
-        <figure className="landing picker-showcase" aria-label="How a call becomes notes">
-          <CallDemo />
-          <figcaption>Record a call and Sylence writes who said what, then saves the transcript, summary and action items here.</figcaption>
-        </figure>
+        <PickerShowcase />
       )}
       </div>
 
