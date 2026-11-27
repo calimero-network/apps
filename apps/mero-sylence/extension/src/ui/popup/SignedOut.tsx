@@ -9,8 +9,6 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
   const [error, setError] = useState<string | null>(null);
   /** The new account's details, filled in here: the window then only asks for the passkey. */
   const [form, setForm] = useState(false);
-  const [name, setName] = useState("");
-  const [ws, setWs] = useState("");
   const [label, setLabel] = useState("");
 
   // Both open Sylence's page, which signs in or makes the account with a passkey;
@@ -21,7 +19,7 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
     try {
       await ask(
         mode === "up"
-          ? { type: "signIn", intent: "signup", account: { name: name.trim(), label: label.trim(), ws: ws.trim() } }
+          ? { type: "signIn", intent: "signup", account: { name: "", label: label.trim(), ws: "" } }
           : { type: "signIn" },
       );
     } catch (e) {
@@ -62,24 +60,17 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
           style={{ gap: 10 }}
           onSubmit={(e) => {
             e.preventDefault();
-            if (ws.trim()) void open("up");
+            void open("up");
           }}
         >
-          <div className="field">
-            <label htmlFor="su-name">Your name</label>
-            <input id="su-name" className="input" autoFocus placeholder="e.g. Alex" maxLength={48} value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="su-ws">Your first workspace</label>
-            <input id="su-ws" className="input" placeholder="e.g. Product team" maxLength={80} value={ws} onChange={(e) => setWs(e.target.value)} />
-          </div>
           <div className="field">
             <label htmlFor="su-label">
               Label your passkey <span className="muted">(optional)</span>
             </label>
-            <input id="su-label" className="input" placeholder="e.g. Work laptop" maxLength={32} value={label} onChange={(e) => setLabel(e.target.value)} />
+            <input id="su-label" className="input" autoFocus placeholder="e.g. Work laptop" maxLength={32} value={label} onChange={(e) => setLabel(e.target.value)} />
+            <span className="small muted">So you can tell your passkeys apart in your password manager.</span>
           </div>
-          <button type="submit" className="btn primary block" disabled={busy !== null || !ws.trim()}>
+          <button type="submit" className="btn primary block" disabled={busy !== null}>
             {busy === "up" ? <Spinner size={14} /> : null}
             {busy === "up" ? "Approve with your passkey…" : "Create account"}
           </button>

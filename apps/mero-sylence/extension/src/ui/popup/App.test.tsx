@@ -59,19 +59,13 @@ describe("popup", () => {
   it("signed out: creating an account is filled in here; the window only asks for the passkey", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Create an account" }));
-    const create = screen.getByRole("button", { name: "Create account" });
-    // A first workspace is needed: recording goes somewhere.
-    expect(create).toHaveProperty("disabled", true);
-    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Eve" } });
-    fireEvent.change(screen.getByLabelText("Your first workspace"), { target: { value: "Launch team" } });
+    // Only the passkey's label is asked here; the workspace comes next, in this popup.
+    expect(screen.queryByLabelText("Your name")).toBeNull();
+    expect(screen.queryByLabelText("Your first workspace")).toBeNull();
     fireEvent.change(screen.getByLabelText(/Label your passkey/), { target: { value: "Work laptop" } });
-    fireEvent.click(create);
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() =>
-      expect(chrome.sent).toContainEqual({
-        type: "signIn",
-        intent: "signup",
-        account: { name: "Eve", label: "Work laptop", ws: "Launch team" },
-      }),
+      expect(chrome.sent).toContainEqual({ type: "signIn", intent: "signup", account: { name: "", label: "Work laptop", ws: "" } }),
     );
   });
 

@@ -72,6 +72,8 @@ export function signInUrl(
   const path = version ? `/${escape(version)}/` : "/";
   let extra = intent ? `&intent=${intent}` : "";
   // A workspace named in the extension: the page creates it without a form of its own.
+  // The extension lends this page its session for the create (no second sign-in).
+  if (intent === "create" && workspace?.name.trim()) extra += "&lend=1";
   if (intent === "create" && workspace?.name.trim()) {
     extra += `&name=${encodeURIComponent(workspace.name.trim().slice(0, 80))}`;
     if (workspace.self.trim()) extra += `&self=${encodeURIComponent(workspace.self.trim().slice(0, 48))}`;

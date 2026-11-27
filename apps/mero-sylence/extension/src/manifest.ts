@@ -11,6 +11,10 @@
  *   names). It runs only on the tab the person recorded, through the popup's
  *   activeTab grant, so it needs no host permission for the call sites.
  * Hosts: Calimero's nodes (the workspace's API), and a local development cluster.
+ * `externally_connectable`: Sylence's page (Calimero's, or a local one in a
+ * development build) may ask the extension for its session while it creates a
+ * workspace the person asked for here, so they don't sign in twice. The
+ * service worker answers only the page it opened, once (background: lending).
  * Model files come from Hugging Face over CORS, so it needs no host permission.
  */
 export const ICON_SIZES = [16, 32, 48, 128] as const;
@@ -46,6 +50,9 @@ export function buildManifest(options: { key: string; version: string; store?: b
       ...(options.store ? [] : DEV_HOSTS),
       ...(options.e2e && !options.store ? CALL_HOSTS : []),
     ],
+    externally_connectable: {
+      matches: ["https://*.calimero.network/*", ...(options.store ? [] : DEV_HOSTS)],
+    },
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

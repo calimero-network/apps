@@ -233,6 +233,28 @@ async function lineName(speaker: "you" | "others", startedAt: number | undefined
 
 // ── sign-in ──────────────────────────────────────────────────────────────────
 
+/**
+ * A workspace being created in the sign-in window: the page it opened may
+ * borrow the extension's session for it, once, so the person signs in only
+ * once. Chrome says which page asks (`sender.origin`); the one-time `state`
+ * of this window must match too.
+ */
+let lending: { origin: string; state: string } | null = null;
+
+chrome.runtime.onMessageExternal?.addListener((message: unknown, sender, respond) => {
+  const m = message as { type?: string; state?: string } | null;
+  if (m?.type !== "lendSession") return false;
+  const asked = lending;
+  const origin = sender.origin ?? (sender.url ? new URL(sender.url).origin : "");
+  if (!asked || origin !== asked.origin || m.state !== asked.state) {
+    respond({ ok: false });
+    return false;
+  }
+  lending = null;
+  void auth().then((a) => respond(a ? { ok: true, session: a.session } : { ok: false }));
+  return true;
+});
+
 /** The sign-in under way, if any (one window at a time). */
 let signingIn: Promise<AuthState> | null = null;
 
@@ -253,6 +275,8 @@ async function signIn(intent?: SignInIntent, workspace?: NewWorkspace, account?:
     return await run;
   } finally {
     if (signingIn === run) signingIn = null;
+    // A lend the page never asked for ends with its window.
+    lending = null;
   }
 }
 
@@ -268,6 +292,8 @@ async function openSignIn(intent?: SignInIntent, workspace?: NewWorkspace, accou
     .then(() => chrome.windows.getLastFocused())
     .catch(() => undefined);
   const url = signInUrl(page.origin, page.version, request, intent, workspace, account);
+  // Signed in already: the page may borrow this session for the create.
+  lending = intent === "create" && workspace?.name.trim() && (await auth()) ? { origin: page.origin, state: request.state } : null;
   const answer = await openAuthWindow(url, `https://${chrome.runtime.id}.chromiumapp.org/`);
   if (!answer) throw new Error("Sign-in was cancelled.");
   const session = await openHandoff(request, answer);

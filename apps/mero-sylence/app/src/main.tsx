@@ -7,6 +7,7 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConsentPopupReturn } from "@calimero-network/mero-react";
 import { App } from "./App";
+import { borrowExtensionSession, lendRequest } from "./native";
 import { closeSharedDialogsOnBackdrop } from "./backdropClose";
 import { invites } from "./lib/orgs";
 import { BASE } from "./route";
@@ -39,10 +40,15 @@ closeSharedDialogsOnBackdrop();
 
 const Wrapper = import.meta.env.DEV ? StrictMode : ({ children }: { children: ReactNode }) => <>{children}</>;
 
-createRoot(root).render(
-  <Wrapper>
-    <ConsentPopupReturn>
-      <App />
-    </ConsentPopupReturn>
-  </Wrapper>,
+// Creating a workspace the extension asked for: borrow its session first, so the
+// page starts signed in and the person isn't asked to sign in again.
+const lend = lendRequest();
+void (lend ? borrowExtensionSession(lend) : Promise.resolve(false)).then(() =>
+  createRoot(root).render(
+    <Wrapper>
+      <ConsentPopupReturn>
+        <App />
+      </ConsentPopupReturn>
+    </Wrapper>,
+  ),
 );

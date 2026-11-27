@@ -170,7 +170,7 @@ test("create another workspace: named in the popup, made in the window, and chos
   const signInPage = await waiting;
   const req = await signInPage.evaluate(() => (window as unknown as { __req: Record<string, string | null> }).__req);
   expect(req.intent).toBe("create");
-  expect(signInPage.url()).toContain("&intent=create&name=Design&self=Eve");
+  expect(signInPage.url()).toContain("&intent=create&lend=1&name=Design&self=Eve");
 
   // What the page's create step does: a workspace in the account's organization.
   const made = await node!.createWorkspace("Design");

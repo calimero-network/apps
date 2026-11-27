@@ -82,7 +82,7 @@ describe("served-page handoff", () => {
     );
     // A workspace named in the extension rides along, encoded; only with `create`.
     expect(signInUrl("http://localhost:5173", null, req, "create", { name: "Launch & co", self: "Eve" })).toBe(
-      `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=create&name=Launch%20%26%20co&self=Eve`,
+      `http://localhost:5173/#native-sign-in&state=${req.state}&key=${req.key}&intent=create&lend=1&name=Launch%20%26%20co&self=Eve`,
     );
     expect(signInUrl("http://localhost:5173", null, req, "signup", { name: "X", self: "" })).not.toContain("name=");
     // A new account filled in in the extension: name, passkey label and first workspace.

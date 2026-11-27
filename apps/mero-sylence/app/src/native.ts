@@ -31,10 +31,59 @@ export const NATIVE_APPROVE_CALLBACK = `https://${EXTENSION_ID}.chromiumapp.org/
 export function memoryStorage(): KeyValueStorage {
   const items = new Map<string, string>();
   return {
-    getItem: (key) => items.get(key) ?? null,
+    getItem: (key) => items.get(key) ?? (key.startsWith("calimero-session:") && lent ? JSON.stringify(lent) : null),
     setItem: (key, value) => void items.set(key, value),
-    removeItem: (key) => void items.delete(key),
+    removeItem: (key) => {
+      items.delete(key);
+      if (key.startsWith("calimero-session:")) lent = null;
+    },
   };
+}
+
+/** The extension's session, lent for creating a workspace it asked for; kept in memory only. */
+let lent: { accountId: string; sessionToken: string; refreshToken: string; expiresAt: number } | null = null;
+
+const LEND_KEY = "sylence:native-lend";
+
+/**
+ * Asks the extension for its session (`#native-sign-in&…&intent=create&lend=1`):
+ * the person is signed in there already, so the page creates the workspace
+ * with that session instead of asking them to sign in again. The extension
+ * answers only its own page and this window's one-time state
+ * (`externally_connectable`, background: lending). Nothing kept: the session
+ * goes back to the extension, refreshed or not, when the window closes.
+ */
+export async function borrowExtensionSession(
+  state: string,
+  send: ((id: string, m: unknown) => Promise<unknown>) | null = extensionSend(),
+): Promise<boolean> {
+  if (!send) return false;
+  try {
+    const answer = (await Promise.race([
+      send(EXTENSION_ID, { type: "lendSession", state }),
+      new Promise((r) => setTimeout(() => r(null), 3_000)),
+    ])) as { ok?: boolean; session?: typeof lent } | null;
+    if (!answer?.ok || !answer.session?.sessionToken) return false;
+    lent = answer.session;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function extensionSend(): ((id: string, m: unknown) => Promise<unknown>) | null {
+  const rt = (globalThis as { chrome?: { runtime?: { sendMessage?: (id: string, m: unknown, cb: (r: unknown) => void) => void } } }).chrome?.runtime;
+  if (!rt?.sendMessage) return null;
+  return (id, m) => new Promise((resolve) => rt.sendMessage!(id, m, (r) => resolve(r ?? null)));
+}
+
+/** Whether this window may borrow the extension's session (`&lend=1`), and its state. */
+export function lendRequest(storage: Pick<Storage, "getItem"> = sessionStorage): string | null {
+  try {
+    return storage.getItem(LEND_KEY);
+  } catch {
+    return null;
+  }
 }
 
 
@@ -54,6 +103,9 @@ export function captureSignInIntent(
   if (parts[0] !== "native-sign-in") return;
   const params = new URLSearchParams(parts.slice(1).join("&"));
   const intent = params.get("intent");
+  const state = params.get("state");
+  if (intent === "create" && params.get("lend") === "1" && state) storage.setItem(LEND_KEY, state);
+  else storage.removeItem(LEND_KEY);
   if (intent === "create" || intent === "signup") storage.setItem(INTENT_KEY, intent);
   else storage.removeItem(INTENT_KEY);
   // The workspace the person named in the extension, created here without a form.
