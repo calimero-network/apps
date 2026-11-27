@@ -1,0 +1,747 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   The tutorial: a dialog, one step at a time, each with a looping drawing.
+   A centred card on desktop; a sheet from the bottom on a phone.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.tutorial {
+  --t-amber: #f2a20c;
+  --t-blue: #3d7dff;
+  --t-green: #14a86b;
+  border: 0;
+  padding: 0;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+  overflow: hidden auto;
+}
+.tutorial[open] {
+  animation: t-in 0.35s var(--ease-out);
+}
+.tutorial::backdrop {
+  background: rgba(9, 9, 11, 0.45);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+@keyframes t-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+.tutorial-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.tutorial-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+.tutorial-stage {
+  height: 240px;
+  display: grid;
+  place-items: center;
+  background: var(--sunken);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.tutorial-stage.fwd > .ts {
+  animation: t-from-right 0.45s var(--ease-out);
+}
+.tutorial-stage.back > .ts {
+  animation: t-from-left 0.45s var(--ease-out);
+}
+@keyframes t-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+@keyframes t-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}
+.tutorial-copy {
+  padding: 24px 28px 8px;
+  animation: t-fade 0.4s var(--ease-out);
+  min-height: 150px;
+}
+@keyframes t-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.tutorial-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.tutorial-copy h2 {
+  margin: 6px 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tutorial-copy p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.tutorial-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+.tutorial-nav .btn {
+  min-width: 96px;
+  gap: 6px;
+}
+.tutorial-dots {
+  display: flex;
+  gap: 6px;
+}
+.tutorial-dots button {
+  width: 8px;
+  height: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: width 0.25s var(--ease-out), background-color 0.25s;
+}
+.tutorial-dots button.on {
+  width: 22px;
+  background: var(--ink);
+}
+
+/* ── the scenes ── */
+.ts {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+.ts img {
+  border-radius: 5px;
+}
+
+/* 1 · the extension pops into the toolbar */
+.ts-browser {
+  width: 300px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.ts-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ts-bar > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.ts-omni {
+  flex: 1;
+  height: 14px;
+  margin: 0 6px;
+  border-radius: 7px;
+  background: var(--sunken);
+}
+.ts-ext-slot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  animation: t-pop 3.2s var(--ease-out) infinite;
+}
+@keyframes t-pop {
+  0%,
+  35% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--coral) 25%, transparent);
+  }
+  65%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.ts-page {
+  padding: 22px;
+  display: grid;
+  place-items: center;
+}
+.ts-store-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.ts-add {
+  margin-left: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 600;
+  animation: t-press 3.2s ease-in-out infinite;
+}
+@keyframes t-press {
+  20% {
+    transform: scale(1);
+  }
+  28% {
+    transform: scale(0.92);
+  }
+  36% {
+    transform: scale(1);
+  }
+}
+
+/* 2 · a passkey ticks, a workspace name types itself */
+.ts-ws {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  align-items: center;
+}
+.ts-key {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.ts-tick {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--t-green);
+  color: #fff;
+  border: 2px solid var(--sunken);
+  animation: t-tick 4s var(--ease-out) infinite;
+}
+@keyframes t-tick {
+  0%,
+  15% {
+    transform: scale(0);
+  }
+  25%,
+  100% {
+    transform: scale(1);
+  }
+}
+.ts-form {
+  display: grid;
+  gap: 6px;
+  width: 190px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ts-label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.ts-input {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ts-typed {
+  display: inline-block;
+  overflow: hidden;
+  width: 0;
+  animation: t-type 4s steps(11) infinite;
+}
+@keyframes t-type {
+  0%,
+  25% {
+    width: 0;
+  }
+  60%,
+  100% {
+    width: 11ch;
+  }
+}
+.ts-caret {
+  width: 1.5px;
+  height: 14px;
+  margin-left: 1px;
+  background: var(--text);
+  animation: t-blink 0.9s steps(2) infinite;
+}
+@keyframes t-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.ts-btn {
+  margin-top: 4px;
+  text-align: center;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 600;
+}
+
+/* 3 · call tiles light up in turn while it records */
+.ts-rec {
+  display: grid;
+  gap: 12px;
+  place-content: center;
+}
+.ts-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 92px);
+  gap: 8px;
+}
+.ts-tile {
+  display: grid;
+  place-items: center;
+  height: 60px;
+  border-radius: 10px;
+  background: #1b1b20;
+  border: 2px solid transparent;
+  animation: t-speak 3.6s infinite;
+}
+@keyframes t-speak {
+  0%,
+  22% {
+    border-color: var(--coral);
+    background: #2a1d18;
+  }
+  26%,
+  100% {
+    border-color: transparent;
+    background: #1b1b20;
+  }
+}
+.ts-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #3a3a42;
+  color: #f4f3f0;
+  font-weight: 700;
+}
+.ts-recbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ts-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rec);
+  animation: t-blink 1.2s steps(2) infinite;
+}
+.ts-levels {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+  margin-left: auto;
+}
+.ts-levels i {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--t-green);
+  transform-origin: bottom;
+  animation: t-level 0.8s ease-in-out infinite alternate;
+}
+.ts-levels i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.ts-levels i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.ts-levels i:nth-child(4) {
+  animation-delay: 0.1s;
+}
+@keyframes t-level {
+  from {
+    transform: scaleY(0.25);
+  }
+}
+
+/* 4 · text flows from the laptop into the enclave */
+.ts-saved {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.ts-laptop,
+.ts-vault {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  width: 112px;
+  height: 84px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.ts-vault {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--coral) 20%, transparent);
+  animation: t-glow 2.4s ease-in-out infinite;
+}
+@keyframes t-glow {
+  50% {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--coral) 10%, transparent);
+  }
+}
+.ts-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--sunken);
+  font-size: 11px;
+}
+.ts-flow {
+  position: relative;
+  width: 90px;
+  height: 20px;
+}
+.ts-flow i {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  width: 18px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--coral);
+  opacity: 0;
+  animation: t-flow 2.1s linear infinite;
+}
+.ts-flow i:nth-child(2) {
+  animation-delay: 0.7s;
+}
+.ts-flow i:nth-child(3) {
+  animation-delay: 1.4s;
+}
+@keyframes t-flow {
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% - 18px);
+    opacity: 0;
+  }
+}
+
+/* 5 · the player runs and the line being said lights up */
+.ts-play {
+  place-content: center;
+  gap: 10px;
+}
+.ts-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 280px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ts-pbtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.ts-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.ts-track i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--coral);
+  animation: t-progress 6s linear infinite;
+}
+@keyframes t-progress {
+  to {
+    width: 100%;
+  }
+}
+.ts-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 280px;
+  display: grid;
+  gap: 2px;
+}
+.ts-lines li {
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  animation: t-line 6s infinite;
+}
+.ts-lines li:nth-child(2) {
+  animation-delay: 2s;
+}
+.ts-lines li:nth-child(3) {
+  animation-delay: 4s;
+}
+@keyframes t-line {
+  0%,
+  32% {
+    background: color-mix(in srgb, var(--coral) 14%, transparent);
+    color: var(--text);
+  }
+  34%,
+  100% {
+    background: transparent;
+    color: var(--text-dim);
+  }
+}
+.ts-who {
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+.ts-who.amber,
+.ts-share .amber,
+.ts-people .amber {
+  --c: var(--t-amber);
+}
+.ts-who.blue,
+.ts-share .blue,
+.ts-people .blue {
+  --c: var(--t-blue);
+}
+.ts-who.green,
+.ts-share .green,
+.ts-people .green {
+  --c: var(--t-green);
+}
+.ts-who {
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+  color: var(--text);
+}
+
+/* 6 · talk share grows, to-dos tick, people join */
+.ts-team {
+  place-content: center;
+  gap: 12px;
+  width: 280px;
+  justify-self: center;
+}
+.ts-share {
+  display: flex;
+  gap: 3px;
+  height: 10px;
+}
+.ts-share i {
+  border-radius: 5px;
+  background: var(--c);
+  animation: t-grow 4s var(--ease-out) infinite;
+}
+.ts-share i:nth-child(1) {
+  flex: 52;
+}
+.ts-share i:nth-child(2) {
+  flex: 29;
+}
+.ts-share i:nth-child(3) {
+  flex: 19;
+}
+@keyframes t-grow {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  30%,
+  100% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+.ts-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ts-todos li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ts-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--text-dim);
+  animation: t-check 4s infinite;
+}
+.ts-todos li:nth-child(2) .ts-check {
+  animation-delay: 0.8s;
+}
+@keyframes t-check {
+  0%,
+  40% {
+    background: transparent;
+    border-color: var(--text-dim);
+  }
+  50%,
+  100% {
+    background: var(--t-green);
+    border-color: var(--t-green);
+  }
+}
+.ts-people {
+  display: flex;
+}
+.ts-people span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--sunken);
+  background: var(--c);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+}
+.ts-people .ts-plus {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  animation: t-pop 3.2s var(--ease-out) infinite;
+}
+
+/* ── phones: a sheet from the bottom ── */
+@media (max-width: 560px) {
+  .tutorial {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: 20px 20px 0 0;
+  }
+  .tutorial[open] {
+    animation: t-up 0.35s var(--ease-out);
+  }
+  @keyframes t-up {
+    from {
+      transform: translateY(40px);
+      opacity: 0;
+    }
+  }
+  .tutorial-stage {
+    height: 200px;
+  }
+  .ts {
+    zoom: 0.88;
+  }
+  .tutorial-copy {
+    padding: 20px 20px 4px;
+    min-height: 170px;
+  }
+  .tutorial-copy h2 {
+    font-size: 18px;
+  }
+  .tutorial-nav {
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .tutorial-nav .btn {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial *,
+  .tutorial[open] {
+    animation: none !important;
+  }
+  .ts-typed {
+    width: 11ch;
+  }
+  .ts-track i {
+    width: 40%;
+  }
+}

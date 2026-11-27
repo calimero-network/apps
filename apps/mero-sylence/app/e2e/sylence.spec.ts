@@ -24,6 +24,8 @@ let seeded: Seeded;
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+  // The tutorial opens by itself on a first sign-in; these runs are past it.
+  await context.addInitScript(() => localStorage.setItem("mero-sylence:tutorial-seen", "1"));
   page = await context.newPage();
   await withPasskey(context, page);
 });

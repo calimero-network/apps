@@ -2,7 +2,7 @@ import { CALIMERO_URL, REPO_URL } from "./Landing";
 import { PRODUCT } from "./session";
 
 /** The signed-in footer: the way back to the home page, help, your account, legal. */
-export function AppFooter({ onShowTips, workspace = true }: { onShowTips?: () => void; workspace?: boolean }) {
+export function AppFooter({ onShowTutorial, workspace = true }: { onShowTutorial?: () => void; workspace?: boolean }) {
   return (
     <footer className="app-footer">
       <div className="app-footer-grid">
@@ -29,9 +29,9 @@ export function AppFooter({ onShowTips, workspace = true }: { onShowTips?: () =>
           <h3>Help</h3>
           <a href="#/install">Get the extension</a>
           <a href="#/faq">FAQ</a>
-          {onShowTips && (
-            <button type="button" className="footer-link" onClick={onShowTips}>
-              Show getting-started tips
+          {onShowTutorial && (
+            <button type="button" className="footer-link" onClick={onShowTutorial}>
+              Show tutorial
             </button>
           )}
           <a href="#/home">{PRODUCT} home page</a>

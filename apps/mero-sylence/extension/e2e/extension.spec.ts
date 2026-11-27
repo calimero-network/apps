@@ -37,6 +37,8 @@ test.beforeAll(async () => {
     channel: "chromium",
     args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
   });
+  // The tutorial opens by itself on a first sign-in; these runs are past it.
+  await context.addInitScript(() => localStorage.setItem("mero-sylence:tutorial-seen", "1"));
 });
 test.afterAll(async () => {
   await context.close();

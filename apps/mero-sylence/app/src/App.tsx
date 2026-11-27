@@ -3,7 +3,7 @@ import { ManageInHomeLink, NativeApproval } from "@calimero-apps/passkey";
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
 
 import { AppFooter } from "./AppFooter";
-import { GettingStarted, showTips } from "./GettingStarted";
+import { Tutorial, tutorialSeen } from "./Tutorial";
 import { InfoPage } from "./InfoPages";
 import { InstallPage } from "./InstallPage";
 import { Landing, LandingPage } from "./Landing";
@@ -22,7 +22,7 @@ import { PersonName, TeamNamespace, useSpaceNames } from "./names";
 import { linkedWorkspace, useRoute } from "./route";
 import { PRODUCT, type SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi, useSignedIn } from "./sessionContext";
-import { Avatar, Icon, useTheme, type Theme } from "./ui";
+import { Icon, useTheme, type Theme } from "./ui";
 import { useActiveWorkspace } from "./useActiveWorkspace";
 import "./shell.css";
 import { useRead, useWorkspace } from "./useWorkspace";
@@ -249,6 +249,10 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
   const [lostNotice, setLostNotice] = useState(false);
   const { client, source, after, accountId } = useSignedIn();
   const [route, go] = useRoute();
+  // How Sylence works: by itself the first time on this browser, then from the menu.
+  const [tutorial, setTutorial] = useState(() => !tutorialSeen());
+  const showTutorial = useCallback(() => setTutorial(true), []);
+  const tutorialDialog = <Tutorial open={tutorial} onClose={() => setTutorial(false)} />;
 
   // A link to another workspace (`#/w/<appId>/...`, from the extension) opens it,
   // if this account reaches it; the picker shows otherwise.
@@ -274,7 +278,11 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
 
   if (!active) {
     return (
-      <Shell right={<Menu me={accountId} theme={theme} setTheme={setTheme} onLogout={onLogout} />} footer={<AppFooter workspace={false} />}>
+      <Shell
+        right={<Menu me={accountId} theme={theme} setTheme={setTheme} onLogout={onLogout} onShowTutorial={showTutorial} />}
+        footer={<AppFooter workspace={false} onShowTutorial={showTutorial} />}
+      >
+        {tutorialDialog}
         {route.page === "install" ? (
           <InstallPage onBack={() => go({ page: "meetings" })} backLabel="Your workspaces" />
         ) : route.page === "profile" ? (
@@ -315,7 +323,9 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
           open(null);
         }}
         onLogout={onLogout}
+        onShowTutorial={showTutorial}
       />
+      {tutorialDialog}
     </TeamNamespace>
   );
 }
@@ -354,6 +364,7 @@ function WorkspaceView({
   onSwitchWorkspace,
   onLost,
   onLogout,
+  onShowTutorial,
 }: {
   appId: string;
   org: string | null;
@@ -362,6 +373,7 @@ function WorkspaceView({
   onSwitchWorkspace: () => void;
   onLost: () => void;
   onLogout: () => void;
+  onShowTutorial: () => void;
 }) {
   const { client: calimero, source, accountId, after } = useSignedIn();
   const lostHere = useCallback(() => {
@@ -377,8 +389,6 @@ function WorkspaceView({
   const [uploading, setUploading] = useState(false);
   /** What the last upload could not keep (its audio), shown over the meeting it opened. */
   const [uploadNote, setUploadNote] = useState<{ meetingId: string; note: string } | null>(null);
-  /** Bumped by the footer's "Show tips", so the cards read their setting again. */
-  const [tipsKey, setTipsKey] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -427,16 +437,18 @@ function WorkspaceView({
           </span>
         ) : null
       }
-      right={<Menu me={accountId} theme={theme} setTheme={setTheme} org={org} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
-      footer={
-        <AppFooter
-          onShowTips={() => {
-            showTips();
-            setTipsKey((k) => k + 1);
-            go({ page: "meetings" });
-          }}
+      right={
+        <Menu
+          me={accountId}
+          theme={theme}
+          setTheme={setTheme}
+          org={org}
+          onSwitchWorkspace={onSwitchWorkspace}
+          onLogout={onLogout}
+          onShowTutorial={onShowTutorial}
         />
       }
+      footer={<AppFooter onShowTutorial={onShowTutorial} />}
     >
       {(route.page === "meetings" || route.page === "actions" || route.page === "people") && (
         <nav className="tabs" role="tablist">
@@ -466,14 +478,6 @@ function WorkspaceView({
             People
           </button>
         </nav>
-      )}
-      {route.page === "meetings" && (
-        <GettingStarted
-          key={tipsKey}
-          onInstall={() => go({ page: "install" })}
-          onUpload={() => setUploading(true)}
-          onPeople={() => go({ page: "people" })}
-        />
       )}
       {route.page === "people" && <PeoplePage appId={appId} workspaceName={name} onLeft={onSwitchWorkspace} />}
       {route.page === "profile" && <ProfilePage workspaceName={name} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
@@ -530,6 +534,7 @@ function Menu({
   setTheme,
   onSwitchWorkspace,
   onLogout,
+  onShowTutorial,
 }: {
   me?: string | null;
   org?: string | null;
@@ -537,6 +542,7 @@ function Menu({
   setTheme: (t: Theme) => void;
   onSwitchWorkspace?: () => void;
   onLogout: () => void;
+  onShowTutorial?: () => void;
 }) {
   const { api } = useSessionApi();
   const [open, setOpen] = useState(false);
@@ -561,15 +567,20 @@ function Menu({
   return (
     <div className="menu" ref={ref}>
       <button className="menu-button" aria-label="account menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {me ? <Avatar account={me} size={30} /> : <Icon name="menu" />}
-        {me && (
-          <span className="menu-name" data-testid="my-name">
-            <PersonName account={me} />
-          </span>
-        )}
+        <span className="profile-icon">
+          <Icon name="user" size={18} />
+        </span>
       </button>
       {open && (
         <div className="menu-panel glass-float" role="menu">
+          {me && nameOf(me) && (
+            <div className="menu-section menu-who" data-testid="my-name">
+              <span className="dim">Signed in as</span>
+              <strong>
+                <PersonName account={me} />
+              </strong>
+            </div>
+          )}
           {me && org && (
             <div className="menu-section">
               {renaming === null ? (
@@ -607,7 +618,7 @@ function Menu({
           <div className="menu-section">
             {me && (
               <a className="menu-item home-link" href="#/profile" onClick={() => setOpen(false)}>
-                <Icon name="key" /> Profile
+                <Icon name="user" /> Profile
               </a>
             )}
             {me && org && (
@@ -618,6 +629,17 @@ function Menu({
             <a className="menu-item home-link" href="#/install" onClick={() => setOpen(false)}>
               <Icon name="puzzle" /> Get the extension
             </a>
+            {onShowTutorial && (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  setOpen(false);
+                  onShowTutorial();
+                }}
+              >
+                <Icon name="sparkle" /> Show tutorial
+              </button>
+            )}
             <a className="menu-item home-link" href="#/faq" onClick={() => setOpen(false)}>
               <Icon name="help" /> Help and FAQ
             </a>

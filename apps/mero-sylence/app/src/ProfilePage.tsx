@@ -46,13 +46,17 @@ export function ProfilePage({
       </header>
 
       <section className="card profile-card">
-        <Avatar account={accountId} size={64} />
+        {name ? (
+          <Avatar account={accountId} size={64} />
+        ) : (
+          <span className="profile-icon large" aria-hidden="true">
+            <Icon name="user" size={30} />
+          </span>
+        )}
         <div className="profile-who">
           {editing === null ? (
             <>
-              <h2 className="profile-name">
-                <PersonName account={accountId} />
-              </h2>
+              <h2 className="profile-name">{name ? <PersonName account={accountId} /> : <span className="dim">No name set yet</span>}</h2>
               {org && (
                 <button type="button" className="btn small ghost" onClick={() => setEditing(name ?? "")}>
                   <Icon name="pen" /> {name ? "Change name" : "Set your name"}
@@ -77,7 +81,6 @@ export function ProfilePage({
               </button>
             </form>
           )}
-          <p className="dim small">Your teammates see this name on transcripts and action items.</p>
         </div>
       </section>
 
@@ -97,36 +100,14 @@ export function ProfilePage({
               {where.detail && <span className="mono dim"> · {where.detail}</span>}
             </dd>
           </div>
-          <div>
-            <dt>Account ID</dt>
-            <dd className="fact-id">
-              <span className="mono wrap-anywhere">{accountId}</span>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Copy account ID"
-                onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(accountId)
-                    .then(() => {
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1500);
-                    })
-                    .catch(() => undefined);
-                }}
-              >
-                <Icon name={copied ? "check" : "copy"} />
-              </button>
-            </dd>
-          </div>
           {workspaceName !== null && (
-          <div>
-            <dt>Workspace</dt>
-            <dd>
-              {workspaceName || "Unnamed workspace"}
-              {members && <span className="role-badge">{roleName(members.roles.get(accountId))}</span>}
-            </dd>
-          </div>
+            <div>
+              <dt>Workspace</dt>
+              <dd>
+                {workspaceName || "Unnamed workspace"}
+                {members && <span className="role-badge">{roleName(members.roles.get(accountId))}</span>}
+              </dd>
+            </div>
           )}
         </dl>
         <div className="row profile-actions">
@@ -141,14 +122,41 @@ export function ProfilePage({
         </div>
       </section>
 
-      <details className="card advanced-details">
+      <details className="card advanced-details" data-testid="profile-advanced">
         <summary>
-          <span>Node security</span>
-          <span className="dim">For checking which node keeps your data and whether it is sealed.</span>
+          <span>Advanced</span>
+          <Icon name="down" />
         </summary>
-        <div className="shield-slot">
-          <NodeShield />
-        </div>
+        <dl className="facts">
+          <div>
+            <dt>Identity ID</dt>
+            <dd className="fact-id">
+              <span className="mono wrap-anywhere">{accountId}</span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Copy identity ID"
+                onClick={() => {
+                  void navigator.clipboard
+                    ?.writeText(accountId)
+                    .then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    })
+                    .catch(() => undefined);
+                }}
+              >
+                <Icon name={copied ? "check" : "copy"} />
+              </button>
+            </dd>
+          </div>
+          <div>
+            <dt>Node security</dt>
+            <dd className="shield-slot">
+              <NodeShield />
+            </dd>
+          </div>
+        </dl>
       </details>
     </div>
   );

@@ -24,6 +24,8 @@ export async function launch(): Promise<{ context: BrowserContext; worker: Worke
     viewport: null,
     args: ["--screen-info={1600x1000}", `--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`],
   });
+  // The tutorial opens by itself on a first sign-in; these runs are past it.
+  await context.addInitScript(() => localStorage.setItem("mero-sylence:tutorial-seen", "1"));
   // The stand-in call: a Google Meet address, so the popup names the platform.
   await context.route(`${MEET_URL}*`, (route) =>
     route.fulfill({ contentType: "text/html", body: "<title>Meet - Weekly sync</title><h1>Weekly sync</h1>" }),
