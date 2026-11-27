@@ -191,6 +191,11 @@ export function MeetingBody({
     const index = new Map(stats.speakers.map((s, i) => [s.label, i]));
     return (label: string) => speakerColor(index.get(label) ?? 7);
   }, [stats]);
+  /** The call's speakers as action items name them, in their transcript colour. */
+  const actionSpeakers = useMemo(
+    () => speakers.map((s) => ({ name: nameOf(s.label), color: colorOf(s.label) })),
+    [speakers, nameOf, colorOf],
+  );
   const shownSegments = useMemo(
     () =>
       segments.filter(
@@ -507,6 +512,7 @@ export function MeetingBody({
             recorder={m.recorder}
             isOwner={isOwner}
             segmentStart={segmentStart}
+            speakers={actionSpeakers}
           />
           <details className="card details">
             <summary>Details</summary>

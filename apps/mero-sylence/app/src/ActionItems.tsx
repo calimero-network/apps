@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { AssigneeChip, useMemberNames } from "./Assignee";
+import { assignables, type Assignable } from "./lib/assignee";
 import { Trash } from "@calimero-network/mero-icons";
 import type { ActionView } from "./sylenceApi";
 import type { Workspace } from "./useWorkspace";
@@ -20,6 +22,7 @@ export function ActionItems({
   recorder,
   isOwner,
   segmentStart,
+  speakers = [],
 }: {
   workspace: Pick<Workspace, "act">;
   meetingId: string;
@@ -29,7 +32,11 @@ export function ActionItems({
   isOwner: boolean;
   /** Where a source segment starts, for the "from 3:05" link; `undefined` when not loaded. */
   segmentStart?: (seq: number) => number | undefined;
+  /** The call's speakers by the name shown, with their colour: offered first when assigning. */
+  speakers?: readonly { name: string; color: string }[];
 }) {
+  const memberNames = useMemberNames();
+  const people = useMemo(() => assignables(speakers, memberNames), [speakers, memberNames]);
   const [text, setText] = useState("");
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
@@ -77,6 +84,7 @@ export function ActionItems({
               canRemove={a.createdBy === me || recorder === me || isOwner}
               from={a.sourceSeq !== null ? segmentStart?.(a.sourceSeq) : undefined}
               onToggle={() => run(() => workspace.act((c) => c.setActionDone({ actionId: a.id, done: !a.done })))}
+              people={people}
               onEdit={(t, who) => run(() => workspace.act((c) => c.editAction({ actionId: a.id, text: t, assignee: who })))}
               onRemove={() => run(() => workspace.act((c) => c.removeAction({ actionId: a.id })))}
             />
@@ -97,14 +105,7 @@ export function ActionItems({
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <input
-          aria-label="Assignee"
-          placeholder="Who (optional)"
-          maxLength={100}
-          value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
-          className="assignee-input"
-        />
+        <AssigneeChip name={assignee} people={people} onAssign={setAssignee} label="the new action item" />
         <button type="submit" className="btn primary" disabled={busy || !text.trim()}>
           <Icon name="plus" /> Add
         </button>
@@ -122,18 +123,20 @@ function ActionRow({
   action,
   canRemove,
   from,
+  people,
   onToggle,
   onEdit,
   onRemove,
 }: {
   action: ActionView;
+  people: readonly Assignable[];
   canRemove: boolean;
   from?: number;
   onToggle: () => void;
   onEdit: (text: string, assignee: string) => Promise<unknown>;
   onRemove: () => void;
 }) {
-  const [draft, setDraft] = useState<{ text: string; assignee: string } | null>(null);
+  const [draft, setDraft] = useState<{ text: string } | null>(null);
 
   if (draft) {
     return (
@@ -143,7 +146,7 @@ function ActionRow({
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.text.trim()) return;
-            void onEdit(draft.text.trim(), draft.assignee.trim()).then(() => setDraft(null));
+            void onEdit(draft.text.trim(), action.assignee).then(() => setDraft(null));
           }}
         >
           <input
@@ -153,13 +156,6 @@ function ActionRow({
             value={draft.text}
             onChange={(e) => setDraft({ ...draft, text: e.target.value })}
             onKeyDown={(e) => e.key === "Escape" && setDraft(null)}
-          />
-          <input
-            aria-label="Action item assignee"
-            maxLength={100}
-            placeholder="Who"
-            value={draft.assignee}
-            onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
           />
           <button type="submit" className="btn small primary">
             Save
@@ -179,7 +175,7 @@ function ActionRow({
         <span className="action-text">{action.text}</span>
       </label>
       <span className="action-meta">
-        {action.assignee && <span className="pill">{action.assignee}</span>}
+        <AssigneeChip name={action.assignee} people={people} label={action.text} onAssign={(who) => void onEdit(action.text, who)} />
         {from !== undefined && <span className="dim">from {formatClock(from)}</span>}
         <span className="dim">
           added by <PersonName account={action.createdBy} />
@@ -190,7 +186,7 @@ function ActionRow({
           type="button"
           className="icon-btn"
           aria-label={`Edit ${action.text}`}
-          onClick={() => setDraft({ text: action.text, assignee: action.assignee })}
+          onClick={() => setDraft({ text: action.text })}
         >
           <Icon name="pen" size={14} />
         </button>

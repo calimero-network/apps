@@ -123,15 +123,17 @@ export function Player({
         >
           {rate}×
         </button>
-        <button
-          type="button"
-          className={`btn small ghost player-follow${follow ? " on" : ""}`}
-          aria-pressed={follow}
-          onClick={() => onFollow(!follow)}
-          title="Keep the line being said in view"
-        >
-          <Icon name="follow" size={14} /> Follow
-        </button>
+        <label className={`player-follow${follow ? " on" : ""}`} title="Keep the line being said in view">
+          <span className="player-follow-text">Follow transcript</span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            checked={follow}
+            onChange={(e) => onFollow(e.target.checked)}
+            aria-label="Follow transcript"
+          />
+        </label>
       </div>
 
       <div

@@ -56,4 +56,56 @@ describe("OpenActionsList", () => {
     render(<OpenActionsList actions={[]} meetings={[]} onToggle={() => {}} onOpen={() => {}} />);
     expect(screen.getByTestId("no-open-actions")).toBeTruthy();
   });
+
+  it("groups by person, unassigned last, each item naming its call", () => {
+    const onOpen = vi.fn();
+    const items = [
+      { ...a("1", "m1", "Send the deck"), assignee: "John" },
+      { ...a("2", "m2", "Book the room"), assignee: "" },
+      { ...a("3", "m2", "Write notes"), assignee: "john" },
+    ];
+    render(
+      <OpenActionsList
+        actions={items}
+        meetings={[meeting({ id: "m1", title: "Weekly sync" }), meeting({ id: "m2", title: "Roadmap" })]}
+        onToggle={() => {}}
+        onOpen={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "By person" }));
+    const people = screen.getAllByTestId("open-action-person");
+    expect(people.map((p) => p.querySelector("h2")?.textContent)).toEqual(["John", "Not assigned yet"]);
+    expect(people[0]!.querySelectorAll("[data-testid=open-action]")).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: /Roadmap/ })[0]!);
+    expect(onOpen).toHaveBeenCalledWith("m2");
+  });
+
+  it("shows a done item ticked, and edits, removes and reassigns", () => {
+    const onEdit = vi.fn();
+    const onRemove = vi.fn();
+    const onAssign = vi.fn();
+    render(
+      <OpenActionsList
+        actions={[{ ...a("1", "m1", "Send the deck"), done: true }, a("2", "m1", "Book the room")]}
+        meetings={[meeting({ id: "m1", title: "Weekly sync" })]}
+        onToggle={() => {}}
+        onEdit={onEdit}
+        onRemove={onRemove}
+        onAssign={onAssign}
+        onOpen={() => {}}
+      />,
+    );
+    expect((screen.getByRole("checkbox", { name: "Done: Send the deck" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("1 open item from 1 call")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Book the room" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Action item text" }), { target: { value: "Book room 4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }), "Book room 4");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Send the deck" }));
+    expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: "1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign Book the room" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Assignee name" }), { target: { value: "Sam" } });
+    fireEvent.click(screen.getByRole("option", { name: /Assign to “Sam”/ }));
+    expect(onAssign).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }), "Sam");
+  });
 });

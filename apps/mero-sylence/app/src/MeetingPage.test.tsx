@@ -148,8 +148,12 @@ describe("MeetingPage", () => {
     const { sent } = setup({ me: "cy" });
     await screen.findAllByTestId("action-item");
     fireEvent.change(screen.getByRole("textbox", { name: "New action item" }), { target: { value: "Book the room" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Assignee" }), { target: { value: "Gus" } });
-    fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+    // Assign through the picker: type a name nobody in the call has, and take it.
+    fireEvent.click(screen.getByRole("button", { name: "Assign the new action item" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Assignee name" }), { target: { value: "Gus" } });
+    fireEvent.click(screen.getByRole("option", { name: /Assign to “Gus”/ }));
+    expect(screen.getByRole("button", { name: /Assigned to Gus/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
     await waitFor(() => expect(sent.some((s) => s.method === "addAction")).toBe(true));
     expect(sent.find((s) => s.method === "addAction")!.args).toEqual({
       meetingId: "aa11",
@@ -161,6 +165,20 @@ describe("MeetingPage", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Done: Send the deck" }));
     await waitFor(() => expect(sent.some((s) => s.method === "setActionDone")).toBe(true));
     expect(sent.find((s) => s.method === "setActionDone")!.args).toEqual({ actionId: "act1", done: true });
+  });
+
+  it("reassigns an action item to a speaker of the call", async () => {
+    const { sent } = setup({ me: "cy" });
+    const [first] = await screen.findAllByTestId("action-item");
+    fireEvent.click(within(first!).getByTestId("assignee"));
+    const options = screen.getAllByRole("option");
+    expect(options.some((o) => /in this call/.test(o.textContent ?? ""))).toBe(true);
+    const speaker = options.find((o) => /in this call/.test(o.textContent ?? ""))!;
+    fireEvent.click(speaker);
+    await waitFor(() => expect(sent.some((s) => s.method === "editAction")).toBe(true));
+    const args = sent.find((s) => s.method === "editAction")!.args as { assignee: string; text: string };
+    expect(args.text).toBe("Send the deck");
+    expect(speaker.textContent).toContain(args.assignee);
   });
 
   it("makes an action item from a line of the transcript", async () => {

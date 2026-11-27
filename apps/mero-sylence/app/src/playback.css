@@ -99,8 +99,25 @@
   min-width: 52px;
   font-variant-numeric: tabular-nums;
 }
+/* Follow the transcript: a labelled switch, coral when on. */
+.player-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s, background-color 0.15s;
+}
+.player-follow:hover {
+  background: var(--hover);
+}
 .player-follow.on {
-  background: var(--sunken);
   color: var(--text);
 }
 .player-scrub {
@@ -177,7 +194,10 @@
     top: 56px;
   }
   .player-follow {
-    padding-inline: 8px;
+    padding-left: 6px;
+  }
+  .player-follow-text {
+    font-size: 12px;
   }
 }
 
