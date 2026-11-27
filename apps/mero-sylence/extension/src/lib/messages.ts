@@ -134,7 +134,7 @@ export const KEYS = {
 
 /** Popup / side panel → service worker. */
 export type Request =
-  | { type: "signIn"; intent?: "create" }
+  | { type: "signIn"; intent?: "create" | "signup" }
   | { type: "signOut" }
   | { type: "listWorkspaces" }
   | { type: "checkSession" }

@@ -41,7 +41,12 @@ export function isVersion(value: string): boolean {
 /** The newest release `origin` serves, from its `/.well-known/calimero.json` (oldest first). */
 export async function latestVersion(origin: string, fetcher: typeof fetch = fetch): Promise<string> {
   const url = `${origin.replace(/\/+$/, "")}/.well-known/calimero.json`;
-  const res = await fetcher(url);
+  let res: Response;
+  try {
+    res = await fetcher(url);
+  } catch {
+    throw new Error(`${new URL(url).host} did not answer: Sylence is not served there yet`);
+  }
   if (!res.ok) throw new Error(`${new URL(url).host} answered ${res.status}: Sylence is not served there yet`);
   const info = (await res.json()) as { versions?: unknown };
   const versions = Array.isArray(info.versions) ? info.versions.filter((v): v is string => typeof v === "string") : [];
@@ -51,17 +56,43 @@ export async function latestVersion(origin: string, fetcher: typeof fetch = fetc
   return latest;
 }
 
+/** A page on this machine (`pnpm dev:local`), served at its root with every workspace listed. */
+export function isLocalPage(page: string | null | undefined): boolean {
+  const p = page?.trim();
+  if (!p) return false;
+  try {
+    return /^(localhost|127\.0\.0\.1)$/.test(new URL(p).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Where to sign in: the override (a development page such as
- * `http://localhost:5173`, served at its root), or Cloud's served page at its
- * newest release.
+ * Where to sign in:
+ *
+ * - no override: Cloud's page for Sylence, at its newest release;
+ * - a page on this machine (`http://localhost:5173`): its root, as is;
+ * - any other https page: a node that serves Sylence, at its newest release
+ *   (from its `/.well-known/calimero.json`). On the shared apps domain the host
+ *   must be Sylence's own: another app's page cannot sign anyone in to Sylence.
  */
 export async function servedPage(
   override: string | null | undefined,
   fetcher: typeof fetch = fetch,
 ): Promise<{ origin: string; version: string | null }> {
   const o = override?.trim();
-  if (o) return { origin: o.replace(/\/+$/, ""), version: null };
+  if (o && isLocalPage(o)) return { origin: o.replace(/\/+$/, ""), version: null };
+  if (o) {
+    const url = new URL(o);
+    const origin = url.origin;
+    if (url.hostname.endsWith(`.${APPS_DOMAIN}`)) {
+      const own = await appOrigin();
+      if (origin !== own) {
+        throw new Error(`That address is another app's page. Sylence signs in on its own page, ${own}/; leave the sign-in page empty to use it.`);
+      }
+    }
+    return { origin, version: await latestVersion(origin, fetcher) };
+  }
   const origin = await appOrigin();
   return { origin, version: await latestVersion(origin, fetcher) };
 }

@@ -842,12 +842,14 @@ export function Landing({
                   Get the extension
                 </button>
               )}
+              {/* New visitors start here; "Sign in" stays in the top bar. Both open the
+                  passkey panel, which signs in or makes the account. */}
               <button
                 type="button"
                 className={onInstall ? "btn large" : "btn primary large"}
                 onClick={onSignIn}
               >
-                Sign in
+                Create an account
               </button>
             </div>
             <Available />
@@ -1057,7 +1059,7 @@ export function Landing({
                 className="btn large lp-btn-line"
                 onClick={onSignIn}
               >
-                Sign in
+                Create an account
               </button>
             </div>
             <Available />

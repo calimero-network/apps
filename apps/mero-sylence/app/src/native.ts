@@ -53,13 +53,14 @@ export function captureSignInIntent(
   const parts = location.hash.replace(/^#/, "").split("&");
   if (parts[0] !== "native-sign-in") return;
   const intent = new URLSearchParams(parts.slice(1).join("&")).get("intent");
-  if (intent === "create") storage.setItem(INTENT_KEY, intent);
+  if (intent === "create" || intent === "signup") storage.setItem(INTENT_KEY, intent);
   else storage.removeItem(INTENT_KEY);
 }
 
-export function signInIntent(storage: Pick<Storage, "getItem"> = sessionStorage): "create" | null {
+export function signInIntent(storage: Pick<Storage, "getItem"> = sessionStorage): "create" | "signup" | null {
   try {
-    return storage.getItem(INTENT_KEY) === "create" ? "create" : null;
+    const v = storage.getItem(INTENT_KEY);
+    return v === "create" || v === "signup" ? v : null;
   } catch {
     return null;
   }

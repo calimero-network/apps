@@ -4,8 +4,8 @@ import { Icon } from "./ui";
 
 export const INSTALL_TITLE = "Install Sylence for Chrome and Brave";
 
-/** Served beside the page by `extensionDownload.ts`. */
-export const EXTENSION_ZIP = "./sylence-extension.zip";
+/** Beside the page (`extensionDownload.ts`), or the public listing's copy on a Cloud node's page. */
+export const EXTENSION_ZIP = typeof __EXTENSION_ZIP__ === "string" ? __EXTENSION_ZIP__ : "./sylence-extension.zip";
 export const EXTENSION_VERSION = typeof __EXTENSION_VERSION__ === "string" ? __EXTENSION_VERSION__ : "";
 
 /** Which browser this is, for the extensions page address. Brave says so only through `navigator.brave`. */

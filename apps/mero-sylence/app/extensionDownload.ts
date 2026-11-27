@@ -9,6 +9,12 @@
  * (`pnpm -F mero-sylence-extension build`); a build emits it as an asset and
  * fails without a built extension, so a release never ships a page whose
  * download is missing.
+ *
+ * The page a Cloud node serves (`VITE_CALIMERO_TARGET=cloud`, packed into the
+ * `.mpk`) carries no zip: a node serves no `.zip` (`meroctl app pack` refuses
+ * the bundle, `FRONTEND_UNSUPPORTED_TYPE`). Its download link is the
+ * `sylence-extension` GitHub release's asset instead ({@link RELEASE_ZIP_URL}),
+ * which `.github/workflows/sylence-extension.yml` keeps current.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -16,6 +22,14 @@ import { zipSync } from "fflate";
 import type { Plugin } from "vite";
 
 export const ZIP_NAME = "sylence-extension.zip";
+
+/** Where the Cloud node's page downloads the extension (`.github/workflows/sylence-extension.yml`). */
+export const RELEASE_ZIP_URL = `https://github.com/calimero-network/apps/releases/download/sylence-extension/${ZIP_NAME}`;
+
+/** A build for a Cloud node's bundle, which cannot carry the zip. */
+export function servedByNode(env: Record<string, string | undefined> = process.env): boolean {
+  return env.VITE_CALIMERO_TARGET === "cloud";
+}
 
 function files(dir: string, root = dir, out: Record<string, Uint8Array> = {}): Record<string, Uint8Array> {
   for (const name of readdirSync(dir)) {
@@ -43,7 +57,12 @@ export function extensionDownload(extensionDir = resolve(__dirname, "../extensio
   const dist = join(extensionDir, "dist");
   return {
     name: "sylence-extension-download",
-    config: () => ({ define: { __EXTENSION_VERSION__: JSON.stringify(extensionVersion(extensionDir)) } }),
+    config: () => ({
+      define: {
+        __EXTENSION_VERSION__: JSON.stringify(extensionVersion(extensionDir)),
+        __EXTENSION_ZIP__: JSON.stringify(servedByNode() ? RELEASE_ZIP_URL : `./${ZIP_NAME}`),
+      },
+    }),
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         if (!req.url || !req.url.split("?")[0]!.endsWith(`/${ZIP_NAME}`)) return next();
@@ -59,6 +78,7 @@ export function extensionDownload(extensionDir = resolve(__dirname, "../extensio
       });
     },
     generateBundle() {
+      if (servedByNode()) return;
       this.emitFile({ type: "asset", fileName: ZIP_NAME, source: zipExtension(dist) });
     },
   };

@@ -6,7 +6,7 @@
  * a restarted worker carries on with what was waiting.
  */
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
-import { PACKAGE, meetingLink, servedPage } from "../lib/appHost";
+import { PACKAGE, meetingLink, servedPage, isLocalPage } from "../lib/appHost";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
 import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
 import { openAuthWindow } from "../lib/authWindow";
@@ -291,7 +291,8 @@ async function checkSession(): Promise<{ signedIn: boolean }> {
 }
 
 async function listWorkspaces(): Promise<Workspace[]> {
-  const dev = (await settings()).pageOverride !== "";
+  // Every workspace only on a page on this machine; Cloud lists Sylence's.
+  const dev = isLocalPage((await settings()).pageOverride);
   const { apps } = await onNode((client) => client.apps.list(dev ? {} : { package: PACKAGE }));
   return pickWorkspaces(apps as AppRow[], PACKAGE, dev);
 }

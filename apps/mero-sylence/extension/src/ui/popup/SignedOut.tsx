@@ -1,21 +1,24 @@
 import { useState } from "react";
 import type { Settings } from "../../lib/messages";
-import { AlertIcon, LockIcon, Mark, Spinner } from "../icons";
+import { AlertIcon, LockIcon, Mark, PlusIcon, Spinner } from "../icons";
 import { ask } from "../rpc";
 
 export function SignedOut({ settings, reason = null }: { settings: Settings; reason?: string | null }) {
-  const [busy, setBusy] = useState(false);
+  /** Which button is waiting for the sign-in window. */
+  const [busy, setBusy] = useState<"in" | "up" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const signIn = async () => {
-    setBusy(true);
+  // Both open Sylence's page, which signs in or makes the account with a passkey;
+  // "Create an account" leads with making one, as the other Calimero apps do.
+  const open = async (mode: "in" | "up") => {
+    setBusy(mode);
     setError(null);
     try {
-      await ask({ type: "signIn" });
+      await ask(mode === "up" ? { type: "signIn", intent: "signup" } : { type: "signIn" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -37,9 +40,16 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
           <span className="grow">{reason}</span>
         </div>
       )}
-      <button className="btn primary block lg" onClick={signIn} disabled={busy}>
-        {busy ? <Spinner size={14} /> : null}
-        {busy ? "Waiting for sign-in…" : "Sign in with Calimero"}
+      <button className="btn primary block lg" onClick={() => void open("in")} disabled={busy !== null}>
+        {busy === "in" ? <Spinner size={14} /> : null}
+        {busy === "in" ? "Waiting for sign-in…" : "Sign in with Calimero"}
+      </button>
+      <div className="divider-label" role="presentation">
+        <span>New here?</span>
+      </div>
+      <button className="btn block lg" onClick={() => void open("up")} disabled={busy !== null}>
+        {busy === "up" ? <Spinner size={14} /> : <PlusIcon size={14} />}
+        {busy === "up" ? "Waiting for the sign-up page…" : "Create an account"}
       </button>
       {error && (
         <div className="banner bad" role="alert">
@@ -47,7 +57,7 @@ export function SignedOut({ settings, reason = null }: { settings: Settings; rea
           <span className="grow">{error}</span>
         </div>
       )}
-      {settings.pageOverride && <p className="small muted center">Signing in on {settings.pageOverride}</p>}
+      {settings.pageOverride && <p className="small muted center wrap">Signing in on {settings.pageOverride}</p>}
       <p className="foot">
         <LockIcon size={13} />
         <span>Speech is transcribed on this laptop. Audio is never uploaded.</span>
