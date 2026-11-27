@@ -554,7 +554,22 @@
   color: var(--text-2);
   box-shadow: inset 0 0 0 1px var(--border);
 }
-.menu-button:hover:not(:disabled) .profile-icon {
+/* The button is the circle itself: no padding, so its hover is round. */
+.menu-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+}
+.menu-button:hover:not(:disabled) {
+  background: none;
+}
+.profile-icon {
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.menu-button:hover:not(:disabled) .profile-icon,
+.menu-button[aria-expanded="true"] .profile-icon {
+  background: var(--hover);
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
