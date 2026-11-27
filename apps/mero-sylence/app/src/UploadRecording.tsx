@@ -21,23 +21,32 @@ import { Icon } from "./ui";
 import type { Workspace } from "./useWorkspace";
 import "./upload.css";
 
-type StepId = "decode" | "load" | "transcribe" | "diarize" | "save" | "actions";
+type StepId = "decode" | "load" | "transcribe" | "voices" | "diarize" | "save" | "actions";
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: "decode", label: "Reading the recording" },
   { id: "load", label: "Loading the speech model" },
   { id: "transcribe", label: "Transcribing" },
+  { id: "voices", label: "Loading the voice models" },
   { id: "diarize", label: "Telling voices apart" },
   { id: "save", label: "Saving to the workspace" },
   { id: "actions", label: "Finding action items" },
 ];
 
 /** How much of the whole bar each step is. */
-const WEIGHT: Record<StepId, number> = { decode: 0.04, load: 0.12, transcribe: 0.56, diarize: 0.16, save: 0.1, actions: 0.02 };
+const WEIGHT: Record<StepId, number> = { decode: 0.04, load: 0.12, transcribe: 0.52, voices: 0.04, diarize: 0.16, save: 0.1, actions: 0.02 };
 
 interface Run {
   step: StepId;
   fraction: number;
+  /** A download's bytes so far and in all. */
+  bytes?: { loaded: number; total: number };
+}
+
+/** `12.3 / 30.1 MB`. */
+export function formatBytes({ loaded, total }: { loaded: number; total: number }): string {
+  const mb = (n: number) => (n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0);
+  return `${mb(loaded)} / ${mb(total)} MB`;
 }
 
 class Cancelled extends Error {}
@@ -154,10 +163,10 @@ export function UploadRecording({
         const w = new Worker(new URL("./ai/speech.worker.ts", import.meta.url), { type: "module" });
         worker.current = w;
         let modelId = "whisper";
-        const stageStep: Record<SpeechStage, StepId> = { load: "load", transcribe: "transcribe", diarize: "diarize" };
+        const stageStep: Record<SpeechStage, StepId> = { load: "load", transcribe: "transcribe", voices: "voices", diarize: "diarize" };
         w.onmessage = (e: MessageEvent<FromSpeech>) => {
           const m = e.data;
-          if (m.type === "progress") setRun({ step: stageStep[m.stage], fraction: m.fraction });
+          if (m.type === "progress") setRun({ step: stageStep[m.stage], fraction: m.fraction, ...(m.bytes ? { bytes: m.bytes } : {}) });
           else if (m.type === "model") modelId = m.modelId;
           else if (m.type === "done") resolve({ chunks: m.chunks, turns: m.turns, modelId });
           else reject(new Error(m.error));
@@ -332,14 +341,28 @@ export function UploadRecording({
                       {state === "done" ? <Icon name="check" size={12} /> : null}
                     </span>
                     <span>{s.label}</span>
-                    {state === "active" && (s.id === "load" || s.id === "transcribe" || s.id === "diarize") && (
-                      <span className="dim mono">{Math.round(run.fraction * 100)}%</span>
+                    {state === "active" && (s.id === "load" || s.id === "transcribe" || s.id === "voices" || s.id === "diarize") && (
+                      <span className="dim mono">{run.bytes && run.bytes.total ? formatBytes(run.bytes) : `${Math.round(run.fraction * 100)}%`}</span>
+                    )}
+                    {state === "active" && (
+                      <span
+                        className="upload-step-bar"
+                        role="progressbar"
+                        aria-label={s.label}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(run.fraction * 100)}
+                      >
+                        <span style={{ width: `${Math.max(2, run.fraction * 100)}%` }} />
+                      </span>
                     )}
                   </li>
                 );
               })}
             </ol>
-            {run.step === "load" && <p className="dim upload-note">The first upload downloads the speech model; later ones start at once.</p>}
+            {(run.step === "load" || run.step === "voices") && (
+              <p className="dim upload-note">The first upload downloads the models once; later uploads start at once.</p>
+            )}
           </div>
         )}
 

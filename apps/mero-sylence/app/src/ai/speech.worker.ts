@@ -45,10 +45,11 @@ const MIN_VOICE_S = 0.8;
 const MAX_VOICE_S = 6;
 
 const post = (m: FromSpeech) => (self as unknown as Worker).postMessage(m);
-const progress = (stage: SpeechStage, fraction: number) => post({ type: "progress", stage, fraction: Math.min(1, Math.max(0, fraction)) });
+const progress = (stage: SpeechStage, fraction: number, bytes?: { loaded: number; total: number }) =>
+  post({ type: "progress", stage, fraction: Math.min(1, Math.max(0, fraction)), ...(bytes ? { bytes } : {}) });
 
-/** Download progress over every file of every model, as one fraction. */
-function downloads() {
+/** Download progress over every file of a stage's models, as one fraction and in bytes. */
+function downloads(stage: "load" | "voices") {
   const files = new Map<string, { loaded: number; total: number }>();
   return (p: { status: string; file?: string; name?: string; loaded?: number; total?: number }) => {
     if (p.status !== "progress" || !p.file || !p.total) return;
@@ -59,7 +60,7 @@ function downloads() {
       loaded += f.loaded;
       total += f.total;
     }
-    progress("load", total ? loaded / total : 0);
+    progress(stage, total ? loaded / total : 0, { loaded, total });
   };
 }
 
@@ -122,6 +123,7 @@ async function diarize(audio: Float32Array, onProgress: ReturnType<typeof downlo
     AutoProcessor.from_pretrained(EMBEDDING, { progress_callback: onProgress }),
     AutoModel.from_pretrained(EMBEDDING, { dtype: "q8" as never, progress_callback: onProgress }),
   ]);
+  progress("diarize", 0);
   const win = DIARIZE_S * RATE;
   const windows = Math.max(1, Math.ceil(audio.length / win));
   /** One voice in one window: its turns, and its embedding. */
@@ -183,15 +185,15 @@ self.onmessage = async (e: MessageEvent<ToSpeech>) => {
   const m = e.data;
   if (m.type !== "run") return;
   try {
-    const onProgress = downloads();
+    const onProgress = downloads("load");
     progress("load", 0);
     const asr = await loadAsr(m.webgpu, onProgress);
     const chunks = await transcribe(asr, m.audio, m.language);
     await asr.dispose();
-    progress("diarize", 0);
+    progress("voices", 0);
     let turns: Turn[] = [];
     try {
-      turns = await diarize(m.audio, () => undefined);
+      turns = await diarize(m.audio, downloads("voices"));
     } catch {
       // Without voices the lines are still saved, all as one speaker.
       turns = [];

@@ -223,3 +223,21 @@
     justify-content: center;
   }
 }
+.upload-step.active {
+  flex-wrap: wrap;
+}
+.upload-step-bar {
+  flex: 1 0 100%;
+  height: 4px;
+  margin-left: 28px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.upload-step-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  border-radius: inherit;
+  transition: width 200ms var(--ease-out);
+}
