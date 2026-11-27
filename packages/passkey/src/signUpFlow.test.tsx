@@ -335,6 +335,7 @@ describe("a sign-up in the control", () => {
     const pk = key(async () => ({}) as never);
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("signed-in"));
     expect(pk.create).toHaveBeenCalledTimes(1);
     expect(pk.get).toHaveBeenCalledTimes(1);
@@ -348,6 +349,7 @@ describe("a sign-up in the control", () => {
     });
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     const approve = await screen.findByTestId("signup-approve");
     await waitFor(() => expect((approve as HTMLButtonElement).disabled).toBe(false));
     expect(approve.textContent).toBe("Approve with your new passkey");
@@ -364,6 +366,7 @@ describe("a sign-up in the control", () => {
     const pk = key(async () => Promise.reject(named("NotAllowedError", "The document is not focused.")));
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     const approve = await screen.findByTestId("signup-approve");
     await waitFor(() => expect((approve as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(approve);
@@ -386,6 +389,7 @@ describe("a sign-up in the control", () => {
     );
     const { client } = setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalled());
     await waitFor(() => expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByTestId("signin-error")).toBeNull();
@@ -396,6 +400,7 @@ describe("a sign-up in the control", () => {
     const pk = key(async () => Promise.reject(pending()));
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     fireEvent.click(await screen.findByTestId("signup-cancel"));
     await waitFor(() => expect(screen.queryByTestId("signup-approve")).toBeNull());
     expect((screen.getByTestId("signup-passkey") as HTMLButtonElement).disabled).toBe(false);
@@ -414,6 +419,7 @@ describe("a sign-up in the control", () => {
     );
     setup(pk);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByText("Approve in the browser prompt…");
     fireEvent.click(screen.getByTestId("signup-cancel"));
     await waitFor(() => expect(screen.queryByTestId("signup-approve")).toBeNull());

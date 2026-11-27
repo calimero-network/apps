@@ -261,6 +261,7 @@ describe("an invite link", { timeout: TEST_TIMEOUT }, () => {
     await waitFor(() => expect(window.location.pathname).toBe("/"), SLOW);
     fireEvent.click((await screen.findAllByRole("button", { name: "Sign in" }, SLOW))[0]);
     fireEvent.click(await screen.findByTestId("signup-passkey", {}, SLOW));
+    fireEvent.click(await screen.findByTestId("signup-create", {}, SLOW));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-xyz" }), SLOW);
     await waitFor(() => expect(window.location.pathname).toBe("/teams/org-3/projects"), SLOW);
     await new Promise((r) => setTimeout(r, 300));

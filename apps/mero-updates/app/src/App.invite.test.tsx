@@ -171,6 +171,7 @@ describe("an invitation link", () => {
     const create = await screen.findByTestId("signup-passkey");
     expect(create).toHaveTextContent("Create your account and join the company");
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
     expect(await screen.findByText("audiences")).toBeInTheDocument();
     expect(client.signIn).not.toHaveBeenCalled();

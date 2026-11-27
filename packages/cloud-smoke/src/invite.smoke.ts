@@ -33,7 +33,8 @@ async function signUp(page: Page, url: string): Promise<Authenticator> {
   await expect(signUpButton.or(signIn).first()).toBeVisible({ timeout: 60_000 });
   if (!(await signUpButton.isVisible())) await signIn.click();
   await signUpButton.click();
-  if (await page.getByTestId("signup-name").isVisible()) await signUpButton.click();
+  // "Create an account" opens the passkey's label step; "Create passkey" signs up.
+  await page.getByTestId("signup-create").click();
   const approve = page.locator('[data-testid="signup-approve"]:enabled');
   await expect(approve.or(page.getByRole("dialog")).or(page.getByTestId("ns-empty-state")).first()).toBeVisible({ timeout: 120_000 });
   if (await approve.isVisible()) await approve.click();

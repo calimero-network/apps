@@ -25,7 +25,7 @@ import {
 import { isPasskeyCancel, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 import { watchUpgrades } from "./upgrade";
 import { bindNodeShield } from "./NodeShield";
-import { passkeyAppName, passkeyCluster, passkeyName, rememberedSignUpName } from "./passkeyName";
+import { passkeyAppName, passkeyCluster, passkeyName } from "./passkeyName";
 import {
   describeCeremonyFailure,
   knownAccountHere,
@@ -80,6 +80,12 @@ export function passkeyDeps(env: ConnectEnv): SessionDeps {
 }
 
 
+/** What a sign-up takes beyond the account's name. */
+export interface PasskeySignUpOptions {
+  /** The person's label for the new passkey ("Work laptop"); client-side only. */
+  passkeyLabel?: string;
+}
+
 export interface SessionApi {
   session: Session;
   /** The sessions kept for this app on this target. */
@@ -93,10 +99,12 @@ export interface SessionApi {
   /** Sign in with a passkey the person already has on this cluster (made in the console or any app on it). */
   signIn(): Promise<void>;
   /**
-   * Create an account with a new passkey. The name is optional. On a cluster
-   * that requires an invite, the page's invite token goes with it.
+   * Create an account with a new passkey. The name is optional and is the
+   * account's. `passkeyLabel` names only the passkey in a password manager
+   * and is never sent. On a cluster that requires an invite, the page's
+   * invite token goes with it.
    */
-  signUp(name?: string): Promise<void>;
+  signUp(name?: string, options?: PasskeySignUpOptions): Promise<void>;
   /**
    * Whether this page may create an account on the cluster, from its sign-up
    * policy (read once the client connects) and the page's invite token:
@@ -106,14 +114,12 @@ export interface SessionApi {
   signUpAccess?: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown?: boolean;
-  /** The name last given at a sign-up on this cluster in this browser: what the sign-up's name field starts with. */
-  suggestedName?: string;
   /**
-   * The name a passkey made at sign-up with `name` is listed under in a
-   * password manager (`Alex · Sylence (eu-shared-1 · 3f2a)`), `null` before
-   * the cluster is known.
+   * The name a passkey made at sign-up with `label` is listed under in a
+   * password manager (`Work laptop · Sylence (eu-shared-1 · 3f2a)`, `Sylence
+   * (eu-shared-1 · 3f2a)` without one), `null` before the cluster is known.
    */
-  passkeyName?(name: string): string | null;
+  passkeyName?(label: string): string | null;
   /**
    * The last sign-in found no account here: the cluster did not know the
    * passkey, or the browser prompt closed without one chosen (a browser with
@@ -399,7 +405,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
   const join = onJoinedAtSignUp !== undefined;
   const signedOutTarget = session.status === "signed-out" ? session.target : null;
   const signUp = useCallback(
-    (name?: string) => {
+    (name?: string, signUpOptions?: PasskeySignUpOptions) => {
       // The second prompt right away, falling back to its own click when the
       // browser refuses it ({@link signUpFlow}); a caller with no button to
       // show turns that off.
@@ -418,6 +424,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
           try {
             made = await signUpHere(c, target, passkey, {
               name,
+              ...(signUpOptions?.passkeyLabel ? { passkeyLabel: signUpOptions.passkeyLabel } : {}),
               invite: inviteToken,
               policy: policy ?? (await policyRead.current),
               join,
@@ -488,13 +495,9 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       : failed;
   const passkeyUnknown = passkeyUnknownAfter(failure);
   const noAccountHere = noAccountHereAfter(failure);
-  const suggestedName = useMemo(
-    () => (signedOutTarget ? rememberedSignUpName(signedOutTarget, hintStorage) : ""),
-    [signedOutTarget, hintStorage],
-  );
   const passkeyNameFor = useCallback(
-    (name: string) =>
-      signedOutTarget ? passkeyName(name, passkeyCluster(signedOutTarget, policy), passkeyAppName(appName)) : null,
+    (label: string) =>
+      signedOutTarget ? passkeyName(label, passkeyCluster(signedOutTarget, policy), passkeyAppName(appName)) : null,
     [signedOutTarget, policy, appName],
   );
 
@@ -511,7 +514,6 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signOut,
       signUpAccess: access,
       passkeyUnknown,
-      suggestedName,
       passkeyName: passkeyNameFor,
       noAccountHere,
       stage: flowView.stage,
@@ -533,7 +535,6 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signOut,
       access,
       passkeyUnknown,
-      suggestedName,
       passkeyNameFor,
       noAccountHere,
       flowView.stage,

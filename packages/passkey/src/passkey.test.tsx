@@ -227,44 +227,71 @@ describe("PasskeySignIn", () => {
     return { busy: false, error: null, signIn: vi.fn(async () => {}), signUp: vi.fn(async () => {}), ...over };
   }
 
-  it("continues with a passkey, or creates one in one press with the name optional", () => {
+  it("continues with a passkey, or labels a new one and creates it", () => {
     const a = api();
     render(<PasskeySignIn api={a} />);
     expect(screen.getByText(/made for this cluster, in the Calimero console or any app on it/)).toBeTruthy();
     expect(screen.getByText(/made for other clusters do not work here/)).toBeTruthy();
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(a.signIn).toHaveBeenCalled();
-    expect(screen.getByTestId("signup-name")).toBeTruthy();
+    expect(screen.queryByTestId("signup-label")).toBeNull();
     fireEvent.click(screen.getByTestId("signup-passkey"));
+    expect(a.signUp).not.toHaveBeenCalled();
+    const field = screen.getByLabelText(/Label your passkey/);
+    expect(field).toBe(screen.getByTestId("signup-label"));
+    expect(document.activeElement).toBe(field);
+    expect(screen.getByText(/So you can tell your passkeys apart, e\.g\. Work laptop/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("signup-create"));
     expect(a.signUp).toHaveBeenCalledWith("");
   });
 
-  it("creates with the name typed, and shows what the passkey is saved as", () => {
-    const a = api({ passkeyName: (n) => `${n || "Calimero user"} · Sylence (eu-shared-1 · k7q2)` });
+  it("sends the label for the passkey only, and shows what it is saved as", () => {
+    const a = api({ passkeyName: (l) => (l.trim() ? `${l.trim()} · ` : "") + "Sylence (local · fa1d)" });
     render(<PasskeySignIn api={a} />);
+    fireEvent.click(screen.getByTestId("signup-passkey"));
     expect(screen.getByTestId("signup-passkey-name").textContent).toBe(
-      "Your passkey is saved as Calimero user · Sylence (eu-shared-1 · k7q2)",
+      "Saved in your password manager as: Sylence (local · fa1d)",
     );
-    fireEvent.change(screen.getByTestId("signup-name"), { target: { value: "  Ada " } });
-    expect(screen.getByTestId("signup-passkey-name").textContent).toContain("Ada · Sylence (eu-shared-1 · k7q2)");
-    fireEvent.click(screen.getByTestId("signup-passkey"));
-    expect(a.signUp).toHaveBeenCalledWith("Ada");
+    fireEvent.change(screen.getByTestId("signup-label"), { target: { value: "  Work laptop " } });
+    expect(screen.getByTestId("signup-passkey-name").textContent).toBe(
+      "Saved in your password manager as: Work laptop · Sylence (local · fa1d)",
+    );
+    fireEvent.click(screen.getByTestId("signup-create"));
+    expect(a.signUp).toHaveBeenCalledWith("", { passkeyLabel: "Work laptop" });
   });
 
-  it("starts with the name last given here, which the person can change", () => {
-    const a = api({ suggestedName: "Alex" });
+  it("with askName, also asks the account's name, which goes to the node and the label does not", () => {
+    const a = api({ passkeyName: (l) => (l ? `${l} · ` : "") + "Calimero Home (local · fa1d)" });
+    render(<PasskeySignIn api={a} askName />);
+    fireEvent.click(screen.getByTestId("signup-passkey"));
+    expect(document.activeElement).toBe(screen.getByTestId("signup-name"));
+    fireEvent.change(screen.getByTestId("signup-name"), { target: { value: " Dee " } });
+    expect(screen.getByTestId("signup-passkey-name").textContent).toContain("Dee · Calimero Home (local · fa1d)");
+    fireEvent.change(screen.getByTestId("signup-label"), { target: { value: "Phone" } });
+    expect(screen.getByTestId("signup-passkey-name").textContent).toContain("Phone · Calimero Home (local · fa1d)");
+    fireEvent.click(screen.getByTestId("signup-create"));
+    expect(a.signUp).toHaveBeenCalledWith("Dee", { passkeyLabel: "Phone" });
+  });
+
+  it("goes back from the label step without signing up", () => {
+    const a = api();
     render(<PasskeySignIn api={a} />);
-    expect((screen.getByTestId("signup-name") as HTMLInputElement).value).toBe("Alex");
     fireEvent.click(screen.getByTestId("signup-passkey"));
-    expect(a.signUp).toHaveBeenCalledWith("Alex");
+    fireEvent.click(screen.getByTestId("signup-back"));
+    expect(screen.queryByTestId("signup-label")).toBeNull();
+    expect(screen.getByTestId("signin-passkey")).toBeTruthy();
+    expect(a.signUp).not.toHaveBeenCalled();
   });
 
-  it("asks no name with askName off, nor where no account can be made", () => {
-    const { unmount } = render(<PasskeySignIn api={api()} askName={false} />);
-    expect(screen.queryByTestId("signup-name")).toBeNull();
+  it("creates at once with askLabel off, and asks nothing where no account can be made", () => {
+    const a = api();
+    const { unmount } = render(<PasskeySignIn api={a} askLabel={false} />);
+    fireEvent.click(screen.getByTestId("signup-passkey"));
+    expect(a.signUp).toHaveBeenCalledWith("");
     unmount();
     render(<PasskeySignIn api={api({ signUpAccess: "closed" })} />);
-    expect(screen.queryByTestId("signup-name")).toBeNull();
+    fireEvent.click(screen.getByTestId("signup-passkey"));
+    expect(screen.queryByTestId("signup-label")).toBeNull();
   });
 
   it("disables both while a ceremony runs and shows an error", () => {
@@ -321,6 +348,7 @@ describe("sign-up policy", () => {
     const create = screen.getByTestId("signup-passkey");
     expect(error.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("signed-in"));
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(client.policyReads).toHaveBeenCalledTimes(1);
@@ -369,6 +397,7 @@ describe("sign-up policy", () => {
     expect(screen.queryByTestId("signup-unavailable")).toBeNull();
 
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("signed-in"));
     expect(client.signIn).not.toHaveBeenCalled();
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "org-invite-token" });

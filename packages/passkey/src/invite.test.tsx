@@ -115,6 +115,7 @@ describe("a sign-up refused because of its invite (B2)", () => {
     render(<Screen d={deps(client)} options={{ invites, onJoinedAtSignUp: () => {}, onInviteRefused: refused }} />);
 
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     const error = await screen.findByTestId("signin-error");
     expect(error.textContent).toMatch(/expired.*ask whoever sent it for a new one/);
     expect(error.textContent).toMatch(/create your account without it/i);
@@ -128,6 +129,7 @@ describe("a sign-up refused because of its invite (B2)", () => {
     const without = screen.getByTestId("signup-without-invite");
     expect(without.textContent).toBe("Create your account without the invite");
     fireEvent.click(without);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledTimes(2);
     expect(client.signUp.mock.calls[1]).toEqual([expect.anything(), ""]);
@@ -156,6 +158,7 @@ describe("a sign-up refused because of its invite (B2)", () => {
     const invites = storeWithLink();
     render(<Screen d={deps(client)} options={{ invites, onJoinedAtSignUp: () => {} }} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     const error = await screen.findByTestId("signin-error");
     expect(error.textContent).toMatch(/passkey your browser made.*no account/i);
   });
@@ -166,6 +169,7 @@ describe("a sign-up refused because of its invite (B2)", () => {
     render(<Screen d={deps(client)} options={{ invites, onJoinedAtSignUp: () => {} }} />);
     await waitFor(() => expect(client.signUpPolicy).toHaveBeenCalled());
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     const error = await screen.findByTestId("signin-error");
     expect(error.textContent).not.toMatch(/without it/i);
     expect(screen.queryByTestId("signup-without-invite")).toBeNull();
@@ -196,6 +200,7 @@ describe("joining at sign-up hands the app the whole pending invite (B10)", () =
     const onJoined = vi.fn<(j: JoinedAtSignUp, p: unknown) => void>();
     render(<Screen d={deps(client)} options={{ invites, onJoinedAtSignUp: onJoined }} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByTestId("status");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" });
     expect(onJoined).toHaveBeenCalledWith(

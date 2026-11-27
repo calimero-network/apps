@@ -104,6 +104,7 @@ describe("App", () => {
     render(<App deps={deps(client)} storage={storage} />);
 
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByText("Pick an app instance");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
 
@@ -219,6 +220,7 @@ describe("App", () => {
       const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
       fireEvent.click(await screen.findByTestId("signup-passkey"));
+      fireEvent.click(await screen.findByTestId("signup-create"));
       await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
       expect(client.redeemInvite).not.toHaveBeenCalled();

@@ -257,9 +257,8 @@ async function run(
       throw new Error(`the app could not connect: ${await page.locator("pre.err").innerText()}\n${describe(seen)}`);
     }
     await signUp.click();
-    // `<PasskeySignIn askName>` asks for an optional name first; the second
-    // press creates the passkey.
-    if (await page.getByTestId("signup-name").isVisible()) await signUp.click();
+    // "Create an account" opens the passkey's label step; "Create passkey" signs up.
+    await page.getByTestId("signup-create").click();
     // Since core rc.10 a sign-up is two prompts: the new passkey, then one
     // approval with it. The page asks the second right away; only when that
     // fails or is refused does it wait for "Approve with your new passkey" (enabled only then: while the prompt is open the same test id

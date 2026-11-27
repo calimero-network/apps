@@ -230,6 +230,7 @@ describe("App", () => {
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
     fireEvent.click(screen.getByText("Create an account"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByText("Your stores");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -258,6 +259,7 @@ describe("App", () => {
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
     fireEvent.click(screen.getByText("Create an account"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByText("Your stores");
     fireEvent.click(screen.getByLabelText(/shared/));
     fireEvent.change(screen.getByLabelText("store name"), { target: { value: "mine" } });
@@ -312,6 +314,7 @@ describe("App", () => {
     const create = await screen.findByTestId("signup-passkey");
     expect(create.textContent).toBe("Create your account and join the shared store");
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
     expect(client.signIn).not.toHaveBeenCalled();
     expect(await screen.findByText("Invitation accepted: the shared store is in your list.")).toBeTruthy();
@@ -329,6 +332,7 @@ describe("App", () => {
     const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
     render(<App deps={deps(client)} storage={storage} invites={invites} />);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await screen.findByText("beta");
     expect(screen.getByText("app-b")).toBeTruthy();
     expect(client.redeemInvite).not.toHaveBeenCalled();

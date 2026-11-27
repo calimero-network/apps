@@ -197,6 +197,7 @@ describe("App", () => {
 
     await screen.findByText(/Connected to merod local \(3 nodes\)/);
     fireEvent.click(screen.getByTestId("signup-passkey"));
+    fireEvent.click(screen.getByTestId("signup-create"));
     await screen.findByText("Choose a voting group");
     expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "");
     expect(new SessionStore(APP, LOCAL, storage).load()).toEqual(SESSION);
@@ -422,6 +423,7 @@ describe("App", () => {
       const invites = pendingIn(storage, { token: "tok-9", org: "org-2" });
       render(<App deps={deps(client)} storage={storage} invites={invites} />);
       fireEvent.click(await screen.findByTestId("signup-passkey"));
+      fireEvent.click(await screen.findByTestId("signup-create"));
       await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-9" }));
       await waitFor(() => expect(selected(storage)).toBe("app-b"));
       expect(client.redeemInvite).not.toHaveBeenCalled();

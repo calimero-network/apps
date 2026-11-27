@@ -32,7 +32,7 @@ import {
   type Target,
 } from "@calimero-apps/connect";
 import { thisClusterPasskey } from "./knownPasskeys";
-import { appNamedPasskey, passkeyAppName, passkeyCluster, rememberSignUpName } from "./passkeyName";
+import { labelledPasskey, passkeyAppName, passkeyCluster } from "./passkeyName";
 import { describeSignUpNotFinished, isPasskeyCancel, isPromptStuck, signUpFlow, type SignUpFlow } from "./signUpFlow";
 
 /** Said under "Sign in with passkey": which passkeys work here. */
@@ -193,9 +193,15 @@ export interface SignUpHereOptions extends CeremonySignal {
    */
   nameInOrg?: boolean;
   /**
-   * The app's name in the new passkey's name (`Alex · Sylence (eu-shared-1 ·
-   * 3f2a)`), where the node leaves it out; by default the page title's first
-   * part, `null` for none ({@link appNamedPasskey}).
+   * The person's label for the new passkey ("Work laptop"), shown first in its
+   * name in a password manager ({@link labelledPasskey}). Never sent to the
+   * node: the account's name is `name`.
+   */
+  passkeyLabel?: string;
+  /**
+   * The app's name in the new passkey's name (`Work laptop · Sylence
+   * (eu-shared-1 · 3f2a)`), where the node leaves it out; by default the page
+   * title's first part, `null` for none.
    */
   appName?: string | null;
   storage?: KeyValueStorage;
@@ -218,8 +224,9 @@ export async function signUpHere(
   const { name = "", invite = null, policy, join = false, nameInOrg = false, storage, signal } = options;
   const carried = signUpInviteHere(policy, invite, join);
   const trimmed = name.trim();
-  const named = appNamedPasskey(passkey, {
+  const named = labelledPasskey(passkey, {
     person: trimmed,
+    label: options.passkeyLabel ?? "",
     cluster: passkeyCluster(target, policy),
     app: passkeyAppName(options.appName),
   });
@@ -229,7 +236,6 @@ export async function signUpHere(
   const made = Object.keys(extra).length ? await signUp(named, trimmed, extra) : await signUp(named, trimmed);
   const { accountId } = made;
   rememberAccountHere(target, storage);
-  rememberSignUpName(target, trimmed, storage);
   // The org from the sign-up's answer when the node names it there (mero-js
   // passes the node's answer through), else the new account's only one.
   const said = (made as { org?: unknown }).org;

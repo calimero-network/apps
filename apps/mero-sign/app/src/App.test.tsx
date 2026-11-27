@@ -267,6 +267,7 @@ describe('App', () => {
     const create = await screen.findByTestId('signup-passkey');
     expect(create.textContent).toBe('Create your account and join the workspace');
     fireEvent.click(create);
+    fireEvent.click(await screen.findByTestId('signup-create'));
     await waitFor(() =>
       expect(client.signUp).toHaveBeenCalledWith(expect.anything(), '', { invite: 'tok-1' }));
     await waitFor(() =>

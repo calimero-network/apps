@@ -321,6 +321,7 @@ describe("App", () => {
       const client = fakeClient();
       render(<App deps={deps(client)} />);
       fireEvent.click(await screen.findByTestId("signup-passkey"));
+      fireEvent.click(await screen.findByTestId("signup-create"));
       await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
       await waitFor(() => expect(window.location.pathname).toBe("/teams/org-1/projects/board-1"));
       await new Promise((r) => setTimeout(r, 300));

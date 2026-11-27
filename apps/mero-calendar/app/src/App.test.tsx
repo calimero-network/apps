@@ -235,6 +235,7 @@ describe("an invitation link opened while signed out", () => {
     const client = fakeClient();
     renderApp(client);
     fireEvent.click(await screen.findByTestId("signup-passkey"));
+    fireEvent.click(await screen.findByTestId("signup-create"));
     await waitFor(() => expect(client.signUp).toHaveBeenCalledWith(expect.anything(), "", { invite: "tok-1" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/teams/org-2"));
     expect(client.redeemInvite).not.toHaveBeenCalled();

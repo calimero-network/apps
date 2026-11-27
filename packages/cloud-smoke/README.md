@@ -52,7 +52,8 @@ SMOKE_PACKAGES="com.calimero.kv-store com.calimero.chat" npx playwright test
 | `SMOKE_URL`         | (derived)                | One URL to open instead, with a single package in SMOKE_PACKAGES. |
 
 Every app signs in through `@calimero-apps/passkey`'s `<PasskeySignIn>`
-(`signup-passkey`, `signin-passkey`, `signin-error`), so any served app gets
+(`signup-passkey`, then `signup-create` on the passkey label step,
+`signin-passkey`, `signin-error`), so any served app gets
 steps 1 to 4. By default the test expects the control on load and a "Sign out"
 button once signed in; an app that wraps it differently has an entry in
 `FLOWS` (`src/signin.smoke.ts`). The app-specific call is in
