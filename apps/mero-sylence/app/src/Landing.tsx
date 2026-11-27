@@ -826,7 +826,8 @@ export function Landing({
             <h1>Meeting notes that write themselves, privately.</h1>
             <p>
               Record Meet, Zoom and Teams from your browser. Speech becomes text
-              on your laptop, so the audio never leaves it.
+              on your laptop, and the recording is kept in a secure enclave only
+              your team can read.
             </p>
             <div className="lp-cta">
               {onInstall && (
@@ -878,16 +879,18 @@ export function Landing({
         <div className="lp-inner lp-split">
           <Reveal>
             <span className="lp-eyebrow">Private by design</span>
-            <h2 className="lp-h2">The audio stays on your laptop.</h2>
+            <h2 className="lp-h2">Only your team can read it.</h2>
             <p className="lp-p">
               Recording, speech to text and naming all happen inside your
-              browser. Only the finished text goes to your workspace, which
-              lives on a Calimero node only your organization reaches. Nobody in
-              between reads it, us included.
+              browser. The audio and the transcript are then saved to your
+              workspace, on a Calimero node that runs in a secure enclave:
+              sealed hardware that keeps them encrypted, so only your
+              workspace&apos;s members can open them. Nobody in between can, us
+              and the cloud host included.
             </p>
             <ul className="lp-ticks">
               <li>No bot in the call, nothing to admit</li>
-              <li>Audio is never uploaded or stored</li>
+              <li>Audio and transcripts sealed in a secure enclave</li>
               <li>Passkey sign-in, no passwords</li>
             </ul>
           </Reveal>
@@ -895,7 +898,7 @@ export function Landing({
             <div
               className="flow"
               role="img"
-              aria-label="The call's audio goes into your browser; only text goes on to your node."
+              aria-label="The call's audio becomes text in your browser; both are sealed in your node's secure enclave."
             >
               <div className="station">
                 <span className="station-art bars" aria-hidden="true">
@@ -929,7 +932,7 @@ export function Landing({
                   <CalimeroMark size={22} />
                 </span>
                 <strong>Your node</strong>
-                <span>text only</span>
+                <span>secure enclave</span>
               </div>
             </div>
           </Reveal>
@@ -977,11 +980,14 @@ export function Landing({
             <Reveal className="tile full ink">
               <div className="stat">
                 <span className="stat-n">0</span>
-                <span className="stat-unit">bytes of audio uploaded</span>
+                <span className="stat-unit">
+                  people outside your team can read it
+                </span>
               </div>
               <p>
-                Whisper runs on your laptop&apos;s GPU through WebGPU, with a
-                smaller model for machines without one.
+                Whisper runs on your laptop&apos;s GPU through WebGPU, then the
+                recording and transcript are sealed in your workspace&apos;s
+                secure enclave.
               </p>
             </Reveal>
           </div>

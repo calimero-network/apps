@@ -209,7 +209,7 @@ export function GetTheExtension({ onUpload }: { onUpload?: () => void } = {}) {
       <h2>Record your first meeting</h2>
       <p className="empty">
         The Sylence extension listens to a call in your browser and turns speech into text on your
-        own laptop. The audio never leaves it; only the transcript is saved here, for your team.
+        own laptop. The recording and transcript are saved here, in a secure enclave only your team can read.
       </p>
       <ol className="steps">
         <li>
