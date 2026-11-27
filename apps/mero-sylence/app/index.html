@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sylence — Private meeting notes for Meet, Zoom and Teams</title>
+    <meta
+      name="description"
+      content="Meeting notes that write themselves, privately. Sylence transcribes Google Meet, Zoom and Teams on your laptop; the audio never leaves it, and the transcript and action items go to your team's workspace."
+    />
+    <link rel="icon" href="./favicon.ico" sizes="48x48" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./site.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Sylence" />
+    <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0c0e" media="(prefers-color-scheme: dark)" />
+    <!-- Link previews. `./og.png` becomes absolute at build time when the site's address is known (vite.config.ts). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sylence" />
+    <meta property="og:title" content="Sylence — Meeting notes that write themselves, privately" />
+    <meta
+      property="og:description"
+      content="Transcribe Google Meet, Zoom and Teams on your own laptop. No bot joins the call and the audio never leaves your machine."
+    />
+    <meta property="og:image" content="./og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Sylence: meeting notes that write themselves, privately. A live transcript with speaker names." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sylence — Meeting notes that write themselves, privately" />
+    <meta
+      name="twitter:description"
+      content="Transcribe Google Meet, Zoom and Teams on your own laptop. No bot joins the call and the audio never leaves your machine."
+    />
+    <meta name="twitter:image" content="./og.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

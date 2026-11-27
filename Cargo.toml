@@ -55,6 +55,7 @@ exclude = [
   "apps/mero-blocks/logic",
   "apps/mero-forum/logic",
   "apps/mero-forms/logic",
+  "apps/mero-sylence/logic",
   "apps/mero-updates/logic",
   "apps/mero-issue-tracker/logic",
   "apps/mero-pixart/logic",

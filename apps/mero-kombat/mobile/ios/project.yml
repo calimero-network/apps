@@ -30,7 +30,7 @@ options:
 packages:
   MeroKit:
     url: https://github.com/calimero-network/core
-    exactVersion: 1.0.0-rc.37
+    exactVersion: 1.0.0-rc.38
   KombatCore:
     path: KombatCore
 

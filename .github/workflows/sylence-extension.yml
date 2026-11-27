@@ -1,0 +1,54 @@
+# The Sylence extension download for the page a Cloud node serves. A node
+# serves no `.zip` (core's bundle frontend types), so the served page's
+# install link is this release's asset:
+#   https://github.com/calimero-network/apps/releases/download/sylence-extension/sylence-extension.zip
+# Rebuilt when the extension changes on main, or on demand.
+name: Sylence extension download
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mero-sylence/extension/**"
+      - ".github/workflows/sylence-extension.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sylence-extension
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and attach the extension zip
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Build the extension
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm -F mero-sylence-extension build
+          node apps/mero-sylence/app/scripts/extension-zip.mjs "$RUNNER_TEMP/sylence-extension.zip"
+          version=$(jq -r .version apps/mero-sylence/extension/dist/manifest.json)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Attach it to the sylence-extension release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view sylence-extension >/dev/null 2>&1; then
+            gh release create sylence-extension --title "Sylence extension" --latest=false \
+              --notes "The Sylence browser extension for Chrome and Brave (Load unpacked). Rebuilt from main."
+          fi
+          gh release upload sylence-extension "$RUNNER_TEMP/sylence-extension.zip" --clobber
+          gh release edit sylence-extension --notes "The Sylence browser extension for Chrome and Brave (Load unpacked), version $VERSION, built from ${GITHUB_SHA::9}."

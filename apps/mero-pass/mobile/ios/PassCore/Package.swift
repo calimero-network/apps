@@ -20,7 +20,7 @@ let package = Package(
         // `exactVersion` in ../project.yml.
         .package(
             url: "https://github.com/calimero-network/core",
-            exact: "1.0.0-rc.37"),
+            exact: "1.0.0-rc.38"),
     ],
     targets: [
         // Generated from ../../../logic/res/abi.json by core's meroctl app codegen

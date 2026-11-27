@@ -53,7 +53,7 @@ CI_RUN_APP_FILES = {"scripts/local-rig.sh"}
 def workspace_members(root: pathlib.Path) -> dict[str, dict]:
     """dir (relative to root) -> parsed package.json, for every pnpm member."""
     members: dict[str, dict] = {}
-    for pattern in ("apps/*/app/package.json", "packages/*/package.json"):
+    for pattern in ("apps/*/app/package.json", "apps/*/extension/package.json", "packages/*/package.json"):
         for pj in sorted(root.glob(pattern)):
             try:
                 members[str(pj.parent.relative_to(root))] = json.loads(pj.read_text())
@@ -96,12 +96,18 @@ def scope(paths: list[str], root: pathlib.Path = ROOT) -> dict[str, list[str]]:
             if rest.startswith("logic/"):
                 apps.add(app)
                 # The frontend job regenerates the client from the committed
-                # ABI (logic/res/abi.json), so a contract change is its business.
-                if (root / "apps" / app / "app").is_dir():
-                    frontend.add(f"apps/{app}/app")
+                # ABI (logic/res/abi.json), so a contract change is its business
+                # (and its browser extension's, which has its own client).
+                for client in ("app", "extension"):
+                    if (root / "apps" / app / client).is_dir():
+                        frontend.add(f"apps/{app}/{client}")
             elif rest.startswith("app/"):
                 apps.add(app)
                 frontend.add(f"apps/{app}/app")
+            elif rest.startswith("extension/"):
+                # A browser extension is a pnpm member the frontend job checks;
+                # it changes no contract and nothing Vercel serves.
+                frontend.add(f"apps/{app}/extension")
             elif rest in CI_RUN_APP_FILES:
                 apps.add(app)
             continue
