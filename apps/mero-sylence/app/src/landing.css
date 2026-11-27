@@ -1445,25 +1445,31 @@ body.on-landing [data-node-shield-host] {
 .saved-transcript {
   list-style: none;
   margin: 0;
-  padding: 14px 20px;
+  padding: 12px 16px;
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 2px;
   overflow: hidden;
   border-right: 1px solid var(--lp-line);
 }
+/* One line per row, so a short demo never cuts a row in half. */
 .saved-transcript li {
   display: grid;
-  grid-template-columns: 44px 64px minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  padding: 7px 8px;
+  grid-template-columns: 40px 60px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
   border-radius: 8px;
-  font-size: 13.5px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.4;
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.4s var(--ease-out), transform 0.4s var(--ease-out);
+}
+.saved-transcript li > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .demo-saved.in .saved-transcript li,
 .demo-saved.in .saved-side section {
@@ -1477,27 +1483,28 @@ body.on-landing [data-node-shield-host] {
   justify-self: start;
 }
 .saved-transcript time {
-  padding-top: 2px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--lp-text-2);
   font-variant-numeric: tabular-nums;
 }
 .saved-side {
   display: grid;
   align-content: start;
-  gap: 14px;
-  padding: 16px 18px;
+  gap: 10px;
+  padding: 12px 14px;
   background: var(--lp-soft);
   overflow: hidden;
+  min-width: 0;
 }
 .saved-side section {
   display: grid;
-  gap: 8px;
-  padding: 14px;
+  gap: 6px;
+  padding: 10px 12px;
   border-radius: 12px;
   background: var(--lp-card);
   border: 1px solid var(--lp-line);
+  min-width: 0;
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.45s var(--ease-out), transform 0.45s var(--ease-out);
@@ -1507,7 +1514,7 @@ body.on-landing [data-node-shield-host] {
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1516,50 +1523,49 @@ body.on-landing [data-node-shield-host] {
 .saved-count {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 17px;
+  height: 17px;
   border-radius: 9px;
   background: var(--p-coral);
   color: var(--lp-coral-ink);
-  font-size: 10.5px;
+  font-size: 10px;
   letter-spacing: 0;
 }
+/* Two lines at most: the summary never pushes the action items out. */
 .saved-side p {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--lp-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .saved-side ul {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 .saved-side li {
   display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  font-size: 13px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
   line-height: 1.4;
 }
-.saved-side li .demo-check {
-  margin-top: 1px;
-}
 .saved-action {
-  display: grid;
-  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.saved-action-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.saved-action-meta em {
-  font-style: normal;
-  font-size: 11.5px;
-  color: var(--lp-text-2);
+.saved-side li .who {
+  flex: none;
 }
 @media (max-width: 720px) {
   .saved-meta {
@@ -1571,29 +1577,29 @@ body.on-landing [data-node-shield-host] {
   }
   .saved-side {
     order: -1;
-    padding: 12px;
-    gap: 10px;
-  }
-  .saved-side section {
     padding: 10px 12px;
-  }
-  .saved-side p {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    gap: 8px;
+    border-bottom: 1px solid var(--lp-line);
   }
   .saved-transcript {
     border-right: 0;
-    padding: 10px 12px;
-    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
-    mask-image: linear-gradient(to bottom, #000 70%, transparent);
+    padding: 8px 10px;
+  }
+  /* Three lines fit under the summary and action items at any height a phone gives it. */
+  .saved-transcript li:nth-child(n + 4) {
+    display: none;
   }
   .saved-transcript li {
-    grid-template-columns: 38px 58px minmax(0, 1fr);
-    gap: 8px;
-    padding: 5px 4px;
-    font-size: 12.5px;
+    grid-template-columns: 36px 54px minmax(0, 1fr);
+    gap: 6px;
+    padding: 4px;
+    font-size: 12px;
+  }
+}
+/* A short phone: the action items and the transcript matter more than the summary. */
+@media (max-width: 720px) and (max-height: 760px) {
+  .saved-side section:first-child {
+    display: none;
   }
 }
 

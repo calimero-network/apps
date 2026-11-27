@@ -2023,3 +2023,23 @@ mark {
     padding: 0 16px 16px;
   }
 }
+
+/* "Close" / "Not now" under the sign-in panel: quiet gray text that darkens on hover, no button box. */
+button.text-close,
+.dialog-body > button.text-close {
+  align-self: center;
+  width: auto;
+  height: auto;
+  padding: 4px 8px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--faint);
+  font-weight: 400;
+  font-size: 13px;
+  transition: color 0.2s var(--ease-out);
+}
+button.text-close:hover:not(:disabled) {
+  background: none;
+  color: var(--text);
+}
