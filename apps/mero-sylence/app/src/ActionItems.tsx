@@ -7,6 +7,8 @@ import type { Workspace } from "./useWorkspace";
 import { PersonName } from "./names";
 import { formatClock } from "./lib/transcript";
 import { Icon } from "./ui";
+import { findActions } from "../../extension/src/lib/actionItems";
+import type { SegmentView } from "./sylenceApi";
 import "./polish.css";
 
 /**
@@ -23,6 +25,7 @@ export function ActionItems({
   isOwner,
   segmentStart,
   speakers = [],
+  segments,
 }: {
   workspace: Pick<Workspace, "act">;
   meetingId: string;
@@ -34,6 +37,8 @@ export function ActionItems({
   segmentStart?: (seq: number) => number | undefined;
   /** The call's speakers by the name shown, with their colour: offered first when assigning. */
   speakers?: readonly { name: string; color: string }[];
+  /** The transcript, to find action items in after the call (the extension's switch may have been off). */
+  segments?: readonly SegmentView[];
 }) {
   const memberNames = useMemberNames();
   const people = useMemo(() => assignables(speakers, memberNames), [speakers, memberNames]);
@@ -64,12 +69,43 @@ export function ActionItems({
   };
 
   const open = actions?.filter((a) => !a.done).length ?? 0;
+  const [finding, setFinding] = useState(false);
+  const [foundNote, setFoundNote] = useState<string | null>(null);
+  /** Finds action items in the transcript ("I'll…", "can you…"), skipping ones already there. */
+  const find = async () => {
+    if (!segments?.length) return;
+    setFinding(true);
+    setFoundNote(null);
+    await run(async () => {
+      const found = findActions(
+        segments.map((s) => ({ seq: s.seq, speaker: s.speaker, name: s.name, text: s.text })),
+        (actions ?? []).map((a) => a.text),
+      );
+      for (const a of found) {
+        await workspace.act((c) => c.addAction({ meetingId, text: a.text, assignee: a.assignee, sourceSeq: a.sourceSeq }));
+      }
+      setFoundNote(found.length ? `Found ${found.length} new` : "Nothing new found");
+    });
+    setFinding(false);
+  };
 
   return (
     <section className="card actions-card" aria-labelledby="actions-title">
       <div className="card-head">
         <h2 id="actions-title">Action items</h2>
         {actions && <span className="pill">{open} open</span>}
+        {segments && segments.length > 0 && (
+          <button
+            type="button"
+            className="btn small ghost actions-find"
+            onClick={() => void find()}
+            disabled={finding}
+            title="Find action items in the transcript"
+            data-testid="find-actions"
+          >
+            <Icon name="sparkle" size={14} /> {finding ? "Finding…" : (foundNote ?? "Find in transcript")}
+          </button>
+        )}
       </div>
       {actions === null && <p className="empty">Loading…</p>}
       {actions && actions.length === 0 && (

@@ -852,3 +852,29 @@ body.panel {
   line-height: 1.6;
   opacity: 0.78;
 }
+
+/* "Download the speech model first", above Record */
+.need {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+}
+
+/* Developer mode: a quiet switch at the very bottom of Settings */
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 4px 2px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

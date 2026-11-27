@@ -59,7 +59,7 @@ test("the popup opens signed out, with no console errors", async () => {
   });
   await page.goto(`chrome-extension://${ID}/popup.html`);
   await expect(page.getByRole("button", { name: "Sign in with Calimero" })).toBeVisible();
-  await expect(page.getByText(/Audio is never uploaded/)).toBeVisible();
+  await expect(page.getByText(/sealed so only your team can read it/)).toBeVisible();
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByLabel("Speech model")).toBeVisible();
   expect(errors).toEqual([]);

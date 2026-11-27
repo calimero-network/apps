@@ -511,6 +511,7 @@ export function MeetingBody({
             isOwner={isOwner}
             segmentStart={segmentStart}
             speakers={actionSpeakers}
+            segments={segments}
           />
           <details className="card details">
             <summary>Details</summary>

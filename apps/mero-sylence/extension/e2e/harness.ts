@@ -31,6 +31,7 @@ export async function launch(): Promise<{ context: BrowserContext; worker: Worke
     route.fulfill({ contentType: "text/html", body: "<title>Meet - Weekly sync</title><h1>Weekly sync</h1>" }),
   );
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+  await readyLaptop(context, worker);
   return { context, worker };
 }
 
@@ -156,7 +157,7 @@ export async function fakeOffscreen(context: BrowserContext): Promise<Page> {
     chrome.runtime.onMessage.addListener((m: { target?: string; type?: string; tier?: string }, _s, respond) => {
       if (m.target !== "offscreen") return false;
       w.__commands.push(m.type!);
-      if (m.type === "caps") respond({ webgpu: false, maxBufferSize: 0, deviceMemoryGb: 8, cores: 8, cached: ["ultralight"] });
+      if (m.type === "caps") respond({ webgpu: false, maxBufferSize: 0, deviceMemoryGb: 8, cores: 8, cached: ["light", "ultralight"] });
       else if (m.type === "capture") {
         respond(true);
         setTimeout(() => void emit({ type: "model", tier: m.tier, state: "ready" }), 50);
@@ -179,4 +180,21 @@ export async function say(control: Page, speaker: "you" | "others", startMs: num
     },
     [speaker, startMs, text] as const,
   );
+}
+
+/**
+ * A laptop ready to record: the small speech models in the extension's cache
+ * (stand-in files; nothing here runs them) and the microphone allowed for the
+ * extension. The popup will not record without both.
+ */
+async function readyLaptop(context: BrowserContext, worker: Worker): Promise<void> {
+  await context.grantPermissions(["microphone"], { origin: `chrome-extension://${ID}` }).catch(() => undefined);
+  await worker.evaluate(async () => {
+    const cache = await caches.open("transformers-cache");
+    for (const repo of ["onnx-community/moonshine-base-ONNX", "onnx-community/moonshine-tiny-ONNX"]) {
+      for (const file of ["encoder_model.onnx", "decoder_model_merged.onnx"]) {
+        await cache.put(`https://huggingface.co/${repo}/resolve/main/onnx/${file}`, new Response("stand-in"));
+      }
+    }
+  });
 }

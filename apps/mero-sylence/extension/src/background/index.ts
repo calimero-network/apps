@@ -31,7 +31,7 @@ import { UploadQueue, type QueueState, type QueueStore, type QueuedSegment } fro
 import { describe, isSignedOut, withClient } from "../lib/session";
 import { read, write } from "../lib/storage";
 import { log } from "../lib/diagnostics";
-import { resolveTier, TIERS, type Capabilities } from "../lib/tiers";
+import { resolveTier, TIERS, type Capabilities, canImproveAfterCall, tierBlock } from "../lib/tiers";
 import { nameFor, pushChange, type SpeakerChange } from "../lib/speakers";
 
 const OFFSCREEN = "offscreen.html";
@@ -365,6 +365,11 @@ async function start(tabId: number): Promise<void> {
     const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
     lastCaps = caps;
     const tier = resolveTier(s.tier, caps, s.language);
+    // Never record into a model that is not on the laptop: downloading it mid-call
+    // is what overwhelms a small machine, and the call would go untranscribed.
+    if (!(caps.cached ?? []).includes(tier)) {
+      throw new Error(`Download the speech model first (${TIERS[tier].name}): open the model chip below.`);
+    }
     await log(
       `start: platform=${platform} tier=${tier} choice=${s.tier} lang=${s.language || "auto"} mic=${s.mic} webgpu=${caps.webgpu} mem=${caps.deviceMemoryGb} cores=${caps.cores} cached=${(caps.cached ?? []).join(",") || "none"}`,
     );
@@ -635,8 +640,16 @@ function finish(durationMs: number): Promise<void> {
       link = meetingLink(a.page, meeting.appId, meeting.id);
       const s = await settings();
       if (all && !error && s.improveAfterCall) {
-        if (!lastCaps?.webgpu) {
-          improved = { done: false, why: "This browser doesn't offer WebGPU, which the second pass needs." };
+        // Never downloads the big model here: it runs only where it is allowed and already on the laptop.
+        if (!lastCaps || !canImproveAfterCall(lastCaps)) {
+          improved = {
+            done: false,
+            why: !lastCaps?.webgpu
+              ? "This browser doesn't offer WebGPU, which the second pass needs."
+              : lastCaps && tierBlock("best", lastCaps)
+                ? `The second pass is off on this laptop: ${tierBlock("best", lastCaps)}`
+                : "The second pass needs Whisper large-v3 turbo downloaded first (Settings, Speech model).",
+          };
         } else {
           try {
             const why = await improveTranscript(meeting, s.language, durationMs);
@@ -814,9 +827,15 @@ async function handle(req: Request): Promise<unknown> {
     case "dismiss":
       await setStatus(() => IDLE);
       return null;
-    case "preload":
+    case "preload": {
       await ensureOffscreen();
+      // A model this device must not run is never downloaded, whoever asks.
+      const caps = await toOffscreen<Capabilities>({ target: "offscreen", type: "caps" });
+      lastCaps = caps;
+      const blocked = tierBlock(req.tier, caps);
+      if (blocked) throw new Error(`${TIERS[req.tier].name} isn't available on this device. ${blocked}`);
       return toOffscreen({ target: "offscreen", type: "preload", tier: req.tier });
+    }
     case "preloadNotes":
       await ensureOffscreen();
       return toOffscreen({ target: "offscreen", type: "preloadNotes", model: req.model });

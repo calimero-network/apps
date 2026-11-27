@@ -436,7 +436,7 @@ describe("service worker: when recording goes wrong", () => {
 
   it("deletes the empty meeting when the offscreen page is gone before capture", async () => {
     h.offscreen = async (c) => {
-      if (c.type === "caps") return { webgpu: false, deviceMemoryGb: 8, cores: 8, cached: [] };
+      if (c.type === "caps") return { webgpu: false, deviceMemoryGb: 8, cores: 8, cached: ["light"] };
       throw new Error("Receiving end does not exist.");
     };
     const r = await request({ type: "start", tabId: 7 });
@@ -444,6 +444,22 @@ describe("service worker: when recording goes wrong", () => {
     expect(status().phase).toBe("error");
     expect(node.deleted).toEqual(["m1"]);
     expect(savedQueue()).toBeUndefined();
+  });
+
+  it("refuses to record with no speech model downloaded, and starts no meeting", async () => {
+    h.offscreen = async (c) => (c.type === "caps" ? { webgpu: false, deviceMemoryGb: 8, cores: 8, cached: [] } : true);
+    const r = await request({ type: "start", tabId: 7 });
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/Download the speech model first/) });
+    expect(node.deleted).toEqual([]);
+    expect(h.streamIdsTaken).toBe(0);
+  });
+
+  it("never downloads a model the device must not run", async () => {
+    h.offscreen = async (c) =>
+      c.type === "caps" ? { webgpu: true, maxBufferSize: 2 ** 31, deviceMemoryGb: 8, cores: 8, chromeOS: true, cached: [] } : true;
+    const r = await request({ type: "preload", tier: "best" });
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/isn't available on this device.*Chromebook/) });
+    expect(h.toOffscreen.map((c) => c.type)).not.toContain("preload");
   });
 
   it("shows why when the node refuses to start a meeting", async () => {
@@ -731,7 +747,8 @@ describe("service worker: when recording goes wrong", () => {
 describe("service worker: the transcript redone after the call", () => {
   const redo = (answer: (c: OffscreenCommand) => Event | null) => {
     h.offscreen = async (c) => {
-      if (c.type === "caps") return { webgpu: true, deviceMemoryGb: 8, cores: 8, cached: ["best"] };
+      // Records with Moonshine base (downloaded); the second pass uses turbo (downloaded too).
+      if (c.type === "caps") return { webgpu: true, deviceMemoryGb: 8, cores: 8, cached: ["best", "light"] };
       const e = answer(c);
       if (e) {
         setTimeout(() => {

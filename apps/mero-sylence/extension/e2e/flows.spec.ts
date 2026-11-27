@@ -377,20 +377,19 @@ test("settings: styled selects, switches that stick, diagnostics, and Log out at
   const stored = await getStorage<{ language: string; autoActions: boolean; mic: boolean }>(worker, "local", "sylence:settings");
   expect(stored).toMatchObject({ language: "de", autoActions: false, mic: micBefore !== "true" });
 
-  // Diagnostics: copies the recorder's log, no transcript.
-  // Open already with a development sign-in page set.
-  const advanced = popup.getByRole("button", { name: "Advanced", exact: true });
-  if (await advanced.isVisible()) await advanced.click();
+  // Diagnostics: copies the recorder's log, no transcript. Developer mode is on
+  // by itself here, since a development sign-in page is set.
+  await expect(popup.getByRole("switch", { name: "Developer mode" })).toHaveAttribute("aria-checked", "true");
   await popup.getByRole("button", { name: "Copy diagnostics" }).click();
   await expect(popup.getByText(/^(Copied \d+ lines\.|Nothing logged yet in this browser session\.)$/)).toBeVisible();
   const copied = await popup.evaluate(() => (window as unknown as { __copied: string }).__copied);
   expect(copied).toMatch(/^Sylence \d+\.\d+\.\d+ on /);
   expect(copied).not.toContain("Eve, can you send the deck");
-  await popup.getByRole("button", { name: "Hide advanced" }).click();
 
-  // Log out is the last control, with no account id beside it.
+  // Log out is the last control but the quiet Developer mode switch, with no account id beside it.
   const main = popup.getByRole("main");
-  const last = main.locator(":scope > *").last();
+  await expect(main.locator(":scope > *").last()).toHaveText("Developer mode");
+  const last = main.locator(":scope > *").nth(-2);
   await expect(last).toHaveText("Log out");
   await expect(main).not.toContainText("Signed in as");
   const auth = await getStorage<Auth>(worker, "local", "sylence:auth");

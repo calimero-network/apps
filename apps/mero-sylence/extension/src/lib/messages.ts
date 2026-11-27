@@ -28,6 +28,8 @@ export interface Settings {
    * its transcript replaces the live one (lib/improve.ts). Needs WebGPU.
    */
   improveAfterCall: boolean;
+  /** Shows the sign-in page setting and diagnostics (off: hidden). On by itself when a page is set. */
+  developer?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

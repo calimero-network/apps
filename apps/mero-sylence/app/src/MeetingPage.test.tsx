@@ -199,6 +199,17 @@ describe("MeetingPage", () => {
     });
   });
 
+  it("finds action items in the transcript after the call, without repeating ones already there", async () => {
+    const { sent } = setup({ me: "cy" });
+    await screen.findAllByTestId("segment");
+    fireEvent.click(await screen.findByTestId("find-actions"));
+    await waitFor(() => expect(screen.getByTestId("find-actions").textContent).toMatch(/Found \d+ new|Nothing new found/));
+    const added = sent.filter((s) => s.method === "addAction").map((s) => s.args as { text: string; sourceSeq: number | null });
+    // Whatever was found points back at its line, and nothing already listed is added again.
+    expect(added.every((a) => typeof a.sourceSeq === "number")).toBe(true);
+    expect(added.some((a) => a.text.toLowerCase() === "send the deck")).toBe(false);
+  });
+
   it("makes an action item from a line without assigning it", async () => {
     const { sent } = setup({ me: "cy" });
     const lines = await screen.findAllByTestId("segment");
