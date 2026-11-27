@@ -331,9 +331,9 @@ function CallDemo() {
 
 const SUMMARY =
   "Launch plan review. The store listing is ready apart from screenshots, which you take this afternoon. Speaker names checked out on Zoom. John sends the deck to design on Thursday, ahead of Friday.";
-const ACTIONS: { text: string; p: Person; due: string }[] = [
-  { text: "Take the screenshots for the listing", p: YOU, due: "Today" },
-  { text: "Send the deck to design", p: JOHN, due: "Friday" },
+const ACTIONS: { text: string; p: Person }[] = [
+  { text: "Take the screenshots", p: YOU },
+  { text: "Send the deck by Friday", p: JOHN },
 ];
 
 /** Where the call ends up: the saved meeting, transcript with times, summary and action items beside it. */
@@ -370,12 +370,8 @@ function SavedMeeting({ shown }: { shown: boolean }) {
               {ACTIONS.map((a) => (
                 <li key={a.text}>
                   <span className="demo-check" aria-hidden="true" />
-                  <span className="saved-action">
-                    {a.text}
-                    <span className="saved-action-meta">
-                      <Name p={a.p} /> <em>{a.due}</em>
-                    </span>
-                  </span>
+                  <span className="saved-action">{a.text}</span>
+                  <Name p={a.p} />
                 </li>
               ))}
             </ul>

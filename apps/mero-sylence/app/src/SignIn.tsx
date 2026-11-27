@@ -59,7 +59,7 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
     <dialog ref={ref} className="dialog" onClose={onClose} data-testid="signin-modal" aria-labelledby="signin-title">
       <div className="dialog-body">
         <SignInPanel titleId="signin-title" />
-        <button type="button" className="ghost" onClick={onClose} disabled={api.busy}>
+        <button type="button" className="text-close" onClick={onClose} disabled={api.busy}>
           Close
         </button>
       </div>
@@ -121,7 +121,7 @@ export function InvitationHost({ onJoined, children }: { onJoined: () => void; c
           <SignInPanel titleId="invite-signin-title" />
           <button
             type="button"
-            className="ghost"
+            className="text-close"
             onClick={() => setDeferred(true)}
             disabled={api.busy}
             data-testid="invitation-later"
