@@ -1,5 +1,15 @@
 export { knownPasskeys, thisClusterPasskey } from "./knownPasskeys";
 export {
+  appNamedPasskey,
+  passkeyAppName,
+  passkeyCluster,
+  passkeyName,
+  rememberedSignUpName,
+  signUpNameKey,
+  UNNAMED_ACCOUNT,
+  withAppName,
+} from "./passkeyName";
+export {
   describeCeremonyFailure,
   invitedFirst,
   knownAccountHere,

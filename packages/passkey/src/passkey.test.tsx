@@ -226,26 +226,44 @@ describe("PasskeySignIn", () => {
     return { busy: false, error: null, signIn: vi.fn(async () => {}), signUp: vi.fn(async () => {}), ...over };
   }
 
-  it("continues with a passkey, or creates one without asking for a name", () => {
+  it("continues with a passkey, or creates one in one press with the name optional", () => {
     const a = api();
     render(<PasskeySignIn api={a} />);
     expect(screen.getByText(/made for this cluster, in the Calimero console or any app on it/)).toBeTruthy();
     expect(screen.getByText(/made for other clusters do not work here/)).toBeTruthy();
     fireEvent.click(screen.getByTestId("signin-passkey"));
     expect(a.signIn).toHaveBeenCalled();
+    expect(screen.getByTestId("signup-name")).toBeTruthy();
     fireEvent.click(screen.getByTestId("signup-passkey"));
     expect(a.signUp).toHaveBeenCalledWith("");
-    expect(screen.queryByTestId("signup-name")).toBeNull();
   });
 
-  it("offers an optional name when asked to", () => {
-    const a = api();
-    render(<PasskeySignIn api={a} askName />);
-    fireEvent.click(screen.getByTestId("signup-passkey"));
-    expect(a.signUp).not.toHaveBeenCalled();
+  it("creates with the name typed, and shows what the passkey is saved as", () => {
+    const a = api({ passkeyName: (n) => `${n || "Calimero user"} · Sylence (eu-shared-1 · k7q2)` });
+    render(<PasskeySignIn api={a} />);
+    expect(screen.getByTestId("signup-passkey-name").textContent).toBe(
+      "Your passkey is saved as Calimero user · Sylence (eu-shared-1 · k7q2)",
+    );
     fireEvent.change(screen.getByTestId("signup-name"), { target: { value: "  Ada " } });
+    expect(screen.getByTestId("signup-passkey-name").textContent).toContain("Ada · Sylence (eu-shared-1 · k7q2)");
     fireEvent.click(screen.getByTestId("signup-passkey"));
     expect(a.signUp).toHaveBeenCalledWith("Ada");
+  });
+
+  it("starts with the name last given here, which the person can change", () => {
+    const a = api({ suggestedName: "Alex" });
+    render(<PasskeySignIn api={a} />);
+    expect((screen.getByTestId("signup-name") as HTMLInputElement).value).toBe("Alex");
+    fireEvent.click(screen.getByTestId("signup-passkey"));
+    expect(a.signUp).toHaveBeenCalledWith("Alex");
+  });
+
+  it("asks no name with askName off, nor where no account can be made", () => {
+    const { unmount } = render(<PasskeySignIn api={api()} askName={false} />);
+    expect(screen.queryByTestId("signup-name")).toBeNull();
+    unmount();
+    render(<PasskeySignIn api={api({ signUpAccess: "closed" })} />);
+    expect(screen.queryByTestId("signup-name")).toBeNull();
   });
 
   it("disables both while a ceremony runs and shows an error", () => {

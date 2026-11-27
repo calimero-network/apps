@@ -25,6 +25,8 @@ export type PasskeySignInApi = Pick<SessionApi, "busy" | "error" | "signIn" | "s
       | "hasInvite"
       | "knownAccount"
       | "inviteRefused"
+      | "suggestedName"
+      | "passkeyName"
     >
   >;
 
@@ -40,8 +42,11 @@ export interface PasskeySignInProps {
   /** The page holds an invite (overrides `api.hasInvite`). */
   invited?: boolean;
   /**
-   * Offer an optional name when creating a passkey. Off by default: a new
-   * account needs nothing typed, and the app can ask for a display name later.
+   * Show an optional name field over "Create an account". On by default: the
+   * name is the account's, and it is what the new passkey is listed under in
+   * a password manager (with the app and the cluster), so a person with
+   * several passkeys can tell them apart. Starts with the name last given
+   * here (`api.suggestedName`); left empty, creating needs nothing typed.
    */
   askName?: boolean;
   /** Replaces the one-line hint under the sign-in button (no invite). */
@@ -126,14 +131,15 @@ function Spinner() {
  * `signup-here`, `signup-unavailable`, `signin-error`, `signin-switched`,
  * `signup-without-invite` (after a sign-up refused for its invite).
  */
-export function PasskeySignIn({ api, joining, invited, askName = false, hint, className }: PasskeySignInProps) {
+export function PasskeySignIn({ api, joining, invited, askName = true, hint, className }: PasskeySignInProps) {
   const [running, setRunning] = useState<"in" | "up" | null>(null);
-  const [naming, setNaming] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(api.suggestedName ?? "");
+  const [named, setNamed] = useState(false);
   /** An invited visitor chose "I already have an account". */
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const nameId = useId();
   const noticeId = useId();
+  const passkeyNameId = useId();
   // Why this cluster takes no new account from this page (closed, or invite
   // only with no invite in hand): the create button stays, disabled, with it.
   const notice = signUpNotice(api.signUpAccess ?? "unknown");
@@ -146,6 +152,10 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
   useEffect(() => {
     if (!api.busy) setRunning(null);
   }, [api.busy]);
+  // The suggestion can arrive after the first render (the cluster is found first).
+  useEffect(() => {
+    if (!named && api.suggestedName) setName(api.suggestedName);
+  }, [api.suggestedName, named]);
   // A sign-in that found no account sends an invited visitor to sign-up.
   useEffect(() => {
     if (noAccount) setHasAccount(false);
@@ -159,14 +169,12 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
     setRunning("up");
     void api.signUp(name.trim());
   };
-  const create = () => {
-    if (askName && !naming) setNaming(true);
-    else signUp();
-  };
+  const create = signUp;
 
   const rootClass = className ? `cp-passkey ${className}` : "cp-passkey";
 
-  const nameField = askName && naming && (
+  const shownAs = api.passkeyName?.(name.trim()) ?? null;
+  const nameField = askName && canSignUp && (
     <form
       className="cp-passkey__name"
       onSubmit={(e) => {
@@ -183,10 +191,19 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         value={name}
         maxLength={64}
         autoComplete="name"
-        autoFocus
+        placeholder="e.g. Alex"
         disabled={api.busy}
-        onChange={(e) => setName(e.target.value)}
+        aria-describedby={shownAs ? passkeyNameId : undefined}
+        onChange={(e) => {
+          setNamed(true);
+          setName(e.target.value);
+        }}
       />
+      {shownAs && (
+        <p className="cp-passkey__hint" id={passkeyNameId} data-testid="signup-passkey-name">
+          Your passkey is saved as <strong>{shownAs}</strong>
+        </p>
+      )}
     </form>
   );
 
