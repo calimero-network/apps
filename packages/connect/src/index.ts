@@ -29,6 +29,7 @@ export {
   isDeployNotGranted,
   isPasskeyUnknownHere,
   PASSKEY_UNKNOWN_HERE_MESSAGE,
+  PASSKEY_UNKNOWN_LEAD,
   PASSKEY_UNKNOWN_SIGN_UP_MESSAGE,
   PROMPT_BLOCKED_MESSAGE,
   type ClientOptions,

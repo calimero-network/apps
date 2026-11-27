@@ -45,7 +45,7 @@ export const SIGN_IN_HINT =
 export function noAccountCopy(joining: string | undefined, unknownPasskey: boolean): string {
   const to = joining ? `join ${joining}` : "accept the invite";
   return unknownPasskey
-    ? `That passkey has no account on this cluster yet. Create your account to ${to}: your invite is kept.`
+    ? `This passkey's account doesn't exist on this server. Create your account to ${to}: your invite is kept.`
     : `No passkey for this cluster was chosen. If you are new here, create your account to ${to}: your invite is kept.`;
 }
 

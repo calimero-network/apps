@@ -122,8 +122,12 @@ function Spinner() {
  *
  * Errors are said in plain words with the next step; a dismissed prompt is a
  * quiet cancel. Themed by `--passkey-*` tokens, which fall back to glass.
+ * A passkey the cluster has no account for is said in one line above "Create
+ * an account" (or with why no account can be made here); that button stays the
+ * only way to create one.
+ *
  * Test ids: `signin-passkey`, `signup-passkey`, `signup-approve`,
- * `signup-here`, `signup-unavailable`, `signin-error`, `signin-switched`,
+ * `signup-unavailable`, `signin-error`, `signin-switched`,
  * `signup-without-invite` (after a sign-up refused for its invite).
  */
 export function PasskeySignIn({ api, joining, invited, askName = false, hint, className }: PasskeySignInProps) {
@@ -318,6 +322,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
     );
   }
 
+  const unknownFirst = Boolean(api.error && api.passkeyUnknown);
   return (
     <div className={rootClass} aria-busy={api.busy}>
       <button
@@ -331,6 +336,8 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         <span>{running === "in" ? "Waiting for your passkey…" : "Sign in with passkey"}</span>
       </button>
       <p className="cp-passkey__hint">{hint ?? SIGN_IN_HINT}</p>
+      {/* A passkey this cluster does not know: said under sign-in, so the create button below is the way on. */}
+      {unknownFirst && errorLine}
 
       <div className="cp-passkey__divider" role="presentation">
         <span>New here?</span>
@@ -354,7 +361,7 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         {notice ?? SIGN_UP_TWO_PROMPTS}
       </p>
 
-      {errorLine}
+      {!unknownFirst && errorLine}
       {api.inviteRefused && canSignUp && (
         <button
           type="button"
@@ -365,18 +372,6 @@ export function PasskeySignIn({ api, joining, invited, askName = false, hint, cl
         >
           <PlusIcon />
           <span>Create your account without the invite</span>
-        </button>
-      )}
-      {api.error && api.passkeyUnknown && canSignUp && (
-        <button
-          type="button"
-          className="cp-passkey__secondary"
-          data-testid="signup-here"
-          disabled={api.busy}
-          onClick={create}
-        >
-          <PlusIcon />
-          <span>Create an account here</span>
         </button>
       )}
     </div>
