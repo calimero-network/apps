@@ -417,6 +417,10 @@ button.ghost.danger-text,
 .menu-item.danger-text {
   color: var(--danger);
 }
+.menu-item.danger-text:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 .icon {
   flex: none;
 }
@@ -472,6 +476,11 @@ button.ghost.danger-text,
   background: var(--danger);
   color: #fff;
   border-color: transparent;
+}
+/* Its own hover: the generic one would paint a near-white fill under white text. */
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+  color: #fff;
 }
 .btn.danger-ghost {
   background: var(--surface);

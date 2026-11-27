@@ -285,6 +285,7 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
       <Shell
         right={<Menu me={accountId} theme={theme} setTheme={setTheme} onLogout={onLogout} onShowTutorial={showTutorial} />}
         footer={<AppFooter workspace={false} onShowTutorial={showTutorial} />}
+        enter="out"
       >
         {tutorialDialog}
         {route.page === "install" ? (
@@ -339,7 +340,20 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
  * name, the account menu; the footer under everything. The node's security
  * badge lives on the Profile page, not up here.
  */
-function Shell({ children, left, right, footer }: { children: ReactNode; left?: ReactNode; right?: ReactNode; footer?: ReactNode }) {
+function Shell({
+  children,
+  left,
+  right,
+  footer,
+  enter,
+}: {
+  children: ReactNode;
+  left?: ReactNode;
+  right?: ReactNode;
+  footer?: ReactNode;
+  /** How the page arrives: `in` opening a workspace, `out` back to all of them. */
+  enter?: "in" | "out";
+}) {
   return (
     <div className="app-frame">
       <div className="wrap">
@@ -353,7 +367,7 @@ function Shell({ children, left, right, footer }: { children: ReactNode; left?: 
           </div>
           <div className="topbar-right">{right}</div>
         </header>
-        {children}
+        {enter ? <div className={`view-enter ${enter}`}>{children}</div> : children}
       </div>
       {footer}
     </div>
@@ -445,6 +459,7 @@ function WorkspaceView({
         />
       }
       footer={<AppFooter onShowTutorial={onShowTutorial} />}
+      enter="in"
     >
       <div className="ws-bar" data-testid="workspace-bar">
         <span className="ws-dot" aria-hidden="true">
