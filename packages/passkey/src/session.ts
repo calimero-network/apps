@@ -25,6 +25,7 @@ import {
 import { isPasskeyCancel, type SignUpFlow, type SignUpStage } from "./signUpFlow";
 import { watchUpgrades } from "./upgrade";
 import { bindNodeShield } from "./NodeShield";
+import { passkeyAppName, passkeyCluster, passkeyName, rememberedSignUpName } from "./passkeyName";
 import {
   describeCeremonyFailure,
   knownAccountHere,
@@ -105,6 +106,14 @@ export interface SessionApi {
   signUpAccess?: SignUpAccess;
   /** The last sign-in failed because the cluster has no account for that passkey. */
   passkeyUnknown?: boolean;
+  /** The name last given at a sign-up on this cluster in this browser: what the sign-up's name field starts with. */
+  suggestedName?: string;
+  /**
+   * The name a passkey made at sign-up with `name` is listed under in a
+   * password manager (`Alex · Sylence (eu-shared-1 · 3f2a)`), `null` before
+   * the cluster is known.
+   */
+  passkeyName?(name: string): string | null;
   /**
    * The last sign-in found no account here: the cluster did not know the
    * passkey, or the browser prompt closed without one chosen (a browser with
@@ -413,6 +422,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
               policy: policy ?? (await policyRead.current),
               join,
               nameInOrg: nameJoinedOrg,
+              ...(appName !== undefined ? { appName } : {}),
               storage: hintStorage,
             });
           } catch (e) {
@@ -437,7 +447,7 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
         flow,
       );
     },
-    [ceremony, deps, signedOutTarget, hintStorage, inviteToken, policy, join, approveWithClick, invites],
+    [ceremony, deps, signedOutTarget, hintStorage, inviteToken, policy, join, approveWithClick, invites, appName],
   );
 
   const approve = useCallback(() => flowRef.current?.approve(), []);
@@ -478,6 +488,15 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       : failed;
   const passkeyUnknown = passkeyUnknownAfter(failure);
   const noAccountHere = noAccountHereAfter(failure);
+  const suggestedName = useMemo(
+    () => (signedOutTarget ? rememberedSignUpName(signedOutTarget, hintStorage) : ""),
+    [signedOutTarget, hintStorage],
+  );
+  const passkeyNameFor = useCallback(
+    (name: string) =>
+      signedOutTarget ? passkeyName(name, passkeyCluster(signedOutTarget, policy), passkeyAppName(appName)) : null,
+    [signedOutTarget, policy, appName],
+  );
 
   return useMemo(
     () => ({
@@ -492,6 +511,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signOut,
       signUpAccess: access,
       passkeyUnknown,
+      suggestedName,
+      passkeyName: passkeyNameFor,
       noAccountHere,
       stage: flowView.stage,
       approve,
@@ -512,6 +533,8 @@ export function usePasskeySession(app: string, deps: SessionDeps, options: Passk
       signOut,
       access,
       passkeyUnknown,
+      suggestedName,
+      passkeyNameFor,
       noAccountHere,
       flowView.stage,
       approve,

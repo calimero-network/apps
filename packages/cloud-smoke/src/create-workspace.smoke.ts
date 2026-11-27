@@ -313,7 +313,6 @@ for (const app of [...APPS, ...BATCH_A].filter((a) => process.env.CREATE_WORKSPA
       await expect(signUp).toBeVisible({ timeout: 60_000 });
       await shot("signed-out");
       await signUp.click();
-      if (await page.getByTestId("signup-name").isVisible()) await signUp.click();
       const approve = page.locator('[data-testid="signup-approve"]:enabled');
       await expect(approve.or(app.signedIn(page)).first()).toBeVisible({ timeout: 120_000 });
       if (await approve.isVisible()) await approve.click();
