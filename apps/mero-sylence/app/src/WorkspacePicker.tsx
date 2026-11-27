@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { describeError } from "@calimero-apps/connect";
 import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
 import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
 import { createWorkspaceInNewOrg, inviteUrl, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
-import { canDeleteWorkspace, deleteWorkspace } from "./lib/manage";
+import { canDeleteWorkspace, deleteWorkspace, roleName } from "./lib/manage";
+import { avatarHue } from "./lib/people";
+import { DeleteWorkspaceDialog } from "./DeleteWorkspaceDialog";
 import { forgetWorkspaceRecordings } from "./useRecording";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { APP_PACKAGE, PRODUCT } from "./session";
@@ -69,6 +71,86 @@ function PickerShowcase() {
   );
 }
 
+/** One workspace: its own colour, name and your role; open it, or delete it from the "⋯" menu. */
+function WorkspaceCard({
+  workspace: w,
+  orgName,
+  role,
+  canDelete,
+  onOpen,
+  onDelete,
+}: {
+  workspace: WorkspaceRow;
+  orgName: string;
+  role: string;
+  canDelete: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setMenu(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menu]);
+  const name = w.name || "Unnamed workspace";
+  // The org is worth naming only when it is not just the workspace's own name.
+  const org = orgName && orgName !== w.name ? orgName : null;
+  return (
+    <li className="ws-item" style={{ "--ws-hue": avatarHue(w.appId) } as CSSProperties}>
+      <button type="button" className="ws-card" onClick={onOpen}>
+        <span className="ws-mark" aria-hidden="true">
+          {name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="ws-text">
+          <span className="ws-name">{name}</span>
+          <span className="ws-meta">
+            <span className={`ws-role ${role}`}>{roleName(role)}</span>
+            {org && <span className="dim small">in {org}</span>}
+          </span>
+        </span>
+      </button>
+      {canDelete && (
+        <div className="ws-more" ref={ref}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={`More for ${name}`}
+            aria-haspopup="menu"
+            aria-expanded={menu}
+            onClick={() => setMenu((m) => !m)}
+          >
+            <Icon name="more" />
+          </button>
+          {menu && (
+            <div className="menu-panel glass-float ws-more-panel" role="menu">
+              <button
+                role="menuitem"
+                className="menu-item danger-text"
+                onClick={() => {
+                  setMenu(false);
+                  onDelete();
+                }}
+              >
+                <Icon name="trash" /> Delete workspace
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 /**
  * Choose a workspace, or get one: start a new one (a new organization you
  * own), or join a team with an invite link.
@@ -91,7 +173,8 @@ export function WorkspacePicker({
   const [linkError, setLinkError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   /** The workspace whose delete is being confirmed, and whether it is underway. */
-  const [deleting, setDeleting] = useState<{ appId: string; busy: boolean } | null>(null);
+  const [deleting, setDeleting] = useState<{ appId: string; name: string; busy: boolean } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -126,17 +209,19 @@ export function WorkspacePicker({
     }
   }
 
-  async function remove(appId: string) {
-    setDeleting({ appId, busy: true });
-    setError(null);
+  async function remove() {
+    if (!deleting) return;
+    const { appId } = deleting;
+    setDeleting({ ...deleting, busy: true });
+    setDeleteError(null);
     try {
       await deleteWorkspace(client, appId);
       void forgetWorkspaceRecordings(appId);
       setDeleting(null);
       setTick((t) => t + 1);
     } catch (e) {
-      setError(describeError(e));
-      setDeleting(null);
+      setDeleteError(describeError(e));
+      setDeleting((d) => (d ? { ...d, busy: false } : d));
     } finally {
       after();
     }
@@ -169,51 +254,18 @@ export function WorkspacePicker({
       {!createOnly && workspaces && workspaces.length > 0 && (
         <ul className="ws-grid">
           {workspaces.map((w) => (
-            <li key={w.appId} className="ws-item">
-              {deleting?.appId === w.appId ? (
-                <div className="ws-card ws-confirm" role="alertdialog" aria-label={`Delete ${w.name || "this workspace"}?`}>
-                  <span className="ws-text">
-                    <span className="ws-name">Delete {w.name || "this workspace"}?</span>
-                    <span className="dim small">Its meetings, recordings and action items go for everyone. This can&apos;t be undone.</span>
-                  </span>
-                  <span className="row">
-                    <button type="button" className="btn small danger" disabled={deleting.busy} onClick={() => void remove(w.appId)}>
-                      {deleting.busy ? "Deleting…" : "Delete"}
-                    </button>
-                    <button type="button" className="btn small ghost" disabled={deleting.busy} onClick={() => setDeleting(null)}>
-                      Cancel
-                    </button>
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <button type="button" className="ws-card" onClick={() => onOpen({ appId: w.appId, org: w.org })}>
-                    <span className="ws-mark" aria-hidden="true">
-                      {(w.name || "W").slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="ws-text">
-                      <span className="ws-name">{w.name || "Unnamed workspace"}</span>
-                      <span className="dim">
-                        {orgName(w.org)}
-                        {w.owner === accountId ? " · Owner" : ""}
-                      </span>
-                    </span>
-                    <Icon name="right" />
-                  </button>
-                  {canDeleteWorkspace(w, accountId, orgs?.find((o) => o.orgId === w.org)?.role) && (
-                    <button
-                      type="button"
-                      className="icon-btn ws-delete"
-                      aria-label={`Delete ${w.name || "workspace"}`}
-                      title="Delete workspace"
-                      onClick={() => setDeleting({ appId: w.appId, busy: false })}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  )}
-                </>
-              )}
-            </li>
+            <WorkspaceCard
+              key={w.appId}
+              workspace={w}
+              orgName={orgName(w.org)}
+              role={w.owner === accountId ? "owner" : (orgs?.find((o) => o.orgId === w.org)?.role ?? "member")}
+              canDelete={canDeleteWorkspace(w, accountId, orgs?.find((o) => o.orgId === w.org)?.role)}
+              onOpen={() => onOpen({ appId: w.appId, org: w.org })}
+              onDelete={() => {
+                setDeleteError(null);
+                setDeleting({ appId: w.appId, name: w.name, busy: false });
+              }}
+            />
           ))}
         </ul>
       )}
@@ -268,6 +320,14 @@ export function WorkspacePicker({
 
       {error && <pre className="err">{error}</pre>}
 
+      <DeleteWorkspaceDialog
+        name={deleting?.name ?? ""}
+        open={deleting !== null}
+        busy={deleting?.busy ?? false}
+        error={deleteError}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => void remove()}
+      />
       <CreateWorkspaceDialog
         client={client}
         passkey={passkey()}

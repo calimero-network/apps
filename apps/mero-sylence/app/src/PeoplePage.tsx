@@ -6,6 +6,7 @@ import { InviteDialog } from "@calimero-network/mero-react";
 import { inviteLinkBase } from "./lib/orgs";
 import { canManage, deleteWorkspace, leaveWorkspace, removeMember, roleName, setOrgRole, type ManagedRole } from "./lib/manage";
 import { forgetWorkspaceRecordings } from "./useRecording";
+import { DeleteWorkspaceDialog } from "./DeleteWorkspaceDialog";
 import { PersonName, useOrg, useSpaceNames } from "./names";
 import { PRODUCT } from "./session";
 import { useSessionApi, useSignedIn } from "./sessionContext";
@@ -232,31 +233,24 @@ export function PeoplePage({ appId, workspaceName, onLeft }: { appId: string; wo
               Its meetings, recordings and action items are deleted for everyone. This can&apos;t be undone.
             </p>
           </div>
-          {deletingAll ? (
-            <div className="row">
-              <button
-                type="button"
-                className="btn danger"
-                disabled={busy === appId}
-                onClick={() =>
-                  void act(appId, async () => {
-                    await deleteWorkspace(client, appId);
-                    void forgetWorkspaceRecordings(appId);
-                    onLeft();
-                  })
-                }
-              >
-                {busy === appId ? "Deleting…" : `Delete ${workspaceName || "workspace"}`}
-              </button>
-              <button type="button" className="btn ghost" onClick={() => setDeletingAll(false)}>
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button type="button" className="btn danger-ghost" onClick={() => setDeletingAll(true)} data-testid="delete-workspace">
-              Delete workspace
-            </button>
-          )}
+          <button type="button" className="btn danger-ghost" onClick={() => setDeletingAll(true)} data-testid="delete-workspace">
+            Delete workspace
+          </button>
+          <DeleteWorkspaceDialog
+            name={workspaceName}
+            open={deletingAll}
+            busy={busy === appId}
+            error={deletingAll ? error : null}
+            onCancel={() => setDeletingAll(false)}
+            onConfirm={() =>
+              void act(appId, async () => {
+                await deleteWorkspace(client, appId);
+                void forgetWorkspaceRecordings(appId);
+                setDeletingAll(false);
+                onLeft();
+              })
+            }
+          />
         </section>
       )}
 

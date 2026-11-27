@@ -1101,46 +1101,118 @@
   flex: none;
 }
 
-/* ── workspace cards: delete beside open ── */
+/* ── workspace cards: a colour each, your role, delete behind "⋯" ── */
 .ws-item {
+  --ws-hue: 18;
   position: relative;
 }
 .ws-item .ws-card {
   justify-content: flex-start;
-  padding-right: 52px;
+  padding: 14px 52px 14px 14px;
+  overflow: hidden;
 }
-.ws-item .ws-card > .icon {
-  display: none;
+.ws-item .ws-card:hover:not(:disabled) {
+  border-color: hsl(var(--ws-hue) 55% 70%);
 }
-.ws-delete {
+.ws-item .ws-mark {
+  background: linear-gradient(135deg, hsl(var(--ws-hue) 75% 58%), hsl(calc(var(--ws-hue) + 30) 70% 46%));
+  color: #fff;
+  box-shadow: 0 4px 12px -6px hsl(var(--ws-hue) 70% 40%);
+}
+.ws-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  min-width: 0;
+}
+.ws-meta .small {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-role {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--sunken);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.ws-role.owner {
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+  border-color: color-mix(in srgb, var(--coral) 30%, transparent);
+  color: var(--text);
+}
+.ws-role.admin {
+  background: color-mix(in srgb, #3d7dff 12%, transparent);
+  border-color: color-mix(in srgb, #3d7dff 30%, transparent);
+  color: var(--text);
+}
+.ws-more {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 12px;
-  margin: auto 0;
-  color: var(--text-dim);
-  opacity: 0.6;
-  transition: opacity 0.15s ease-out, color 0.15s ease-out, background-color 0.15s ease-out;
+  right: 10px;
+  display: flex;
+  align-items: center;
 }
-.ws-delete:hover:not(:disabled) {
+.ws-more-panel {
+  top: calc(50% + 18px);
+  right: 0;
+  width: 200px;
+}
+
+/* ── confirm a delete ── */
+.confirm-dialog {
+  width: min(400px, calc(100vw - 32px));
+}
+.confirm-dialog .dialog-body {
+  gap: 12px;
+}
+.confirm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--danger-soft);
   color: var(--danger);
-  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
 }
-.ws-item:hover .ws-delete,
-.ws-delete:focus-visible {
-  opacity: 1;
+.confirm-dialog h2 {
+  margin: 0;
+  font-size: 17px;
 }
-.ws-confirm {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  padding-right: 16px !important;
-  border-color: var(--danger-line);
-  background: var(--danger-soft);
-  cursor: default;
+.confirm-label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
 }
-.ws-confirm:hover {
-  transform: none !important;
+.confirm-label b {
+  color: var(--text);
+}
+.confirm-label input {
+  flex: none;
+  height: 36px;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.confirm-dialog .dialog-body > .confirm-actions > button {
+  width: auto;
 }
 
 /* ── the invite dialog: coral selection, custom radios and checkboxes ── */
