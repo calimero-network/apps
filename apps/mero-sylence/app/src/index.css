@@ -1071,6 +1071,8 @@ dialog.dialog[open] {
 }
 .dialog-body input {
   width: 100%;
+  /* Inputs grow along a row (flex: 1 1 160px); in the dialog's column that would make them 160px tall. */
+  flex: none;
 }
 .dialog-body > button {
   width: 100%;
