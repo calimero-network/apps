@@ -40,7 +40,7 @@ function absoluteSocialImage(): Plugin {
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [absoluteSocialImage(), extensionDownload(), installableApp({ cacheId: "mero-sylence", globIgnores: ["**/*.worker-*.js"] }), servedAssetsFallback(), react()],
+  plugins: [absoluteSocialImage(), extensionDownload(), installableApp({ cacheId: "mero-sylence" }), servedAssetsFallback(), react()],
   // The ONNX runtime the speech worker loads (src/ai/speech.worker.ts imports
   // its files by URL), bundled with the page so no code is fetched at run time.
   resolve: { alias: { "@ort": ortDir() } },

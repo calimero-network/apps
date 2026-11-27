@@ -6,6 +6,4 @@ export declare const installableApp: (options: {
   cacheId: string;
   /** Extra scripts the service worker loads (hyperfeed's push handlers). */
   importScripts?: string[];
-  /** Globs kept out of the precache, beside the defaults. */
-  globIgnores?: string[];
 }) => any;

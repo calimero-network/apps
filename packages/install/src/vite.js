@@ -14,9 +14,7 @@
 //   writes no manifest of its own.
 import { VitePWA } from "vite-plugin-pwa";
 
-// `globIgnores` adds to the files kept out of the precache (e.g. an app's
-// large model workers, fetched only when used).
-export const installableApp = ({ cacheId, importScripts = [], globIgnores = [] }) => {
+export const installableApp = ({ cacheId, importScripts = [] }) => {
   if (!/^[a-z0-9-]+$/.test(cacheId ?? "")) {
     throw new Error(`installableApp: cacheId must be the app's id in kebab case (got ${JSON.stringify(cacheId)})`);
   }
@@ -31,7 +29,7 @@ export const installableApp = ({ cacheId, importScripts = [], globIgnores = [] }
       importScripts,
       globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
       // The landing images are large and the app works without them offline.
-      globIgnores: ["**/landing/**", "**/screenshots/**", ...globIgnores],
+      globIgnores: ["**/landing/**", "**/screenshots/**"],
       maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       navigateFallback: null,
       cleanupOutdatedCaches: true,
