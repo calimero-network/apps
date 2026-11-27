@@ -54,6 +54,9 @@ if ! curl -sf -o /dev/null http://127.0.0.1:2501/health && ! curl -s -o /dev/nul
   }
 fi
 
+echo "• the page is up: http://localhost:5173/"
+echo "• building the extension, then playing the call on: $PLATFORM"
+echo "  (browser windows open and the voices talk; each platform takes a few minutes, and the test prints when one ends)"
 if [ "$PLATFORM" = "all" ]; then
   pnpm -F mero-sylence-extension e2e:call
 else
