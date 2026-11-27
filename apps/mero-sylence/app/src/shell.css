@@ -920,3 +920,112 @@
     max-width: none;
   }
 }
+
+/* ── the shared "Review before creating" step: compact, sections as quiet cards ── */
+:root .mero-cw-review {
+  font-size: 13px;
+  line-height: 1.45;
+}
+:root .mero-cw-review__title {
+  font-size: 17px;
+  padding-right: 32px;
+}
+:root .mero-cw-review__lede {
+  margin: 2px 0 14px;
+  font-size: 12.5px;
+}
+:root .mero-cw-review__app {
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--sunken);
+  border-color: var(--border);
+}
+:root .mero-cw-review__app-text b {
+  font-size: 13px;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+:root .mero-cw-review__app-text span {
+  font-size: 11.5px;
+}
+:root .mero-cw-review__sec {
+  padding: 10px 0;
+}
+:root .mero-cw-review__h {
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+:root .mero-cw-review__kv > div {
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
+}
+:root .mero-cw-review__kv dt {
+  color: var(--text-dim);
+}
+:root .mero-cw-review__sum {
+  gap: 8px;
+}
+:root .mero-cw-review__sum li {
+  gap: 8px;
+}
+:root .mero-cw-review__ic {
+  width: 22px;
+  height: 22px;
+}
+:root .mero-cw-review__ic svg {
+  width: 12px;
+  height: 12px;
+}
+:root .mero-cw-review__tx {
+  padding-top: 1px;
+}
+:root .mero-cw-review__tx span,
+:root .mero-cw-review__sub,
+:root .mero-cw-review__grey span,
+:root .mero-cw-review__grp-text span,
+:root .mero-cw-review__link {
+  font-size: 11.5px;
+}
+:root .mero-cw-review__grey {
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+:root .mero-cw-review__except li,
+:root .mero-cw-review__alert {
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 9px;
+}
+:root .mero-cw-review__how {
+  margin: 8px 0 2px;
+  font-size: 12.5px;
+}
+:root .mero-cw-review__how > summary {
+  min-height: 32px;
+}
+:root .mero-cw-review__grp > summary {
+  min-height: 38px;
+  padding: 6px 10px;
+}
+:root .mero-cw-review__act-head {
+  min-height: 34px;
+  padding: 4px 10px;
+}
+:root .mero-cw-review__chip {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+:root .mero-cw-review__buttons {
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 12px;
+}
+:root .mero-cw-review__btn {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+}
