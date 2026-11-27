@@ -1,0 +1,544 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   The signed-in frame: page heads, the workspace picker, People, Profile,
+   the getting-started cards and the footer. Tokens from index.css.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.app-frame {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.app-frame > .wrap {
+  flex: 1 0 auto;
+  width: 100%;
+}
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--r);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 8px 0 20px;
+}
+.page-head h1 {
+  margin: 0 0 4px;
+}
+.page-head p {
+  margin: 0;
+}
+.page-head .btn .icon {
+  margin-right: 2px;
+}
+.section-title {
+  margin: 28px 0 12px;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.card.flush {
+  padding: 0;
+  overflow: hidden;
+}
+.padded {
+  padding: 0 20px;
+}
+.card-head.padded {
+  padding: 16px 20px 0;
+  margin-bottom: 8px;
+}
+.card.flush > .empty.padded,
+.card.flush > .err.padded,
+.card.flush > p.padded {
+  padding-bottom: 16px;
+}
+.inline-link {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ── the workspace picker ── */
+.ws-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.ws-card {
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  transition: border-color 120ms ease-out, transform 160ms var(--ease-out);
+}
+.ws-card:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.ws-card > .icon {
+  margin-left: auto;
+  color: var(--text-dim);
+}
+.ws-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 700;
+  font-size: 16px;
+}
+.ws-text {
+  display: grid;
+  min-width: 0;
+}
+.ws-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.start-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.start-card p {
+  margin: 0 0 8px;
+  flex: 1;
+}
+.start-card form {
+  width: 100%;
+  flex-wrap: nowrap;
+}
+.start-icon,
+.tip-icon,
+.org-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.start-title,
+.tip-title {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: -0.01em;
+}
+.org-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.org-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+.org-row + .org-row {
+  border-top: 1px solid var(--border);
+}
+.org-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.org-text {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+.org-name {
+  font-weight: 500;
+}
+.org-text .small {
+  margin: 0;
+}
+.org-add {
+  flex: 1 1 280px;
+  justify-content: flex-end;
+}
+
+/* ── People ── */
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.member-who {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.member-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.member-id {
+  font-size: 12px;
+}
+.you-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.member-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.member-actions select {
+  height: 30px;
+  font-size: 13px;
+}
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  margin-left: 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--sunken);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.member-actions .role-badge {
+  margin-left: 0;
+}
+.role-badge.strong {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+.role-help {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.role-help > div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 12px;
+}
+.role-help dt {
+  font-weight: 600;
+}
+.role-help dd {
+  margin: 0;
+  color: var(--text-dim);
+}
+.danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.danger-zone h2 {
+  margin-bottom: 4px;
+}
+.danger-zone p {
+  margin: 0;
+}
+
+/* ── Profile ── */
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.profile-who {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  flex: 1 1 240px;
+}
+.profile-name {
+  font-size: 20px;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.profile-who .small {
+  margin: 0;
+}
+.facts {
+  display: grid;
+  margin: 0;
+}
+.facts > div {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.facts > div:first-child {
+  border-top: 0;
+}
+.facts dt {
+  color: var(--text-dim);
+}
+.facts dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.fact-id .mono {
+  font-size: 12px;
+  min-width: 0;
+}
+.profile-actions {
+  margin-top: 16px;
+}
+.advanced-details > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  font-weight: 600;
+  list-style-position: inside;
+}
+.advanced-details > summary .dim {
+  font-weight: 400;
+}
+.shield-slot {
+  margin-top: 16px;
+}
+
+/* ── getting started ── */
+.tips {
+  margin: 0 0 24px;
+  padding: 20px;
+  border-radius: var(--r-lg);
+  background: var(--sunken);
+  border: 1px solid var(--border);
+}
+.tips-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.tips-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.tips-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.tip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.tip p {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  flex: 1;
+}
+.tip-step {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.tip-title {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ── footer ── */
+.app-footer {
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  background: var(--sunken);
+}
+.app-footer-grid {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 24px 20px;
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: 24px;
+}
+.app-footer-brand p {
+  margin: 8px 0 0;
+  max-width: 32ch;
+}
+.app-footer nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.app-footer nav h3 {
+  margin: 0 0 4px;
+}
+.app-footer nav a,
+.footer-link {
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 13px;
+}
+.app-footer nav a:hover,
+.footer-link:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration: underline;
+}
+.footer-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  height: auto;
+  text-align: left;
+  justify-content: flex-start;
+  font-weight: 400;
+}
+.footer-link:hover:not(:disabled) {
+  background: none;
+}
+.app-footer-base {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 24px 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+.app-footer-base a {
+  color: var(--text-dim);
+}
+
+@media (max-width: 960px) {
+  .tips-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .start-grid {
+    grid-template-columns: 1fr;
+  }
+  .app-footer-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .app-footer-brand {
+    grid-column: 1 / -1;
+  }
+  .facts > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+@media (max-width: 560px) {
+  .tips-grid {
+    grid-template-columns: 1fr;
+  }
+  .member-row {
+    padding: 12px 16px;
+  }
+  .member-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .app-footer-grid,
+  .app-footer-base {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* The fleet's floating node badge: Sylence shows it on the Profile page only. */
+[data-node-shield-host] {
+  display: none;
+}
+.app-footer nav > a,
+.app-footer nav > .footer-link {
+  line-height: 1.5;
+  min-height: 0;
+}

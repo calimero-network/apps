@@ -6,15 +6,26 @@ import "./captureNative";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { ConsentPopupReturn } from "@calimero-network/mero-react";
-import { registerServiceWorker } from "@calimero-apps/install";
 import { App } from "./App";
 import { invites } from "./lib/orgs";
 import { BASE } from "./route";
 import { applyStoredTheme } from "./ui";
 import "./index.css";
 
-// Installable as an app (Chrome, Edge); not in dev and not on a node.
-registerServiceWorker();
+// Earlier builds installed as an app with a service worker that cached the page.
+// That is gone: drop any worker and cache an earlier visit left behind.
+if ("serviceWorker" in navigator) {
+  void navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+    .catch(() => undefined);
+}
+if (typeof caches !== "undefined") {
+  void caches
+    .keys()
+    .then((keys) => Promise.all(keys.filter((k) => k.includes("mero-sylence") || k.startsWith("workbox")).map((k) => caches.delete(k))))
+    .catch(() => undefined);
+}
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");

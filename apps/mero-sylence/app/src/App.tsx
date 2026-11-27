@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ManageInHomeLink, NativeApproval, NodeShield } from "@calimero-apps/passkey";
+import { ManageInHomeLink, NativeApproval } from "@calimero-apps/passkey";
 import { finishNativeSignIn, pendingNativeApproval, pendingNativeSignIn } from "@calimero-apps/passkey/native";
-import { InstallAppIconButton } from "@calimero-apps/install";
 
+import { AppFooter } from "./AppFooter";
+import { GettingStarted, showTips } from "./GettingStarted";
 import { InfoPage } from "./InfoPages";
 import { InstallPage } from "./InstallPage";
 import { Landing, LandingPage } from "./Landing";
@@ -11,6 +12,8 @@ import { MeetingsList } from "./MeetingsList";
 import { UploadRecording } from "./UploadRecording";
 import { forgetWorkspaceRecordings, pruneRecordings } from "./useRecording";
 import { OpenActions } from "./OpenActions";
+import { PeoplePage } from "./PeoplePage";
+import { ProfilePage } from "./ProfilePage";
 import { InvitationHost, SignInModal, SignInPanel } from "./SignIn";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { listWorkspaces } from "./lib/orgs";
@@ -21,6 +24,7 @@ import { PRODUCT, type SessionDeps } from "./session";
 import { SessionProvider, useMaybeSignedIn, useSessionApi, useSignedIn } from "./sessionContext";
 import { Avatar, Icon, useTheme, type Theme } from "./ui";
 import { useActiveWorkspace } from "./useActiveWorkspace";
+import "./shell.css";
 import { useRead, useWorkspace } from "./useWorkspace";
 
 export function App({ deps }: { deps?: SessionDeps } = {}) {
@@ -174,7 +178,11 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   const { api } = useSessionApi();
   const signedIn = useMaybeSignedIn();
   const [signingIn, setSigningIn] = useState(false);
-  const [route] = useRoute();
+  const [route, go] = useRoute();
+  // Signed in, `#/home` is the landing page with the way back to the dashboard.
+  if (route.page === "home" && signedIn) {
+    return <Landing onDashboard={() => go({ page: "meetings" })} />;
+  }
   // FAQ, privacy and terms read the same signed in or out, in the landing's frame.
   if (route.page === "doc") {
     return (
@@ -188,7 +196,7 @@ function Screen({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => voi
   }
   if (api.session.status === "connecting") {
     return (
-      <Shell shield={false}>
+      <Shell>
         <div className="card">
           <p className="empty">Connecting…</p>
         </div>
@@ -265,7 +273,7 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
 
   if (!active) {
     return (
-      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />}>
+      <Shell right={<Menu theme={theme} setTheme={setTheme} onLogout={onLogout} />} footer={<AppFooter />}>
         {lostNotice && (
           <div className="card" role="status">
             <p className="empty">You no longer have access to that workspace.</p>
@@ -303,23 +311,28 @@ function SignedInApp({ theme, setTheme, onLogout }: { theme: Theme; setTheme: (t
   );
 }
 
-/** `shield`: the node badge, for signed-in pages; a visitor has no node to judge yet. */
-function Shell({ children, left, right, shield = true }: { children: ReactNode; left?: ReactNode; right?: ReactNode; shield?: boolean }) {
+/**
+ * The signed-in frame: the brand (it opens the home page), the workspace's
+ * name, the account menu; the footer under everything. The node's security
+ * badge lives on the Profile page, not up here.
+ */
+function Shell({ children, left, right, footer }: { children: ReactNode; left?: ReactNode; right?: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="wrap">
-      <header className="topbar">
-        <div className="brand">
-          <img src="./favicon.svg" alt="" width={26} height={26} />
-          <span className="brand-name">{PRODUCT}</span>
-          {left}
-        </div>
-        <div className="topbar-right">
-          {shield && <NodeShield compactBelow={720} />}
-          <InstallAppIconButton />
-          {right}
-        </div>
-      </header>
-      {children}
+    <div className="app-frame">
+      <div className="wrap">
+        <header className="topbar">
+          <div className="brand">
+            <a className="brand-link" href="#/home" title={`${PRODUCT} home page`}>
+              <img src="./favicon.svg" alt="" width={26} height={26} />
+              <span className="brand-name">{PRODUCT}</span>
+            </a>
+            {left}
+          </div>
+          <div className="topbar-right">{right}</div>
+        </header>
+        {children}
+      </div>
+      {footer}
     </div>
   );
 }
@@ -355,6 +368,8 @@ function WorkspaceView({
   const [uploading, setUploading] = useState(false);
   /** What the last upload could not keep (its audio), shown over the meeting it opened. */
   const [uploadNote, setUploadNote] = useState<{ meetingId: string; note: string } | null>(null);
+  /** Bumped by the footer's "Show tips", so the cards read their setting again. */
+  const [tipsKey, setTipsKey] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -404,8 +419,17 @@ function WorkspaceView({
         ) : null
       }
       right={<Menu me={accountId} theme={theme} setTheme={setTheme} org={org} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
+      footer={
+        <AppFooter
+          onShowTips={() => {
+            showTips();
+            setTipsKey((k) => k + 1);
+            go({ page: "meetings" });
+          }}
+        />
+      }
     >
-      {route.page !== "meeting" && route.page !== "install" && (
+      {(route.page === "meetings" || route.page === "actions" || route.page === "people") && (
         <nav className="tabs" role="tablist">
           <button
             role="tab"
@@ -424,8 +448,26 @@ function WorkspaceView({
             Open action items
             {openActions > 0 && <span className="count">{openActions}</span>}
           </button>
+          <button
+            role="tab"
+            aria-selected={route.page === "people"}
+            className={route.page === "people" ? "tab active" : "tab"}
+            onClick={() => go({ page: "people" })}
+          >
+            People
+          </button>
         </nav>
       )}
+      {route.page === "meetings" && (
+        <GettingStarted
+          key={tipsKey}
+          onInstall={() => go({ page: "install" })}
+          onUpload={() => setUploading(true)}
+          onPeople={() => go({ page: "people" })}
+        />
+      )}
+      {route.page === "people" && <PeoplePage appId={appId} workspaceName={name} onLeft={onSwitchWorkspace} />}
+      {route.page === "profile" && <ProfilePage workspaceName={name} onSwitchWorkspace={onSwitchWorkspace} onLogout={onLogout} />}
       {route.page === "meetings" && (
         <MeetingsList
           meetings={meetings.data}
@@ -554,11 +596,24 @@ function Menu({
             </div>
           </div>
           <div className="menu-section">
+            {me && (
+              <a className="menu-item home-link" href="#/profile" onClick={() => setOpen(false)}>
+                <Icon name="key" /> Profile
+              </a>
+            )}
+            {me && (
+              <a className="menu-item home-link" href="#/people" onClick={() => setOpen(false)}>
+                <Icon name="users" /> People and invites
+              </a>
+            )}
             <a className="menu-item home-link" href="#/install" onClick={() => setOpen(false)}>
-              Get the extension
+              <Icon name="puzzle" /> Get the extension
             </a>
             <a className="menu-item home-link" href="#/faq" onClick={() => setOpen(false)}>
-              Help and FAQ
+              <Icon name="help" /> Help and FAQ
+            </a>
+            <a className="menu-item home-link" href="#/home" onClick={() => setOpen(false)}>
+              <Icon name="home" /> {PRODUCT} home page
             </a>
             <ManageInHomeLink session={api.session} org={org} className="menu-item home-link" />
             {onSwitchWorkspace && (
@@ -567,7 +622,7 @@ function Menu({
               </button>
             )}
             <button className="menu-item danger-text" onClick={onLogout}>
-              Log out
+              <Icon name="logout" /> Log out
             </button>
           </div>
         </div>

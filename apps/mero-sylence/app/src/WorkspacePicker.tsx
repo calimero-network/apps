@@ -1,74 +1,87 @@
-import { useCallback, useEffect, useState } from "react";
-import { askAnOwnerCopy, canCreateIn, describeError, orgsWithApp, otherOrgs, type OtherOrg } from "@calimero-apps/connect";
+import { useEffect, useState } from "react";
+import { askAnOwnerCopy, canCreateIn, describeError, orgsWithApp, otherOrgs } from "@calimero-apps/connect";
 import { CreateWorkspaceDialog } from "@calimero-network/mero-react";
 import { lastUsedName, setOrgName } from "@calimero-apps/names";
-import { ConnectExistingOrg, reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
-import { createWorkspace, createWorkspaceInNewOrg, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
+import { reviewRelease, useResolvedSource } from "@calimero-apps/passkey";
+import { createWorkspace, createWorkspaceInNewOrg, inviteUrl, listOrgs, listWorkspaces, type OrgRow, type WorkspaceRow } from "./lib/orgs";
+import { roleName } from "./lib/manage";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { APP_PACKAGE, PRODUCT } from "./session";
 import { useSignedIn } from "./sessionContext";
+import { Icon } from "./ui";
 
 const CREATE_LABELS = {
-  title: "New workspace",
-  subtitle: "Name your workspace. It lives in a new organization you own.",
+  title: "Start a workspace",
+  subtitle: "Your team's meetings live here. You'll be its owner and can invite people.",
   nameLabel: "Workspace name",
   namePlaceholder: "e.g. Product team",
-  selfLabel: "Your name in this workspace",
-  selfPlaceholder: "e.g. Alice",
+  selfLabel: "Your name, as your team sees it",
+  selfPlaceholder: "e.g. Alex",
 };
+
+/** An organization Sylence can be added to: one the account may create apps in. */
+interface OrgChoice {
+  orgId: string;
+  name: string;
+  role: string;
+  /** What else it holds, in words ("Chat, Docs"), when known. */
+  holds: string | null;
+}
 
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
 /**
- * Choose which workspace to open, or start one. v1's picker listed the node's
- * contexts and namespaces; on Calimero 1.0 a workspace is an instance of this
- * app in an organization, and the account reaches every instance in every org
- * it is in. Starting a workspace makes an org of the same name and the
- * instance in it, or adds an instance to an org that already holds one. An
- * org made for another app is never offered there: only under "Connect to an
- * existing organization", on the person's explicit choice.
+ * Choose a workspace, or get one: start a new one (a new organization you
+ * own), join a team with an invite link, or add Sylence to an organization
+ * you are already in. That last part shows only when there is one to offer.
  */
 export function WorkspacePicker({
   onOpen,
   createOnly = false,
 }: {
   onOpen: (w: ActiveWorkspace) => void;
-  /** Only the start form: the extension asked for a new workspace. */
+  /** Only the ways to get a workspace: the extension asked for a new one. */
   createOnly?: boolean;
 }) {
   const { client, accountId, source, passkey, after } = useSignedIn();
   const { source: release, pending: releasePending } = useResolvedSource(client, accountId, source);
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
-  /** The orgs holding a workspace of this app: the only ones the start form offers. */
-  const [withApp, setWithApp] = useState<OrgRow[] | null>(null);
-  /**
-   * Of those, the orgs this account may add a workspace in (core's
-   * `CREATE_APP`): an owner or admin, or a member allowed to. The others are
-   * not offered, since a create there fails; `null` until known.
-   */
-  const [creatable, setCreatable] = useState<OrgRow[] | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[] | null>(null);
+  const [choices, setChoices] = useState<OrgChoice[] | null>(null);
+  /** Some organization holding Sylence is not offered: this account may not add workspaces there. */
+  const [someNotAllowed, setSomeNotAllowed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [org, setOrg] = useState<string>("");
-  const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [adding, setAdding] = useState<{ orgId: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let live = true;
-    Promise.all([listOrgs(client), listWorkspaces(client, source), orgsWithApp(client, source)])
-      .then(async ([o, w, held]) => {
+    Promise.all([listOrgs(client), listWorkspaces(client, source)])
+      .then(async ([o, w]) => {
         if (!live) return;
         setOrgs(o);
         setWorkspaces(w);
-        setWithApp(held);
         setError(null);
+        const [held, others] = await Promise.all([
+          orgsWithApp(client, source).catch(() => []),
+          otherOrgs(client, source).catch(() => []),
+        ]);
         // `null` (cannot tell) keeps the org on offer: the node decides then.
         const may = await Promise.all(held.map((row) => canCreateIn(client, row.orgId)));
-        if (live) setCreatable(held.filter((_, i) => may[i] !== false));
+        if (!live) return;
+        const roleOf = (id: string) => o.find((r) => r.orgId === id)?.role ?? "member";
+        const offered: OrgChoice[] = [
+          ...held.filter((_, i) => may[i] !== false).map((r) => ({ orgId: r.orgId, name: r.name, role: roleOf(r.orgId), holds: "Sylence" })),
+          ...others.map((r) => ({ orgId: r.orgId, name: r.name, role: r.role, holds: r.label || null })),
+        ];
+        setChoices(offered);
+        setSomeNotAllowed(may.some((m) => m === false));
       })
       .catch((e: unknown) => live && setError(describeError(e)))
       .finally(after);
@@ -77,15 +90,13 @@ export function WorkspacePicker({
     };
   }, [client, source, after, tick]);
 
-  /** In an org the account is already in: no org is made, so no consent page is asked. */
-  async function start() {
-    const title = name.trim();
-    if (!title || !org) return;
+  /** A workspace in an organization the account is already in: no consent page. */
+  async function addTo(orgId: string, title: string) {
+    if (!title.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const made = await createWorkspace(client, source, title, org, () => passkey());
-      onOpen(made);
+      onOpen(await createWorkspace(client, source, title.trim(), orgId, () => passkey()));
     } catch (e) {
       setError(describeError(e));
       setTick((t) => t + 1);
@@ -95,13 +106,13 @@ export function WorkspacePicker({
     }
   }
 
-  /** The org and its name come from the shared dialog, which the node approved. */
+  /** The new organization and its name come from the shared dialog, which the node approved. */
   async function created({ orgId, name: title, selfName }: { orgId: string; name: string; selfName: string }) {
     setShowCreate(false);
     setError(null);
     try {
       const made = await createWorkspaceInNewOrg(client, source, title, orgId, () => passkey());
-      // Best effort: an unnamed workspace, or an org member without a name, still works.
+      // Best effort: a member without a name still works.
       await setOrgName(client, orgId, accountId, selfName).catch(() => undefined);
       onOpen(made);
     } catch (e) {
@@ -112,102 +123,154 @@ export function WorkspacePicker({
     }
   }
 
-  const loadOtherOrgs = useCallback(async () => {
-    try {
-      return await otherOrgs(client, source);
-    } finally {
-      after();
+  function join() {
+    const url = inviteUrl(link);
+    if (!url) {
+      setLinkError("That doesn't look like an invite link. It starts with https:// and has invite= in it.");
+      return;
     }
-  }, [client, source, after]);
-
-  /** "Connect to an existing organization": a workspace in that org, named after it. */
-  async function connect(target: OtherOrg) {
-    const title = name.trim() || target.name || "Workspace";
-    try {
-      const made = await createWorkspace(client, source, title, target.orgId, () => passkey());
-      onOpen(made);
-    } finally {
-      after();
-    }
+    // The page the link opens keeps the invite and asks to join.
+    window.location.assign(url.href);
   }
 
   const orgName = (id: string | null) => orgs?.find((o) => o.orgId === id)?.name ?? (id ? shortId(id) : "");
 
   return (
-    <>
+    <div className="picker">
       {!createOnly && (
-      <section className="card">
-        <h2>Your workspaces</h2>
-        <p className="empty" style={{ marginBottom: 14 }}>
-          A workspace keeps your team&apos;s meeting transcripts and action items. Only the
-          members of its organization reach it.
-        </p>
-        {workspaces === null && !error && <p className="empty">Loading workspaces…</p>}
-        {workspaces !== null && workspaces.length === 0 && (
-          <p className="empty">No workspaces yet. Start one, or open an invitation link someone sent you.</p>
-        )}
-        {workspaces && workspaces.length > 0 && (
-          <ul className="team-list">
-            {workspaces.map((w) => (
-              <li key={w.appId}>
-                <button className="team-row" onClick={() => onOpen({ appId: w.appId, org: w.org })}>
-                  <span className="team-row-name">{w.name || <span className="dim">Unnamed workspace</span>}</span>
-                  <span className="mono dim">{orgName(w.org)}</span>
-                  <span className="team-row-open">Open →</span>
-                </button>
+        <header className="page-head">
+          <div>
+            <h1>Your workspaces</h1>
+            <p className="dim">A workspace keeps your team&apos;s meetings and action items. Only its members can read them.</p>
+          </div>
+        </header>
+      )}
+
+      {!createOnly && workspaces === null && !error && <p className="empty">Loading workspaces…</p>}
+      {!createOnly && workspaces && workspaces.length > 0 && (
+        <ul className="ws-grid">
+          {workspaces.map((w) => (
+            <li key={w.appId}>
+              <button type="button" className="ws-card" onClick={() => onOpen({ appId: w.appId, org: w.org })}>
+                <span className="ws-mark" aria-hidden="true">
+                  {(w.name || "W").slice(0, 1).toUpperCase()}
+                </span>
+                <span className="ws-text">
+                  <span className="ws-name">{w.name || "Unnamed workspace"}</span>
+                  <span className="dim">
+                    {orgName(w.org)}
+                    {w.owner === accountId ? " · Owner" : ""}
+                  </span>
+                </span>
+                <Icon name="right" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h2 className="section-title">{workspaces && workspaces.length > 0 && !createOnly ? "Or get another one" : "Get started"}</h2>
+      <div className="start-grid">
+        <section className="start-card">
+          <span className="start-icon">
+            <Icon name="plus" size={20} />
+          </span>
+          <h3 className="start-title">Start a new workspace</h3>
+          <p className="dim">For you and your team. You&apos;re the owner, and you invite people when you&apos;re ready.</p>
+          <button type="button" className="btn primary" onClick={() => setShowCreate(true)} data-testid="start-workspace">
+            Start a workspace
+          </button>
+        </section>
+
+        <section className="start-card">
+          <span className="start-icon">
+            <Icon name="link" size={20} />
+          </span>
+          <h3 className="start-title">Join your team</h3>
+          <p className="dim">Got an invite link from a teammate? Paste it here, or just open it.</p>
+          <form
+            className="row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              join();
+            }}
+          >
+            <input
+              aria-label="invite link"
+              placeholder="https://…?invite=…"
+              value={link}
+              onChange={(e) => {
+                setLink(e.target.value);
+                setLinkError(null);
+              }}
+            />
+            <button type="submit" className="btn" disabled={!link.trim()}>
+              Join
+            </button>
+          </form>
+          {linkError && <p className="err small">{linkError}</p>}
+        </section>
+      </div>
+
+      {choices && choices.length > 0 && (
+        <section className="card org-choices">
+          <h2>Add {PRODUCT} to an organization you&apos;re in</h2>
+          <p className="dim">
+            You&apos;re already in these organizations on Calimero. A workspace there is open to their members.
+          </p>
+          <ul className="org-list">
+            {choices.map((c) => (
+              <li key={c.orgId} className="org-row">
+                <span className="org-icon">
+                  <Icon name="building" />
+                </span>
+                <span className="org-text">
+                  <span className="org-name">{c.name || shortId(c.orgId)}</span>
+                  <span className="dim small">
+                    {roleName(c.role)}
+                    {c.holds ? ` · has ${c.holds}` : ""}
+                  </span>
+                </span>
+                {adding?.orgId === c.orgId ? (
+                  <form
+                    className="row org-add"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void addTo(c.orgId, adding.name);
+                    }}
+                  >
+                    <input
+                      aria-label="workspace name"
+                      autoFocus
+                      maxLength={80}
+                      placeholder="Workspace name"
+                      value={adding.name}
+                      onChange={(e) => setAdding({ orgId: c.orgId, name: e.target.value })}
+                    />
+                    <button type="submit" className="btn small primary" disabled={busy || !adding.name.trim()}>
+                      {busy ? "Creating…" : "Create"}
+                    </button>
+                    <button type="button" className="btn small ghost" onClick={() => setAdding(null)}>
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <button type="button" className="btn small" onClick={() => setAdding({ orgId: c.orgId, name: c.name || "" })}>
+                    Add workspace
+                  </button>
+                )}
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
       )}
+      {someNotAllowed && (
+        <p className="dim small" data-testid="workspace-ask-owner">
+          Not every organization you&apos;re in is listed. {askAnOwnerCopy("a workspace")}
+        </p>
+      )}
+      {error && <pre className="err">{error}</pre>}
 
-      <form
-        className="card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void start();
-        }}
-      >
-        <h2>Start a workspace</h2>
-        <div className="row">
-          {creatable && creatable.length > 0 && (
-            <select aria-label="organization" value={org} onChange={(e) => setOrg(e.target.value)}>
-              <option value="">In a new organization</option>
-              {creatable.map((o) => (
-                <option key={o.orgId} value={o.orgId}>
-                  In {o.name || shortId(o.orgId)}
-                </option>
-              ))}
-            </select>
-          )}
-          {org && (
-            <input
-              aria-label="new workspace name"
-              placeholder="Workspace name, e.g. Product team"
-              maxLength={80}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          )}
-          {org ? (
-            <button type="submit" disabled={busy || !name.trim()}>
-              {busy ? "Creating…" : "Start a new workspace"}
-            </button>
-          ) : (
-            <button type="button" onClick={() => setShowCreate(true)}>
-              Start a new workspace
-            </button>
-          )}
-        </div>
-        {withApp && creatable && creatable.length < withApp.length && (
-          <p className="empty" data-testid="workspace-ask-owner">
-            Not every organization you are in is listed. {askAnOwnerCopy("a workspace")}
-          </p>
-        )}
-        {error && <pre className="err">{error}</pre>}
-        <ConnectExistingOrg appName={PRODUCT} load={loadOtherOrgs} onConnect={connect} />
-      </form>
       <CreateWorkspaceDialog
         client={client}
         passkey={passkey()}
@@ -218,6 +281,6 @@ export function WorkspacePicker({
         onCreated={created}
         labels={CREATE_LABELS}
       />
-    </>
+    </div>
   );
 }

@@ -850,8 +850,8 @@ export function LandingNav({
               Sign in
             </button>
           ) : (
-            <a className="btn small" href="#/">
-              Open {PRODUCT}
+            <a className="btn small primary" href="#/">
+              Dashboard
             </a>
           )}
         </div>
@@ -916,14 +916,22 @@ export function LandingPage({
   );
 }
 
-/** The front door when signed out. */
+/**
+ * The front door. Signed out it offers an account; signed in
+ * (`onDashboard`) it leads back to the dashboard instead.
+ */
 export function Landing({
   onSignIn,
   onInstall,
+  onDashboard,
 }: {
-  onSignIn: () => void;
+  onSignIn?: () => void;
   onInstall?: () => void;
+  onDashboard?: () => void;
 }) {
+  const install =
+    onInstall ??
+    (onDashboard ? () => (window.location.hash = "#/install") : undefined);
   // The fleet's node badge floats on every page; a visitor has no node to judge yet.
   useEffect(() => {
     document.body.classList.add("on-landing");
@@ -936,7 +944,7 @@ export function Landing({
   }, []);
   return (
     <div className="landing">
-      <LandingNav onSignIn={onSignIn} />
+      <LandingNav onSignIn={onDashboard ? undefined : onSignIn} />
 
       <section id="top" className="lp-hero lp-sect">
         <div className="lp-inner">
@@ -951,24 +959,40 @@ export function Landing({
               is kept in a secure enclave only your team can read.
             </p>
             <div className="lp-cta">
-              {onInstall && (
+              {onDashboard ? (
                 <button
                   type="button"
                   className="btn primary large"
-                  onClick={onInstall}
+                  onClick={onDashboard}
                 >
-                  Get the extension
+                  Open your dashboard
                 </button>
+              ) : (
+                install && (
+                  <button
+                    type="button"
+                    className="btn primary large"
+                    onClick={install}
+                  >
+                    Get the extension
+                  </button>
+                )
               )}
               {/* New visitors start here; "Sign in" stays in the top bar. Both open the
                   passkey panel, which signs in or makes the account. */}
-              <button
-                type="button"
-                className={onInstall ? "btn large" : "btn primary large"}
-                onClick={onSignIn}
-              >
-                Create an account
-              </button>
+              {onDashboard ? (
+                <button type="button" className="btn large" onClick={install}>
+                  Get the extension
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={install ? "btn large" : "btn primary large"}
+                  onClick={onSignIn}
+                >
+                  Create an account
+                </button>
+              )}
             </div>
             <Available />
           </div>
@@ -1193,11 +1217,11 @@ export function Landing({
           <div className="lp-inner lp-final">
             <h2 className="lp-h2">Record your next call with {PRODUCT}.</h2>
             <div className="lp-cta">
-              {onInstall && (
+              {install && (
                 <button
                   type="button"
                   className="btn large lp-btn-ink"
-                  onClick={onInstall}
+                  onClick={install}
                 >
                   Get the extension
                 </button>
@@ -1205,9 +1229,9 @@ export function Landing({
               <button
                 type="button"
                 className="btn large lp-btn-line"
-                onClick={onSignIn}
+                onClick={onDashboard ?? onSignIn}
               >
-                Create an account
+                {onDashboard ? "Open your dashboard" : "Create an account"}
               </button>
             </div>
             <Available />

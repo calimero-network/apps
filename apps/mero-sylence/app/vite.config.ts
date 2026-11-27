@@ -4,7 +4,6 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { servedAssetsFallback } from "@calimero-apps/node-served/vite";
-import { installableApp } from "@calimero-apps/install/vite";
 import { extensionDownload } from "./extensionDownload";
 import type { Plugin } from "vite";
 import { realpathSync } from "node:fs";
@@ -40,7 +39,7 @@ function absoluteSocialImage(): Plugin {
 export default defineConfig({
   // Relative, so the same build runs at / and under the node's /{version}/.
   base: "./",
-  plugins: [absoluteSocialImage(), extensionDownload(), installableApp({ cacheId: "mero-sylence" }), servedAssetsFallback(), react()],
+  plugins: [absoluteSocialImage(), extensionDownload(), servedAssetsFallback(), react()],
   // The ONNX runtime the speech worker loads (src/ai/speech.worker.ts imports
   // its files by URL), bundled with the page so no code is fetched at run time.
   resolve: { alias: { "@ort": ortDir() } },
