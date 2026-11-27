@@ -846,3 +846,77 @@
   position: relative;
   z-index: 1;
 }
+
+/* ── the shared dialogs (start a workspace, invite, join): Sylence's sizes ── */
+:root .mero-cw-card {
+  max-width: 400px;
+  border-radius: 16px;
+}
+:root .mero-cw-body {
+  padding: 20px 20px 0;
+  font-size: 13.5px;
+}
+:root .mero-cw-title {
+  font-size: 17px;
+  padding-right: 32px;
+}
+:root .mero-cw-sub {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+:root .mero-cw-field {
+  margin-bottom: 12px;
+}
+:root .mero-cw-field label {
+  margin-bottom: 5px;
+  font-size: 12.5px;
+}
+:root .mero-cw-field input,
+:root .mero-cw-field select {
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 9px;
+  font-size: 13.5px;
+}
+:root .mero-cw-btn {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+:root .mero-cw-btn--full {
+  min-height: 38px;
+}
+:root .mero-cw-link {
+  min-height: 32px;
+  font-size: 13px;
+}
+:root .mero-cw-hint {
+  font-size: 12px;
+}
+:root .mero-cw-error {
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+:root .mero-cw-choice {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+:root .mero-cw-choice b {
+  font-size: 13.5px;
+}
+:root .mero-cw-x {
+  width: 32px;
+  height: 32px;
+  top: 12px;
+  right: 12px;
+}
+@media (max-width: 560px) {
+  /* 16px keeps iOS from zooming into the field. */
+  :root .mero-cw-field input,
+  :root .mero-cw-field select {
+    font-size: 16px;
+  }
+  :root .mero-cw-card {
+    max-width: none;
+  }
+}
