@@ -2,3 +2,4 @@
 
 /** The browser extension's version (extensionDownload.ts). */
 declare const __EXTENSION_VERSION__: string;
+declare const __EXTENSION_ZIP__: string;

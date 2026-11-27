@@ -23,3 +23,12 @@ describe("the extension download", () => {
     expect(() => zipExtension(mkdtempSync(join(tmpdir(), "mm-empty-")))).toThrow(/no built extension/);
   });
 });
+
+describe("the Cloud node's page", () => {
+  it("is built without the zip (a node serves none) and links the GitHub release's copy", async () => {
+    const { servedByNode, RELEASE_ZIP_URL, ZIP_NAME } = await import("../extensionDownload");
+    expect(servedByNode({ VITE_CALIMERO_TARGET: "cloud" })).toBe(true);
+    expect(servedByNode({})).toBe(false);
+    expect(RELEASE_ZIP_URL).toBe(`https://github.com/calimero-network/apps/releases/download/sylence-extension/${ZIP_NAME}`);
+  });
+});

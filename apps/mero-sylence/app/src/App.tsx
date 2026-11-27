@@ -68,6 +68,7 @@ export function ExtensionSignIn() {
   const [needsWorkspace, setNeedsWorkspace] = useState<boolean | null>(null);
   const started = useRef(false);
   const creating = signInIntent() === "create";
+  const signingUp = signInIntent() === "signup";
 
   useEffect(() => {
     if (!signedIn || needsWorkspace !== null) return;
@@ -141,10 +142,13 @@ export function ExtensionSignIn() {
           )
         ) : (
           <>
-            <h1 id="handoff-title">Sign in to the {PRODUCT} extension</h1>
+            <h1 id="handoff-title">
+              {signingUp ? `Create your account for the ${PRODUCT} extension` : `Sign in to the ${PRODUCT} extension`}
+            </h1>
             <p className="empty">
-              Use your passkey here. The extension then saves the transcripts of the calls you record
-              to your workspaces, as you.
+              {signingUp
+                ? "Create an account with a passkey here, then make your first workspace. The extension saves the transcripts of the calls you record there, as you."
+                : "Use your passkey here, or create an account if you are new. The extension then saves the transcripts of the calls you record to your workspaces, as you."}
             </p>
             {session.status === "connecting" ? <p className="empty">Connecting…</p> : <SignInPanel titleId="handoff-panel-title" />}
           </>

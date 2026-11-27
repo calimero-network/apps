@@ -31,6 +31,12 @@ describe("popup", () => {
     await waitFor(() => expect(types()).toContain("signIn"));
   });
 
+  it("signed out: offers to create an account, which asks the page to lead with sign-up", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Create an account" }));
+    await waitFor(() => expect(chrome.sent).toContainEqual({ type: "signIn", intent: "signup" }));
+  });
+
   it("shows a sign-in failure", async () => {
     chrome.onSend = () => ({ ok: false, error: "Sign-in was cancelled." });
     render(<App />);

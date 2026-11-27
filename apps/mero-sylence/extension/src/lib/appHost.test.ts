@@ -40,3 +40,31 @@ describe("app host", () => {
     expect(workspaceLink(page, "a")).toBe("https://h.example/0.1.0/#/w/a");
   });
 });
+
+describe("the sign-in page setting", () => {
+  it("takes a page on this machine at its root", async () => {
+    const { isLocalPage } = await import("./appHost");
+    expect(isLocalPage("http://localhost:5173")).toBe(true);
+    expect(isLocalPage("https://sylence.example.com")).toBe(false);
+    expect(await servedPage("http://localhost:5173/", json({}))).toEqual({ origin: "http://localhost:5173", version: null });
+  });
+
+  it("takes Sylence's own Cloud page at its newest release", async () => {
+    const own = await appOrigin();
+    expect(await servedPage(`${own}/`, json({ versions: ["0.1.0", "0.2.0"] }))).toEqual({ origin: own, version: "0.2.0" });
+    expect(await servedPage(`${own}/0.1.0/`, json({ versions: ["0.1.0"] }))).toEqual({ origin: own, version: "0.1.0" });
+  });
+
+  it("refuses another app's Cloud page, naming Sylence's", async () => {
+    const own = await appOrigin();
+    const home = `https://${await appLabel("com.calimero.mero-home")}.apps.calimero.network/`;
+    await expect(servedPage(home, json({ versions: ["1.0.0"] }))).rejects.toThrow(own);
+  });
+
+  it("says plainly when the page does not answer", async () => {
+    const down = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    await expect(servedPage(undefined, down)).rejects.toThrow(/did not answer: Sylence is not served there yet/);
+  });
+});

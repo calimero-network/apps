@@ -73,7 +73,8 @@ export function signInUrl(
 }
 
 /** `create`: the page offers a new workspace before it hands the session over. */
-export type SignInIntent = "create";
+/** `create`: a new workspace; `signup`: a new account (the page leads with creating one). */
+export type SignInIntent = "create" | "signup";
 
 export class HandoffError extends Error {
   constructor(message: string) {
