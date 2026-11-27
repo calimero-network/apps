@@ -8,6 +8,7 @@ import { roleName } from "./lib/manage";
 import type { ActiveWorkspace } from "./lib/workspaceStore";
 import { APP_PACKAGE, PRODUCT } from "./session";
 import { useSignedIn } from "./sessionContext";
+import { CallDemo } from "./Landing";
 import { Icon } from "./ui";
 
 const CREATE_LABELS = {
@@ -170,6 +171,7 @@ export function WorkspacePicker({
       )}
 
       <h2 className="section-title">{workspaces && workspaces.length > 0 && !createOnly ? "Or get another one" : "Get started"}</h2>
+      <div className={createOnly ? "start-layout solo" : "start-layout"}>
       <div className="start-grid">
         <section className="start-card">
           <span className="start-icon">
@@ -210,6 +212,13 @@ export function WorkspacePicker({
           </form>
           {linkError && <p className="err small">{linkError}</p>}
         </section>
+      </div>
+      {!createOnly && (
+        <figure className="landing picker-showcase" aria-label="How a call becomes notes">
+          <CallDemo />
+          <figcaption>Record a call and Sylence writes who said what, then saves the transcript, summary and action items here.</figcaption>
+        </figure>
+      )}
       </div>
 
       {choices && choices.length > 0 && (

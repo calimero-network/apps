@@ -771,16 +771,20 @@ td.mono {
 .menu {
   position: relative;
 }
+/* The account button is the round profile icon itself: square, no padding, so it stays a circle. */
 .menu-button {
   background: none;
   color: var(--text);
+  width: 32px;
+  min-width: 32px;
   height: 32px;
-  padding: 0 8px 0 2px;
-  border-radius: 999px;
+  padding: 0;
+  border-radius: 50%;
   border: 0;
+  flex: none;
 }
 .menu-button:hover:not(:disabled) {
-  background: var(--hover);
+  background: none;
 }
 .menu-name {
   font-weight: 500;

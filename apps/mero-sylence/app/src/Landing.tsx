@@ -233,7 +233,7 @@ function clock(s: number) {
  * colour, lines arrive under their names, then the second pass tidies the
  * transcript and it turns into the saved meeting. Nothing in it changes its height.
  */
-function CallDemo() {
+export function CallDemo() {
   const reduced = prefersReducedMotion();
   const [step, setStep] = useState(reduced ? SAVED : 0);
 
