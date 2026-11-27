@@ -55,8 +55,27 @@ export function SignInModal({ open, onClose }: { open: boolean; onClose: () => v
     if (open && api.session.status === "signed-in") onClose();
   }, [open, api.session.status, onClose]);
 
+  // A click on the backdrop closes it. The dialog has no padding, so a click whose
+  // target is the dialog itself landed outside its body. Both the press and the release
+  // must be outside, so selecting text inside and letting go outside does not close it.
+  // Never mid-ceremony: the passkey prompt is still open.
+  const pressedOutside = useRef(false);
   return (
-    <dialog ref={ref} className="dialog" onClose={onClose} data-testid="signin-modal" aria-labelledby="signin-title">
+    <dialog
+      ref={ref}
+      className="dialog"
+      onClose={onClose}
+      onMouseDown={(e) => (pressedOutside.current = e.target === e.currentTarget)}
+      onClick={(e) => {
+        if (pressedOutside.current && e.target === e.currentTarget && !api.busy) onClose();
+        pressedOutside.current = false;
+      }}
+      onCancel={(e) => {
+        if (api.busy) e.preventDefault();
+      }}
+      data-testid="signin-modal"
+      aria-labelledby="signin-title"
+    >
       <div className="dialog-body">
         <SignInPanel titleId="signin-title" />
         <button type="button" className="text-close" onClick={onClose} disabled={api.busy}>
