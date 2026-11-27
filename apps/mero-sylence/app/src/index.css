@@ -1082,7 +1082,7 @@ dialog.dialog[open] {
   font-size: 13px;
   line-height: 1.55;
 }
-.dialog-body input {
+.dialog-body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
   width: 100%;
   /* Inputs grow along a row (flex: 1 1 160px); in the dialog's column that would make them 160px tall. */
   flex: none;

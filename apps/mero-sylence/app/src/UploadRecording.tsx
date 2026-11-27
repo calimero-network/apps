@@ -337,9 +337,8 @@ export function UploadRecording({
             <Icon name="x" />
           </button>
         </div>
-        <p className="empty">
-          Sylence transcribes it on this laptop and tells the voices apart. The models download once and stay in
-          the browser.
+        <p className="empty upload-lede">
+          Transcribed on this laptop, with the voices told apart. The models download once and stay in the browser.
         </p>
 
         {!busy && (
@@ -380,8 +379,9 @@ export function UploadRecording({
               )}
             </label>
 
+            <div className="upload-options">
             <label className="upload-field">
-              <span>Spoken language</span>
+              <span className="upload-check-label">Spoken language</span>
               <select value={language} onChange={(e) => setLanguage(e.target.value)}>
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>
@@ -392,19 +392,22 @@ export function UploadRecording({
             </label>
 
             <label className={`upload-check${audioRefusal ? " disabled" : ""}`}>
-              <input
-                type="checkbox"
-                checked={keepAudio && !audioRefusal}
-                disabled={!!audioRefusal}
-                onChange={(e) => setKeepAudio(e.target.checked)}
-              />
               <span>
                 <span className="upload-check-label">Keep the audio for playback</span>
                 <span className="dim">
                   {audioRefusal ?? "Saved in this workspace, so everyone in it can play the meeting back."}
                 </span>
               </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                checked={keepAudio && !audioRefusal}
+                disabled={!!audioRefusal}
+                onChange={(e) => setKeepAudio(e.target.checked)}
+              />
             </label>
+            </div>
           </>
         )}
 
