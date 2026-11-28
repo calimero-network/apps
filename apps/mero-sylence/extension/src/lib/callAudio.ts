@@ -1,7 +1,7 @@
 /**
  * A finished call's recording, on its way to the workspace. The offscreen page
- * records the call and the microphone mixed into one compressed track (Opus in
- * WebM, ~24 kbit/s: an hour is ~11 MB). Messages between extension pages carry
+ * records the call and the microphone mixed into one compressed track (AAC in
+ * MP4, ~32 kbit/s: an hour is ~14 MB; Opus in WebM where the browser has no AAC). Messages between extension pages carry
  * JSON, not a file, so it waits here, in the extension's own IndexedDB, until
  * the service worker uploads it as a blob of the workspace and attaches it to
  * the meeting, as an uploaded recording is. One at a time: a new call replaces
@@ -20,6 +20,24 @@ export const MAX_CALL_AUDIO_BYTES = 49_545_216;
 
 /** The bitrate the recorder asks for: speech stays clear, three hours stay under one blob. */
 export const CALL_AUDIO_BITRATE = 24_000;
+
+/**
+ * What the recorder writes, best first: AAC in MP4 (an .m4a file every
+ * browser and player opens, Safari and iPhones included), else Opus in WebM
+ * where the browser cannot (Chrome before 126). AAC needs a little more
+ * bitrate than Opus for the same speech: three hours still fit one blob.
+ */
+export const RECORDER_FORMATS: readonly { mimeType: string; bitrate: number }[] = [
+  { mimeType: "audio/mp4;codecs=mp4a.40.2", bitrate: 32_000 },
+  { mimeType: "audio/mp4", bitrate: 32_000 },
+  { mimeType: "audio/webm;codecs=opus", bitrate: CALL_AUDIO_BITRATE },
+  { mimeType: "audio/webm", bitrate: CALL_AUDIO_BITRATE },
+];
+
+/** The first format the browser records, or `null`. */
+export function recorderFormat(supported: (type: string) => boolean): { mimeType: string; bitrate: number } | null {
+  return RECORDER_FORMATS.find((f) => supported(f.mimeType)) ?? null;
+}
 
 const DB = "sylence-call-audio";
 const STORE = "audio";

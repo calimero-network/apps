@@ -199,6 +199,8 @@ interface Harness {
   injected: number[];
   /** Recording notices posted in a call's chat: the tab and the function's arguments. */
   notices: { tabId: number; args: unknown[] }[];
+  /** Tabs opened, by address. */
+  created: string[];
   tabMessages: { tabId: number; message: unknown }[];
 }
 
@@ -222,6 +224,7 @@ function installChrome(): Harness {
     tab: { url: "https://meet.google.com/abc-defg-hij", title: "Meet - Weekly sync" },
     injected: [],
     notices: [],
+    created: [],
     tabMessages: [],
   };
   const area = (map: Map<string, unknown>) => ({
@@ -271,6 +274,10 @@ function installChrome(): Harness {
       onRemoved: { addListener: (l: (tabId: number) => void) => h.removedListeners.push(l) },
       sendMessage: async (tabId: number, message: unknown) => {
         h.tabMessages.push({ tabId, message });
+      },
+      create: async ({ url }: { url: string }) => {
+        h.created.push(url);
+        return { id: 99 };
       },
     },
     scripting: {
@@ -1065,9 +1072,30 @@ describe("service worker: speaker names", () => {
 
   it("tells the call the public Sylence page, when that is the page", async () => {
     h.local.set("sylence:auth", { ...AUTH, page: { origin: "https://abc.apps.calimero.network", version: "1.2.0" } });
-    await request({ type: "start", tabId: 7 });
-    await settle();
-    expect(h.notices[0]!.args[1]).toContain("Sylence: https://abc.apps.calimero.network/1.2.0/");
+    // Signed in at 1.2.0; the host has since deployed 1.3.0.
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ versions: ["1.2.0", "1.3.0"], deployments: [{ version: "1.3.0" }] })));
+    try {
+      await request({ type: "start", tabId: 7 });
+      await vi.waitFor(() => expect(h.notices).toHaveLength(1));
+      expect(h.notices[0]!.args[1]).toContain("Sylence: https://abc.apps.calimero.network/1.3.0/");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("opens the web app at the release the host serves now, not the one saved at sign-in", async () => {
+    h.local.set("sylence:auth", { ...AUTH, page: { origin: "https://abc.apps.calimero.network", version: "0.0.1" } });
+    vi.stubGlobal("fetch", async () =>
+      new Response(JSON.stringify({ versions: ["0.0.1", "0.0.3"], deployments: [{ id: "d1", version: "0.0.3" }] })),
+    );
+    try {
+      await request({ type: "openWebApp", appId: "app1" });
+      expect(h.created.at(-1)).toBe("https://abc.apps.calimero.network/0.0.3/#/w/app1");
+      // Kept: the next link starts from it.
+      expect((h.local.get("sylence:auth") as { page: { version: string } }).page.version).toBe("0.0.3");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("posts no note with the setting off", async () => {

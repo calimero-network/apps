@@ -39,20 +39,48 @@ export function isVersion(value: string): boolean {
 }
 
 /** The newest release `origin` serves, from its `/.well-known/calimero.json` (oldest first). */
+/** Compares two release versions numerically ("0.0.10" after "0.0.9"); non-numeric parts compare as text. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.+-]/);
+  const pb = b.split(/[.+-]/);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? "0";
+    const y = pb[i] ?? "0";
+    const nx = Number(x);
+    const ny = Number(y);
+    const d = Number.isInteger(nx) && Number.isInteger(ny) ? nx - ny : x.localeCompare(y);
+    if (d) return d;
+  }
+  return 0;
+}
+
+/**
+ * The release a host serves now, from its `/.well-known/calimero.json`: the
+ * release its deployment runs (what Cloud serves at `/`), else the newest of
+ * the releases it holds. The list is not in any order: a host keeps old
+ * releases too, so the last one listed may be an old one.
+ */
+export function servedVersion(info: { versions?: unknown; deployments?: unknown }): string | null {
+  const strings = (xs: unknown[]) => xs.filter((v): v is string => typeof v === "string" && isVersion(v));
+  const deployed = Array.isArray(info.deployments)
+    ? strings(info.deployments.map((d) => (d && typeof d === "object" ? (d as { version?: unknown }).version : undefined)))
+    : [];
+  const held = Array.isArray(info.versions) ? strings(info.versions) : [];
+  const pool = deployed.length ? deployed : held;
+  return pool.length ? [...pool].sort(compareVersions).at(-1)! : null;
+}
+
 export async function latestVersion(origin: string, fetcher: typeof fetch = fetch): Promise<string> {
   const url = `${origin.replace(/\/+$/, "")}/.well-known/calimero.json`;
   let res: Response;
   try {
-    res = await fetcher(url);
+    res = await fetcher(url, { cache: "no-store" });
   } catch {
     throw new Error(`${new URL(url).host} did not answer: Sylence is not served there yet`);
   }
   if (!res.ok) throw new Error(`${new URL(url).host} answered ${res.status}: Sylence is not served there yet`);
-  const info = (await res.json()) as { versions?: unknown };
-  const versions = Array.isArray(info.versions) ? info.versions.filter((v): v is string => typeof v === "string") : [];
-  const latest = versions[versions.length - 1];
+  const latest = servedVersion((await res.json()) as { versions?: unknown; deployments?: unknown });
   if (!latest) throw new Error("The app host serves no release of Sylence yet");
-  if (!isVersion(latest)) throw new Error("The app host names a release that is not a version");
   return latest;
 }
 

@@ -1335,6 +1335,19 @@ dialog.dialog[open] {
 .handoff .dialog-body {
   padding: 16px 0 0;
 }
+/* The code the node's approval page shows too: the person checks they match. */
+.handoff-code {
+  margin: 4px 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: 600 20px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .handoff-workspace {
   display: grid;
   gap: 16px;

@@ -354,33 +354,76 @@ describe("offscreen pipeline", () => {
     expect(FakeWorkletNode.all).toHaveLength(1);
   });
 
-  it("records the mixed call compressed and keeps it for the service worker on stop", async () => {
-    kept.current = null;
-    class FakeRecorder {
-      static isTypeSupported = (t: string) => t === "audio/webm;codecs=opus";
-      state = "inactive";
-      mimeType: string;
-      ondataavailable: ((e: { data: Blob }) => void) | null = null;
-      onstop: (() => void) | null = null;
-      constructor(_s: unknown, o: { mimeType: string }) {
-        this.mimeType = o.mimeType;
+  for (const [what, supported, mime] of [
+    ["AAC in MP4 where the browser records it (an .m4a every browser plays)", ["audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus"], "audio/mp4"],
+    ["Opus in WebM where it has no AAC", ["audio/webm;codecs=opus"], "audio/webm"],
+  ] as const) {
+    it(`records the mixed call compressed and keeps it for the service worker on stop: ${what}`, async () => {
+      kept.current = null;
+      const asked: { mimeType: string; audioBitsPerSecond: number }[] = [];
+      class FakeRecorder {
+        static isTypeSupported = (t: string) => (supported as readonly string[]).includes(t);
+        state = "inactive";
+        mimeType: string;
+        ondataavailable: ((e: { data: Blob }) => void) | null = null;
+        onstop: (() => void) | null = null;
+        constructor(_s: unknown, o: { mimeType: string; audioBitsPerSecond: number }) {
+          this.mimeType = o.mimeType;
+          asked.push(o);
+        }
+        start() {
+          this.state = "recording";
+        }
+        stop() {
+          this.state = "inactive";
+          this.ondataavailable?.({ data: new Blob([new Uint8Array(1_234)]) });
+          this.onstop?.();
+        }
       }
-      start() {
-        this.state = "recording";
+      vi.stubGlobal("MediaRecorder", FakeRecorder);
+      expect(await capture(true)).toBe(true);
+      await command({ type: "stop" });
+      await flushMicrotasks();
+      expect(kept.current).toEqual({ size: 1_234, mime });
+      expect(asked[0]!.mimeType).toBe(supported[0]);
+      vi.unstubAllGlobals();
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+    });
+  }
+
+  it("tells the person once when their microphone gives no sound for a minute while the call talks", async () => {
+    vi.useFakeTimers();
+    try {
+      await capture(true);
+      for (let t = 0; t < 64_000; t += 4_000) {
+        tabNode().feed(tone(500));
+        micNode().feed(new Float32Array(8_000));
+        vi.advanceTimersByTime(4_000);
       }
-      stop() {
-        this.state = "inactive";
-        this.ondataavailable?.({ data: new Blob([new Uint8Array(1_234)]) });
-        this.onstop?.();
-      }
+      await flushMicrotasks();
+      const silent = ofType("notice").filter((n) => /no sound from your microphone/i.test(n.message));
+      expect(silent).toHaveLength(1);
+      await command({ type: "stop" });
+    } finally {
+      vi.useRealTimers();
     }
-    vi.stubGlobal("MediaRecorder", FakeRecorder);
-    expect(await capture(true)).toBe(true);
-    await command({ type: "stop" });
-    await flushMicrotasks();
-    expect(kept.current).toEqual({ size: 1_234, mime: "audio/webm" });
-    vi.unstubAllGlobals();
-    vi.stubGlobal("AudioContext", FakeAudioContext);
+  });
+
+  it("says nothing about the microphone while the person talks", async () => {
+    vi.useFakeTimers();
+    try {
+      await capture(true);
+      for (let t = 0; t < 64_000; t += 4_000) {
+        tabNode().feed(tone(500));
+        micNode().feed(tone(500));
+        vi.advanceTimersByTime(4_000);
+      }
+      await flushMicrotasks();
+      expect(ofType("notice").filter((n) => /microphone/i.test(n.message))).toHaveLength(0);
+      await command({ type: "stop" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports a tab that can't be captured", async () => {

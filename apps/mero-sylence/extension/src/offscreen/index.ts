@@ -6,7 +6,8 @@
  * service worker saves it to the workspace (lib/callAudio.ts).
  */
 import tapUrl from "../audio/tap.worklet.ts?worker&url";
-import { CALL_AUDIO_BITRATE, keepCallAudio, plainMime } from "../lib/callAudio";
+import { keepCallAudio, plainMime, recorderFormat } from "../lib/callAudio";
+import { MicWatch } from "../lib/micWatch";
 import { detectCaps } from "../lib/caps";
 import { EchoGate, isMicPhantom, voicedMs } from "../lib/echo";
 import { AudioStore, echoOf, inOrder, linesOf, windowsOf, type RedoneLine } from "../lib/improve";
@@ -56,6 +57,8 @@ interface Recording {
   /** The call and the mic mixed, recorded compressed, saved to the workspace after Stop. */
   mix: MediaStreamAudioDestinationNode;
   recorder: MediaRecorder | null;
+  /** Whether the microphone still gives sound (`lib/micWatch.ts`); null with Mic off. */
+  micWatch: MicWatch | null;
   recorded: Blob[];
 }
 
@@ -80,7 +83,9 @@ async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, aud
     const r = rec;
     if (!r) return;
     const block = resampler.push(e.data);
-    r.levels[speaker] = Math.max(rms(block), r.levels[speaker] * 0.6);
+    const level = rms(block);
+    r.levels[speaker] = Math.max(level, r.levels[speaker] * 0.6);
+    r.micWatch?.heard(speaker, level, Date.now());
     if (speaker === "others") r.echo.pushReference(block);
     if (!r.stopping) r.stores.get(speaker)?.push(block);
     const seg = r.segmenters.get(speaker);
@@ -91,15 +96,16 @@ async function tap(ctx: AudioContext, stream: MediaStream, speaker: Speaker, aud
 }
 
 /**
- * Records the mixed call compressed (Opus), from the recording's start, so the
+ * Records the mixed call compressed (AAC in MP4, else Opus in WebM), from the recording's start, so the
  * transcript's times line up with it. Where the browser cannot, the call is
  * still transcribed; it is just not kept for playback.
  */
 function startRecorder(r: Recording): void {
-  const type = ["audio/webm;codecs=opus", "audio/webm"].find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
-  if (!type) return;
+  if (typeof MediaRecorder === "undefined") return;
+  const format = recorderFormat((t) => MediaRecorder.isTypeSupported(t));
+  if (!format) return;
   try {
-    const recorder = new MediaRecorder(r.mix.stream, { mimeType: type, audioBitsPerSecond: CALL_AUDIO_BITRATE });
+    const recorder = new MediaRecorder(r.mix.stream, { mimeType: format.mimeType, audioBitsPerSecond: format.bitrate });
     recorder.ondataavailable = (e) => {
       if (e.data.size) r.recorded.push(e.data);
     };
@@ -141,6 +147,11 @@ function enqueue(chunk: Chunk, speaker: Speaker): void {
   if (speaker === "you") r.voiced.set(job.id, voicedMs(chunk.audio));
 }
 
+const MIC_STOPPED = "Your microphone stopped (unplugged, or taken by another app), so your side is no longer transcribed.";
+const MIC_MUTED = "Your microphone is muted by the system or another app, so your side is not transcribed right now.";
+const MIC_SILENT =
+  "No sound from your microphone for a minute while the call is talking. Check it isn't muted, or that the right microphone is chosen in Chrome's settings.";
+
 async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promise<void> {
   const ctx = new AudioContext();
   await ctx.audioWorklet.addModule(tapUrl);
@@ -168,6 +179,7 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
     mix,
     recorder: null,
     recorded: [],
+    micWatch: null,
   };
   kept = null;
   await tap(ctx, tab, "others", true, mix);
@@ -178,6 +190,17 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       rec.streams.push(mic);
+      const watch = new MicWatch(Date.now());
+      rec.micWatch = watch;
+      const track = typeof mic.getAudioTracks === "function" ? mic.getAudioTracks()[0] : undefined;
+      void emit({ type: "log", message: `mic: ${track?.label || "default device"}` });
+      // Another app taking the microphone, unplugging it, or the browser revoking it.
+      track?.addEventListener("ended", () => {
+        if (rec && !rec.stopping) void emit({ type: "notice", message: MIC_STOPPED });
+      });
+      track?.addEventListener("mute", () => {
+        if (rec && !rec.stopping) void emit({ type: "notice", message: MIC_MUTED });
+      });
       // The mic starts a little after the tab: its times count from the recording's start.
       const micOffset = Date.now() - rec.startedAt;
       rec.segmenters.set("you", new Segmenter({ offsetMs: micOffset }));
@@ -197,7 +220,10 @@ async function capture(c: Extract<OffscreenCommand, { type: "capture" }>): Promi
       r.levels.you *= 0.5;
       r.levels.others *= 0.5;
     }, 150),
-    window.setInterval(() => void emit({ type: "tick" }), 4_000),
+    window.setInterval(() => {
+      void emit({ type: "tick" });
+      if (r.micWatch?.silent(Date.now())) void emit({ type: "notice", message: MIC_SILENT });
+    }, 4_000),
   );
   emit({ type: "model", tier: c.tier, state: "loading", progress: { fraction: 0, file: "" } });
   toWorker({ type: "load", tier: c.tier });
