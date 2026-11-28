@@ -6,7 +6,6 @@ import { TIERS, resolveTier } from "../../lib/tiers";
 import { sizeLabel } from "../../lib/format";
 import { useCaps, useMicAllowed, type ActiveTab } from "../hooks";
 import { AlertIcon, ChevronRightIcon, ChipIcon, ExternalIcon, LockIcon, MicIcon, MicOffIcon, Spinner, VideoIcon } from "../icons";
-import { workspaceLink } from "../../lib/appHost";
 import { ask } from "../rpc";
 import { ModelSheet } from "./ModelSheet";
 
@@ -160,7 +159,7 @@ export function Ready({
             <button
               className="btn open-web"
               title="Open this workspace in the Sylence web app (you sign in there separately)"
-              onClick={() => void chrome.tabs.create({ url: workspaceLink(auth.page!, auth.workspace?.appId) })}
+              onClick={() => void ask({ type: "openWebApp", appId: auth.workspace?.appId }).catch(() => undefined)}
             >
               <ExternalIcon size={14} /> Web app
             </button>

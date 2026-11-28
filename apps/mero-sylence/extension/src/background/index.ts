@@ -7,11 +7,11 @@
  */
 import { pickWorkspaces, type AppRow } from "../lib/workspaces";
 import { callAudioBytes, takeCallAudio, unkeptCallAudio } from "../lib/callAudio";
-import { APPS_DOMAIN, PACKAGE, meetingLink, servedPage, isLocalPage, workspaceLink } from "../lib/appHost";
+import { APPS_DOMAIN, PACKAGE, latestVersion, meetingLink, servedPage, isLocalPage, workspaceLink } from "../lib/appHost";
 import { callNoticeText, postCallNotice, type NoticeResult } from "../lib/callNotice";
 import { findActions, type TranscriptLine } from "../lib/actionItems";
 import { actionsToAdd, notesModelFor, type Notes, type NotesModelId } from "../lib/notes";
-import { openAuthWindow, focusAuthWindow } from "../lib/authWindow";
+import { CREATE_WINDOW, openAuthWindow, focusAuthWindow } from "../lib/authWindow";
 import { newHandoff, openHandoff, signInUrl, type SignInIntent, type NewWorkspace, type NewAccount } from "../lib/handoff";
 import {
   DEFAULT_SETTINGS,
@@ -344,7 +344,12 @@ async function openSignIn(intent?: SignInIntent, workspace?: NewWorkspace, accou
   const url = signInUrl(page.origin, page.version, request, intent, workspace, account);
   // Signed in already: the page may borrow this session for the create.
   lending = intent === "create" && workspace?.name.trim() && (await auth()) ? { origin: page.origin, state: request.state } : null;
-  const answer = await openAuthWindow(url, `https://${chrome.runtime.id}.chromiumapp.org/`);
+  const answer = await openAuthWindow(
+    url,
+    `https://${chrome.runtime.id}.chromiumapp.org/`,
+    undefined,
+    makesWorkspace ? CREATE_WINDOW : undefined,
+  );
   if (!answer) throw new Error("Sign-in was cancelled.");
   const session = await openHandoff(request, answer);
   const previous = await auth();
@@ -402,9 +407,32 @@ function reopenPopup(windowId?: number): void {
  * the account no longer reaches is unchosen, so the popup offers the list.
  * A node that does not answer changes nothing: offline is not signed out.
  */
+/**
+ * The signed-in page at the release its host serves now. The release saved at
+ * sign-in goes stale as soon as a new one is deployed, and every link built
+ * from it would open the old page: look it up again, and keep what it says.
+ */
+async function currentPage(): Promise<{ origin: string; version: string | null } | null> {
+  const a = await auth();
+  if (!a) return null;
+  if (isLocalPage(a.page.origin)) return a.page;
+  try {
+    const version = await latestVersion(a.page.origin);
+    if (version !== a.page.version) {
+      await log(`page: ${a.page.version ?? "root"} -> ${version}`);
+      const now = await auth();
+      if (now) await saveAuth({ ...now, page: { ...now.page, version } });
+    }
+    return { ...a.page, version };
+  } catch {
+    return a.page;
+  }
+}
+
 async function checkSession(): Promise<{ signedIn: boolean }> {
   const a = await auth();
   if (!a) return { signedIn: false };
+  void currentPage();
   const current = await status();
   if (current.phase !== "idle" && current.phase !== "saved" && current.phase !== "error") return { signedIn: true };
   try {
@@ -497,7 +525,7 @@ async function start(tabId: number): Promise<void> {
     const me = s.speakerNames ? await recorderName(workspace) : null;
     if (s.speakerNames && platform !== "other") await startSpeakerReader(tabId, me);
     else await saveSpeakers({ ...NO_SPEAKERS, me });
-    if (s.announceRecording && platform !== "other") void announceRecording(tabId, platform, a.page, { appId: workspace.appId, meetingId: id });
+    if (s.announceRecording && platform !== "other") void currentPage().then((page) => announceRecording(tabId, platform, page ?? a.page, { appId: workspace.appId, meetingId: id }));
   } catch (e) {
     await log(`start failed: ${describe(e)}`);
     // No audio can come: drop the empty meeting rather than leave it behind.
@@ -756,7 +784,7 @@ function finish(durationMs: number): Promise<void> {
       } catch (e) {
         error = describe(e);
       }
-      link = meetingLink(a.page, meeting.appId, meeting.id);
+      link = meetingLink((await currentPage()) ?? a.page, meeting.appId, meeting.id);
       const s = await settings();
       if (all && !error && s.improveAfterCall) {
         // Never downloads the big model here: it runs only where it is allowed and already on the laptop.
@@ -942,6 +970,12 @@ async function handle(req: Request): Promise<unknown> {
       await onNode((client) => client.apps.delete({ app: req.appId }));
       const a = await auth();
       if (a && a.workspace?.appId === req.appId) await saveAuth({ ...a, workspace: null });
+      return null;
+    }
+    case "openWebApp": {
+      const page = await currentPage();
+      if (!page) throw new Error("Sign in first.");
+      await chrome.tabs.create({ url: workspaceLink(page, req.appId) });
       return null;
     }
     case "chooseWorkspace": {

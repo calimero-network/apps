@@ -152,6 +152,8 @@ export type Request =
   | { type: "checkSession" }
   | { type: "chooseWorkspace"; workspace: Workspace }
   | { type: "deleteWorkspace"; appId: string }
+  /** Opens the web app at the release its host serves now (on a workspace, when given). */
+  | { type: "openWebApp"; appId?: string }
   | { type: "start"; tabId: number }
   | { type: "stop" }
   | { type: "dismiss" }

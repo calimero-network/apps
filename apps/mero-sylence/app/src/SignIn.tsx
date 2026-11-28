@@ -96,7 +96,7 @@ const ACCEPT_LABELS = {
 
 /**
  * The invitation screens, wrapped around the app because a link can land on
- * any page. `main.tsx` took `?invite=` into storage before React mounted, so
+ * any page. `boot.tsx` took `?invite=` into storage before React mounted, so
  * the token survives a sign-up. While it is pending the visitor sees a page
  * about the invitation instead of the app (the address, and the app's hash
  * route, is left alone, so a deep link opens where it pointed afterwards):

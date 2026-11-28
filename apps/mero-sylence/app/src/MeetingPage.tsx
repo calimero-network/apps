@@ -219,6 +219,11 @@ export function MeetingBody({
   const recording = useRecording(recordingBlobs ?? noBlobs, recordingBlobs ? m.audio : null);
   const hasAudio = !!m.audio && !!recordingBlobs;
   const player = usePlayer();
+  // A format this browser's player refuses (an older WebM recording on Safari): play a WAV copy instead.
+  const { playAsWav } = recording;
+  useEffect(() => {
+    if (player.unsupported && !recording.converted) playAsWav();
+  }, [player.unsupported, recording.converted, playAsWav]);
   const [follow, setFollow] = useState(true);
   const byStart = useMemo(() => [...segments].sort((a, b) => a.startMs - b.startMs || a.seq - b.seq), [segments]);
   const playingIndex = usePlayingIndex(player, byStart, hasAudio && player.engaged);

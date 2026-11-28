@@ -18,6 +18,8 @@ export function usePlayer() {
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  /** The browser refused the recording's format (it may still decode it: see `useRecording`'s `playAsWav`). */
+  const [unsupported, setUnsupported] = useState(false);
   /** Someone played or sought: until then no line is "playing". */
   const [engaged, setEngaged] = useState(false);
   /** A seek asked for before the audio could take it, and whether to play after it. */
@@ -86,6 +88,7 @@ export function usePlayer() {
         if (Number.isFinite(a.duration)) setDurationMs(a.duration * 1000);
         a.playbackRate = rateRef.current;
         setError(null);
+        setUnsupported(false);
         const p = pending.current;
         pending.current = null;
         if (p) {
@@ -100,6 +103,7 @@ export function usePlayer() {
       onError: (e: { currentTarget: HTMLAudioElement }) => {
         const code = e.currentTarget.error?.code;
         setPlaying(false);
+        setUnsupported(code === 4);
         setError(
           code === 4
             ? "this browser cannot play this recording's format"
@@ -119,8 +123,8 @@ export function usePlayer() {
   );
 
   return useMemo(
-    () => ({ bind, subscribe, getTime, durationMs, playing, engaged, rate, error, seek, toggle, skip, setRate }),
-    [bind, subscribe, getTime, durationMs, playing, engaged, rate, error, seek, toggle, skip, setRate],
+    () => ({ bind, subscribe, getTime, durationMs, playing, engaged, rate, error, unsupported, seek, toggle, skip, setRate }),
+    [bind, subscribe, getTime, durationMs, playing, engaged, rate, error, unsupported, seek, toggle, skip, setRate],
   );
 }
 

@@ -73,7 +73,37 @@ describe("useRecording", () => {
   it("is idle without audio", () => {
     const b = blobs(vi.fn());
     const { result } = renderHook(() => useRecording(b, null));
-    expect(result.current).toEqual({ url: null, loading: false, error: null });
+    expect(result.current).toMatchObject({ url: null, loading: false, error: null });
+  });
+
+  it("plays a WAV copy when asked (the browser's player refused the format)", async () => {
+    const b = blobs(async () => bytes.slice().buffer as ArrayBuffer);
+    const decodeAudioData = vi.fn(async () => ({
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 16_000,
+      duration: 0.00025,
+      getChannelData: () => new Float32Array(4),
+    }));
+    vi.stubGlobal(
+      "OfflineAudioContext",
+      class {
+        decodeAudioData = decodeAudioData;
+      },
+    );
+    try {
+      const { result } = renderHook(() => useRecording(b, { ...audio(id), mime: "audio/webm" }));
+      await waitFor(() => expect(result.current.url).not.toBeNull());
+      expect(result.current.converted).toBeFalsy();
+      act(() => result.current.playAsWav());
+      await waitFor(() => expect(result.current.converted).toBe(true));
+      expect(decodeAudioData).toHaveBeenCalledTimes(1);
+      expect(result.current.url).toBe("blob:rec-2");
+      // The original's URL is let go.
+      expect(revoked).toContain("blob:rec-1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -7,6 +7,15 @@
 
 export const AUTH_WINDOW = { width: 460, height: 720 } as const;
 
+/**
+ * Creating a workspace: a session bound to Sylence's page may not create an
+ * organization by itself, so the node asks for the passkey on its own page.
+ * The page opens that in a small window of its own only when it is wider than
+ * 640 px (mero-react's `useNodeConsent`); in a narrower one it would have to
+ * leave the page for it. This window is wide enough.
+ */
+export const CREATE_WINDOW = { width: 720, height: 760 } as const;
+
 type Tabs = Pick<typeof chrome.tabs, "onUpdated">;
 type Windows = Pick<typeof chrome.windows, "create" | "remove" | "onRemoved" | "getLastFocused"> &
   Partial<Pick<typeof chrome.windows, "update">>;
@@ -49,9 +58,10 @@ export async function openAuthWindow(
   url: string,
   callbackPrefix: string,
   deps: AuthWindowDeps = { tabs: chrome.tabs, windows: chrome.windows },
+  size: { width: number; height: number } = AUTH_WINDOW,
 ): Promise<string | null> {
   const last = await deps.windows.getLastFocused().catch(() => undefined);
-  const win = await deps.windows.create({ url, type: "popup", focused: true, ...AUTH_WINDOW, ...centred(last) });
+  const win = await deps.windows.create({ url, type: "popup", focused: true, ...size, ...centred(last, size) });
   const windowId = win?.id;
   const tabId = win?.tabs?.[0]?.id;
   if (windowId === undefined) throw new Error("Could not open the sign-in window.");

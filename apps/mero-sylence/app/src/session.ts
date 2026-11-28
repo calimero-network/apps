@@ -22,7 +22,7 @@ export const APP_PACKAGE = "com.calimero.sylence";
 export const PRODUCT = "Sylence";
 
 /**
- * The real deps. While the extension's sign-in is pending (`main.tsx` captured
+ * The real deps. While the extension's sign-in is pending (`boot.tsx` captured
  * `#native-sign-in` before this module ran), sessions live in memory only: the
  * page does not restore one it kept before, and does not keep the one it hands
  * the extension.

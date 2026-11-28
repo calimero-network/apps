@@ -1,6 +1,6 @@
 import { appLabel as connectLabel } from "@calimero-apps/connect";
 import { describe, expect, it } from "vitest";
-import { PACKAGE, appLabel, appOrigin, isVersion, latestVersion, meetingLink, servedPage, workspaceLink } from "./appHost";
+import { PACKAGE, appLabel, appOrigin, compareVersions, isVersion, latestVersion, meetingLink, servedPage, workspaceLink } from "./appHost";
 
 const json = (body: unknown, status = 200) =>
   (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
@@ -17,7 +17,28 @@ describe("app host", () => {
     expect(await latestVersion("https://h.example/", json({ versions: ["0.0.1", "0.0.2"] }))).toBe("0.0.2");
     await expect(latestVersion("https://h.example", json({}, 404))).rejects.toThrow(/not served/);
     await expect(latestVersion("https://h.example", json({ versions: [] }))).rejects.toThrow(/no release/);
-    await expect(latestVersion("https://h.example", json({ versions: ["../x"] }))).rejects.toThrow(/not a version/);
+    // A name that is not a version is never put in a path.
+    await expect(latestVersion("https://h.example", json({ versions: ["../x"] }))).rejects.toThrow(/no release/);
+  });
+
+  it("opens the release Cloud serves: its deployment's, else the newest held, compared as numbers", async () => {
+    // Prod lists the old release first and the deployment on the new one.
+    const prod = {
+      versions: ["0.0.1", "0.0.3"],
+      deployments: [{ id: "330d", name: "sylence (production)", app: "sylence", version: "0.0.3" }],
+    };
+    expect(await latestVersion("https://h.example", json(prod))).toBe("0.0.3");
+    // The list is in no order: the last one is not the newest.
+    expect(await latestVersion("https://h.example", json({ versions: ["0.0.3", "0.0.1"] }))).toBe("0.0.3");
+    expect(await latestVersion("https://h.example", json({ versions: ["0.0.9", "0.0.10", "0.0.2"] }))).toBe("0.0.10");
+    // A held release newer than the deployed one is not live yet: the deployment wins.
+    expect(await latestVersion("https://h.example", json({ versions: ["0.0.3", "0.0.4"], deployments: [{ version: "0.0.3" }] }))).toBe("0.0.3");
+  });
+
+  it("compares versions as numbers", () => {
+    expect(compareVersions("0.0.10", "0.0.9")).toBeGreaterThan(0);
+    expect(compareVersions("1.2.0", "1.10.0")).toBeLessThan(0);
+    expect(compareVersions("0.0.3", "0.0.3")).toBe(0);
   });
 
   it("accepts only path-safe versions", () => {

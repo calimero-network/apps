@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AuthState, Workspace } from "../../lib/messages";
 import { AlertIcon, BackIcon, CheckIcon, ExternalIcon, RefreshIcon, Spinner, TrashIcon } from "../icons";
-import { workspaceLink } from "../../lib/appHost";
 import { ask } from "../rpc";
 
 export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState; onDone: () => void; canClose?: boolean }) {
@@ -240,7 +239,7 @@ export function Workspaces({ auth, onDone, canClose = false }: { auth: AuthState
         <button
           className="btn ghost sm"
           style={{ alignSelf: "flex-start" }}
-          onClick={() => void chrome.tabs.create({ url: workspaceLink(auth.page!, auth.workspace?.appId) })}
+          onClick={() => void ask({ type: "openWebApp", appId: auth.workspace?.appId }).catch(() => undefined)}
         >
           <ExternalIcon size={13} /> Open in the web app
         </button>

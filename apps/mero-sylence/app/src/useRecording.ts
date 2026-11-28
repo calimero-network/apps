@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Audio } from "./generated/client";
 import type { WorkspaceBlobs } from "./useWorkspace";
+import { toWav } from "./lib/toWav";
 
 /**
  * A meeting's recording as a URL the `<audio>` element plays.
@@ -258,14 +259,25 @@ export interface RecordingState {
   url: string | null;
   loading: boolean;
   error: string | null;
+  /** The recording is being played from a WAV copy (the browser refused its own format). */
+  converted?: boolean;
 }
 
-/** The recording's object URL, once read and checked; `null` audio gives nothing. */
-export function useRecording(blobs: WorkspaceBlobs, audio: Audio | null | undefined): RecordingState {
+/**
+ * The recording's object URL, once read and checked; `null` audio gives
+ * nothing. `playAsWav` swaps it for a WAV copy the browser decodes itself,
+ * for a recording whose format its player refuses (older WebM recordings).
+ */
+export function useRecording(
+  blobs: WorkspaceBlobs,
+  audio: Audio | null | undefined,
+): RecordingState & { playAsWav: () => void } {
   const blobId = audio?.blob ?? null;
   const mime = audio?.mime ?? "";
   const appId = blobs.appId;
   const [state, setState] = useState<RecordingState>({ url: null, loading: false, error: null });
+  const [wav, setWav] = useState(false);
+  useEffect(() => setWav(false), [blobId]);
   useEffect(() => {
     if (!blobId) {
       setState((old) => (old.url === null && !old.loading && old.error === null ? old : { url: null, loading: false, error: null }));
@@ -276,18 +288,22 @@ export function useRecording(blobs: WorkspaceBlobs, audio: Audio | null | undefi
     setState({ url: null, loading: true, error: null });
     void (async () => {
       try {
-        const blob = await recordingBlob(blobs, { blob: blobId, mime });
+        let blob = await recordingBlob(blobs, { blob: blobId, mime });
+        if (wav) blob = await toWav(blob);
         if (!live) return;
         url = URL.createObjectURL(blob);
-        setState({ url, loading: false, error: null });
+        setState({ url, loading: false, error: null, converted: wav });
       } catch (e) {
-        if (live) setState({ url: null, loading: false, error: e instanceof Error ? e.message : String(e) });
+        if (!live) return;
+        const why = e instanceof Error ? e.message : String(e);
+        setState({ url: null, loading: false, error: wav ? `this browser cannot play this recording (${why})` : why });
       }
     })();
     return () => {
       live = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [blobs, appId, blobId, mime]);
-  return state;
+  }, [blobs, appId, blobId, mime, wav]);
+  const playAsWav = useCallback(() => setWav(true), []);
+  return useMemo(() => ({ ...state, playAsWav }), [state, playAsWav]);
 }
